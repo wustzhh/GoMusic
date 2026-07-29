@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/bilibili_api.dart';
 
 /// 解析后的视频信息
 class _ParsedInfo {
@@ -32,6 +33,7 @@ class _DownloadPageState extends State<DownloadPage> {
   final _authorController = TextEditingController();
 
   bool _downloadVideo = false;
+  bool _isLoading = false;
   _ParsedInfo? _parsedInfo;
 
   @override
@@ -42,23 +44,38 @@ class _DownloadPageState extends State<DownloadPage> {
     super.dispose();
   }
 
-  void _parseUrl() {
+  Future<void> _parseUrl() async {
     final url = _urlController.text.trim();
     if (url.isEmpty) return;
 
-    // 模拟解析
-    setState(() {
-      _parsedInfo = _ParsedInfo(
-        url: url,
-        coverUrl: '',
-        originalTitle: '夜曲',
-        originalAuthor: '周杰伦',
-        duration: '03:42',
-        bvid: 'BV1xx411c7mD',
-      );
-      _nameController.text = _parsedInfo!.originalTitle;
-      _authorController.text = _parsedInfo!.originalAuthor;
-    });
+    setState(() => _isLoading = true);
+
+    final info = await BilibiliApi.getVideoInfo(url);
+
+    if (!mounted) return;
+
+    if (info != null) {
+      setState(() {
+        _parsedInfo = _ParsedInfo(
+          url: info.url,
+          coverUrl: info.coverUrl,
+          originalTitle: info.title,
+          originalAuthor: info.author,
+          duration: info.durationText,
+          bvid: info.bvid,
+        );
+        _nameController.text = info.title;
+        _authorController.text = info.author;
+        _isLoading = false;
+      });
+    } else {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('解析失败，请检查URL是否正确')),
+        );
+      }
+    }
   }
 
   void _clearAll() {
@@ -158,9 +175,11 @@ class _DownloadPageState extends State<DownloadPage> {
           width: double.infinity,
           height: 48,
           child: ElevatedButton.icon(
-            onPressed: _parseUrl,
-            icon: const Icon(Icons.search),
-            label: const Text('解析视频', style: TextStyle(fontSize: 16)),
+            onPressed: _isLoading ? null : _parseUrl,
+            icon: _isLoading
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.search),
+            label: Text(_isLoading ? '解析中...' : '解析视频', style: const TextStyle(fontSize: 16)),
             style: ElevatedButton.styleFrom(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/settings_service.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -8,12 +9,30 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  String _downloadPath = '/storage/emulated/0/GoMusic';
+  String _downloadPath = '';
   int _themeMode = 1; // 0:浅色 1:深色 2:跟随系统
+  bool _loaded = false;
 
-  void _changeDownloadPath() {
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final service = await SettingsService.getInstance();
+    final path = await service.getDownloadPath();
+    if (mounted) {
+      setState(() {
+        _downloadPath = path;
+        _loaded = true;
+      });
+    }
+  }
+
+  Future<void> _changeDownloadPath() async {
     final controller = TextEditingController(text: _downloadPath);
-    showDialog(
+    final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('修改下载路径'),
@@ -25,17 +44,20 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () {
-              setState(() => _downloadPath = controller.text.trim());
-              Navigator.pop(ctx);
-            },
-            child: const Text('确定'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确定')),
         ],
       ),
     );
+
+    if (result == true) {
+      final newPath = controller.text.trim();
+      if (newPath.isNotEmpty) {
+        final service = await SettingsService.getInstance();
+        await service.setDownloadPath(newPath);
+        setState(() => _downloadPath = newPath);
+      }
+    }
   }
 
   @override
@@ -50,7 +72,12 @@ class _SettingsPageState extends State<SettingsPage> {
             child: ListTile(
               leading: const Icon(Icons.folder_outlined),
               title: const Text('下载路径', style: TextStyle(fontSize: 15)),
-              subtitle: Text(_downloadPath, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              subtitle: Text(
+                _loaded ? _downloadPath : '加载中...',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: _changeDownloadPath,
             ),
@@ -78,6 +105,17 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ),
+          const SizedBox(height: 8),
+          // B站 Cookie
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.cookie_outlined),
+              title: const Text('B站 Cookie', style: TextStyle(fontSize: 15)),
+              subtitle: const Text('配置后支持需登录的视频', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _changeCookie,
+            ),
+          ),
           const SizedBox(height: 24),
           const Divider(),
           const SizedBox(height: 16),
@@ -92,6 +130,47 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _changeCookie() async {
+    final service = await SettingsService.getInstance();
+    if (!mounted) return;
+    final current = await service.getBilibiliCookie();
+    if (!mounted) return;
+    final controller = TextEditingController(text: current);
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('B站 Cookie'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: TextField(
+            controller: controller,
+            maxLines: 5,
+            decoration: const InputDecoration(
+              hintText: '从浏览器F12 → Network → 请求头中复制Cookie',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            style: const TextStyle(fontSize: 12),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      await service.setBilibiliCookie(controller.text.trim());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cookie 已保存')),
+        );
+      }
+    }
   }
 }
 
