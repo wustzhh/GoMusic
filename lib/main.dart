@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'pages/download_page.dart';
 import 'pages/playlist_page.dart';
 import 'pages/settings_page.dart';
-import 'widgets/mini_player_bar.dart';
 
 void main() {
   runApp(const GoMusicApp());
@@ -60,12 +59,7 @@ class _MainScreenState extends State<MainScreen> {
         index: _currentIndex,
         children: _pages,
       ),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 迷你播放条：只在播放页以外的Tab显示
-          if (_currentIndex != 1) const MiniPlayerBar(),
-          BottomNavigationBar(
+      bottomNavigationBar: BottomNavigationBar(
             currentIndex: _currentIndex,
             onTap: (index) => setState(() => _currentIndex = index),
             selectedItemColor: Colors.deepPurple,
@@ -75,8 +69,6 @@ class _MainScreenState extends State<MainScreen> {
               BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: '设置'),
             ],
           ),
-        ],
-      ),
     );
   }
 }
