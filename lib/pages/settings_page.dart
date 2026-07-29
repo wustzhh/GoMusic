@@ -8,8 +8,35 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  final String _downloadPath = '/storage/emulated/0/GoMusic';
+  String _downloadPath = '/storage/emulated/0/GoMusic';
   int _themeMode = 1; // 0:浅色 1:深色 2:跟随系统
+
+  void _changeDownloadPath() {
+    final controller = TextEditingController(text: _downloadPath);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('修改下载路径'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: '输入新的下载路径',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              setState(() => _downloadPath = controller.text.trim());
+              Navigator.pop(ctx);
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +52,7 @@ class _SettingsPageState extends State<SettingsPage> {
               title: const Text('下载路径', style: TextStyle(fontSize: 15)),
               subtitle: Text(_downloadPath, style: const TextStyle(fontSize: 12, color: Colors.grey)),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () {},
+              onTap: _changeDownloadPath,
             ),
           ),
           const SizedBox(height: 8),
