@@ -5,8 +5,13 @@ class Song {
   final String uploader;
   final Duration duration;
   final String? coverUrl;
-  final bool hasVideo; // 是否下载了视频
-  final String bvid; // B站视频ID，用于打开B站
+  final bool hasVideo;
+  final String bvid;
+
+  // 原始信息（保留B站源信息）
+  final String originalUrl;
+  final String originalTitle;
+  final String originalAuthor;
 
   const Song({
     required this.id,
@@ -16,6 +21,9 @@ class Song {
     this.coverUrl,
     this.hasVideo = false,
     this.bvid = '',
+    this.originalUrl = '',
+    this.originalTitle = '',
+    this.originalAuthor = '',
   });
 
   String get durationText {
@@ -91,19 +99,4 @@ final List<Playlist> mockPlaylists = [
   Playlist(id: 'like', name: '我喜欢', icon: '👍', songs: mockAllSongs.sublist(2, 6)),
   Playlist(id: 'recent', name: '最近播放', icon: '🕐', songs: mockAllSongs.sublist(4, 10)),
   Playlist(id: 'all', name: '全部歌曲', icon: '📋', songs: mockAllSongs),
-];
-
-final List<DownloadRecord> mockDownloadHistory = [
-  DownloadRecord(
-    id: 'd1', title: '夜曲 - 周杰伦', url: 'https://www.bilibili.com/video/BV1xx411c7mD',
-    downloadVideo: true, status: DownloadStatus.completed, hasAudio: true, hasVideo: true, fileSize: '3.2MB',
-  ),
-  DownloadRecord(
-    id: 'd2', title: 'Lemon - 米津玄师', url: 'https://www.bilibili.com/video/BV1Ht41147fM',
-    downloadVideo: false, status: DownloadStatus.completed, hasAudio: true, hasVideo: false, fileSize: '4.1MB',
-  ),
-  DownloadRecord(
-    id: 'd3', title: 'スパークル - RADWIMPS', url: 'https://www.bilibili.com/video/BV1Vs41117BY',
-    downloadVideo: true, status: DownloadStatus.downloading, hasAudio: true, hasVideo: false, progress: 0.45,
-  ),
 ];

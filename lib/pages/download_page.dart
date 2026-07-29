@@ -1,5 +1,23 @@
 import 'package:flutter/material.dart';
-import '../models/music_data.dart';
+
+/// 解析后的视频信息
+class _ParsedInfo {
+  final String url;
+  final String coverUrl;
+  final String originalTitle;
+  final String originalAuthor;
+  final String duration;
+  final String bvid;
+
+  const _ParsedInfo({
+    required this.url,
+    required this.coverUrl,
+    required this.originalTitle,
+    required this.originalAuthor,
+    required this.duration,
+    required this.bvid,
+  });
+}
 
 class DownloadPage extends StatefulWidget {
   const DownloadPage({super.key});
@@ -14,14 +32,7 @@ class _DownloadPageState extends State<DownloadPage> {
   final _authorController = TextEditingController();
 
   bool _downloadVideo = false;
-  bool _isParsed = false;
-
-  // 解析后的信息（假数据）
-  String _videoTitle = '';
-  String _videoAuthor = '';
-  String _duration = '';
-  // ignore: unused_field
-  String _coverUrl = ''; // 后续B站API解析时使用
+  _ParsedInfo? _parsedInfo;
 
   @override
   void dispose() {
@@ -35,193 +46,218 @@ class _DownloadPageState extends State<DownloadPage> {
     final url = _urlController.text.trim();
     if (url.isEmpty) return;
 
-    // 模拟解析：用假数据填充
+    // 模拟解析
     setState(() {
-      _isParsed = true;
-      _videoTitle = '夜曲';
-      _videoAuthor = '周杰伦';
-      _duration = '03:42';
-      _coverUrl = '';
-      _nameController.text = _videoTitle;
-      _authorController.text = _videoAuthor;
+      _parsedInfo = _ParsedInfo(
+        url: url,
+        coverUrl: '',
+        originalTitle: '夜曲',
+        originalAuthor: '周杰伦',
+        duration: '03:42',
+        bvid: 'BV1xx411c7mD',
+      );
+      _nameController.text = _parsedInfo!.originalTitle;
+      _authorController.text = _parsedInfo!.originalAuthor;
+    });
+  }
+
+  void _clearAll() {
+    _urlController.clear();
+    _nameController.clear();
+    _authorController.clear();
+    setState(() {
+      _parsedInfo = null;
+      _downloadVideo = false;
     });
   }
 
   void _startDownload() {
-    // TODO: 实际下载逻辑
+    final info = _parsedInfo;
+    if (info == null) return;
+
+    final localName = _nameController.text.trim();
+    final localAuthor = _authorController.text.trim();
+
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('开始下载（功能待实现）')),
+      SnackBar(
+        content: Text('开始下载: $localName / $localAuthor'
+            '${_downloadVideo ? " (含视频)" : ""}'
+            '\n原网址: ${info.url}'
+            '\n原标题: ${info.originalTitle}'
+            '\n原作者: ${info.originalAuthor}'),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final parsed = _parsedInfo;
+
     return Scaffold(
       appBar: AppBar(title: const Text('下载'), centerTitle: true),
       body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // URL输入区
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  // URL输入框 + 解析按钮
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _urlController,
-                          decoration: InputDecoration(
-                            hintText: '输入B站视频URL...',
-                            prefixIcon: const Icon(Icons.link),
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: _parseUrl,
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        ),
-                        child: const Text('解析'),
-                      ),
-                    ],
-                  ),
+            // ── URL输入区 ──
+            // 未解析时大块区域，已解析时紧凑行
+            if (parsed == null) _buildUrlInputLarge(),
+            if (parsed != null) _buildUrlInputCompact(),
 
-                  // 解析结果区
-                  if (_isParsed) ...[
-                    const SizedBox(height: 16),
-                    _buildParsedInfo(),
-                  ],
-
-                  const SizedBox(height: 12),
-
-                  // 视频下载开关
-                  Row(
-                    children: [
-                      const Text('同时下载视频', style: TextStyle(fontSize: 15)),
-                      const Spacer(),
-                      Switch(
-                        value: _downloadVideo,
-                        onChanged: (v) => setState(() => _downloadVideo = v),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 下载按钮
-                  SizedBox(
-                    width: double.infinity,
-                    height: 44,
-                    child: ElevatedButton.icon(
-                      onPressed: _startDownload,
-                      icon: const Icon(Icons.download),
-                      label: const Text('开始下载', style: TextStyle(fontSize: 16)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(),
-
-            // 下载历史
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(child: Divider()),
-                  Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('下载历史', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                  ),
-                  Expanded(child: Divider()),
-                ],
-              ),
-            ),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: mockDownloadHistory.length,
-              itemBuilder: (context, index) {
-                return _DownloadRecordTile(record: mockDownloadHistory[index]);
-              },
-            ),
+            // ── 解析结果区 ──
+            if (parsed != null) ...[
+              const SizedBox(height: 16),
+              _buildVideoInfoCard(parsed),
+              const SizedBox(height: 16),
+              _buildEditableFields(),
+              const SizedBox(height: 16),
+              _buildSwitch(),
+              const SizedBox(height: 16),
+              _buildDownloadButton(),
+            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildParsedInfo() {
+  // ===================== 子组件 =====================
+
+  /// 未解析时的大块URL输入
+  Widget _buildUrlInputLarge() {
+    return Column(
+      children: [
+        const SizedBox(height: 40),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            children: [
+              const Icon(Icons.video_library_outlined, size: 48, color: Colors.grey),
+              const SizedBox(height: 12),
+              const Text('粘贴B站视频链接', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _urlController,
+                decoration: InputDecoration(
+                  hintText: 'https://www.bilibili.com/video/...',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  prefixIcon: const Icon(Icons.link),
+                ),
+                onSubmitted: (_) => _parseUrl(),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: ElevatedButton.icon(
+            onPressed: _parseUrl,
+            icon: const Icon(Icons.search),
+            label: const Text('解析视频', style: TextStyle(fontSize: 16)),
+            style: ElevatedButton.styleFrom(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 已解析时的紧凑URL行
+  Widget _buildUrlInputCompact() {
+    return Row(
+      children: [
+        Expanded(
+          child: TextField(
+            controller: _urlController,
+            decoration: InputDecoration(
+              hintText: 'B站视频URL',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              prefixIcon: const Icon(Icons.link, size: 20),
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            ),
+            style: const TextStyle(fontSize: 13),
+          ),
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          onPressed: _clearAll,
+          icon: const Icon(Icons.close, color: Colors.red),
+          tooltip: '清空',
+        ),
+      ],
+    );
+  }
+
+  /// 视频信息卡片（封面+原标题+原作者+时长）
+  Widget _buildVideoInfoCard(_ParsedInfo info) {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(
+        child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 封面 + 信息行
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 封面占位
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.image, size: 40, color: Colors.grey),
+            // 封面
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: Colors.grey[800],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.image, size: 36, color: Colors.grey),
+                    SizedBox(height: 4),
+                    Text('封面', style: TextStyle(color: Colors.grey, fontSize: 11)),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                // 视频信息
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '原标题: $_videoTitle',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'UP主: $_videoAuthor',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '时长: $_duration',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const Divider(height: 20),
-            // 可编辑字段
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: '本地保存名称',
-                border: OutlineInputBorder(),
-                isDense: true,
               ),
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _authorController,
-              decoration: const InputDecoration(
-                labelText: '本地保存作者',
-                border: OutlineInputBorder(),
-                isDense: true,
+            const SizedBox(width: 12),
+            // 信息
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    info.originalTitle,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.person, size: 14, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(info.originalAuthor, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.timer_outlined, size: 14, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(info.duration, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'BV: ${info.bvid}',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
               ),
             ),
           ],
@@ -229,48 +265,62 @@ class _DownloadPageState extends State<DownloadPage> {
       ),
     );
   }
-}
 
-// DownloadRecordTile 保持不变
-class _DownloadRecordTile extends StatelessWidget {
-  final DownloadRecord record;
-
-  const _DownloadRecordTile({required this.record});
-
-  @override
-  Widget build(BuildContext context) {
-    final isCompleted = record.status == DownloadStatus.completed;
-    final isDownloading = record.status == DownloadStatus.downloading;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Icon(
-          isCompleted ? Icons.check_circle : (isDownloading ? Icons.downloading : Icons.error),
-          color: isCompleted ? Colors.green : (isDownloading ? Colors.orange : Colors.red),
+  /// 可编辑字段
+  Widget _buildEditableFields() {
+    return Column(
+      children: [
+        TextField(
+          controller: _nameController,
+          decoration: InputDecoration(
+            labelText: '本地保存名称',
+            hintText: '可修改保存到本地的歌曲名',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            isDense: true,
+          ),
         ),
-        title: Text(record.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (isDownloading) ...[
-              const SizedBox(height: 4),
-              LinearProgressIndicator(value: record.progress),
-              const SizedBox(height: 2),
-              Text('${(record.progress * 100).toInt()}%', style: const TextStyle(fontSize: 12)),
-            ],
-            if (isCompleted) ...[
-              const SizedBox(height: 2),
-              Row(
-                children: [
-                  if (record.hasAudio) const Text('🎵音频 ', style: TextStyle(fontSize: 12)),
-                  if (record.hasVideo) const Text('📹视频', style: TextStyle(fontSize: 12)),
-                ],
-              ),
-            ],
-          ],
+        const SizedBox(height: 12),
+        TextField(
+          controller: _authorController,
+          decoration: InputDecoration(
+            labelText: '本地保存作者',
+            hintText: '可修改保存到本地的作者名',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            isDense: true,
+          ),
         ),
-        trailing: isCompleted ? Text(record.fileSize ?? '', style: const TextStyle(fontSize: 12, color: Colors.grey)) : null,
+      ],
+    );
+  }
+
+  /// 视频下载开关
+  Widget _buildSwitch() {
+    return Row(
+      children: [
+        const Icon(Icons.video_file_outlined, color: Colors.grey),
+        const SizedBox(width: 8),
+        const Text('同时下载视频', style: TextStyle(fontSize: 15)),
+        const Spacer(),
+        Switch(value: _downloadVideo, onChanged: (v) => setState(() => _downloadVideo = v)),
+      ],
+    );
+  }
+
+  /// 下载按钮（动态文字）
+  Widget _buildDownloadButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: ElevatedButton.icon(
+        onPressed: _startDownload,
+        icon: const Icon(Icons.download),
+        label: Text(
+          _downloadVideo ? '开始下载 (音频 + 视频)' : '开始下载 (仅音频)',
+          style: const TextStyle(fontSize: 16),
+        ),
+        style: ElevatedButton.styleFrom(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       ),
     );
   }
