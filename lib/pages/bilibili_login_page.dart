@@ -1,14 +1,9 @@
-import 'dart:async';
-import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_windows/webview_windows.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../services/settings_service.dart';
 import '../services/bilibili_api.dart';
 
-/// B站自动登录页
-/// - Windows: webview_windows (Edge WebView2)
-/// - Android: webview_flutter (系统WebView)
+/// B站自动登录页 — 全平台 InAppWebView + CookieManager 获取全部 Cookie
 class BilibiliLoginPage extends StatefulWidget {
   const BilibiliLoginPage({super.key});
   @override
@@ -16,159 +11,120 @@ class BilibiliLoginPage extends StatefulWidget {
 }
 
 class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
+  InAppWebViewController? _ctrl;
   bool _loading = true;
   bool _extracted = false;
-
-  WebViewController? _androidCtrl;
-  WebviewController? _wndCtrl;
-  StreamSubscription? _wndUrlSub;
-  StreamSubscription? _wndLoadingSub;
-
-  @override
-  void initState() {
-    super.initState();
-    if (Platform.isWindows) {
-      _initWindows();
-    } else {
-      _initAndroid();
-    }
-  }
-
-  @override
-  void dispose() {
-    _wndUrlSub?.cancel();
-    _wndLoadingSub?.cancel();
-    _wndCtrl?.dispose();
-    super.dispose();
-  }
-
-  // ==================== Android ====================
-
-  void _initAndroid() {
-    _androidCtrl = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(NavigationDelegate(
-        onPageStarted: (_) => _setLoading(true),
-        onPageFinished: (_) {
-          _setLoading(false);
-          _tryAndroid();
-        },
-        onUrlChange: (change) {
-          if ((change.url ?? '').contains('bilibili.com') &&
-              !(change.url ?? '').contains('passport')) {
-            _tryAndroid();
-          }
-        },
-      ))
-      ..loadRequest(Uri.parse('https://passport.bilibili.com/login'));
-  }
-
-  Future<void> _tryAndroid() async {
-    if (_extracted || _androidCtrl == null) return;
-    _extracted = true;
-    try {
-      final raw = await _androidCtrl!.runJavaScriptReturningResult('document.cookie');
-      await _saveCookie((raw as String?) ?? '');
-    } catch (_) {
-      _extracted = false;
-    }
-  }
-
-  // ==================== Windows ====================
-
-  void _initWindows() async {
-    try {
-      final ctrl = WebviewController();
-      await ctrl.initialize();
-      ctrl.loadUrl('https://passport.bilibili.com/login');
-
-      // 监听 URL
-      _wndUrlSub = ctrl.url.listen((url) {
-        if (url.contains('bilibili.com') && !url.contains('passport')) {
-          _tryWindows();
-        }
-      });
-
-      // 监听加载状态
-      _wndLoadingSub = ctrl.loadingState.listen((state) {
-        if (state == LoadingState.loading) {
-          _setLoading(true);
-        } else {
-          _setLoading(false);
-          _tryWindows();
-        }
-      });
-
-      setState(() => _wndCtrl = ctrl);
-    } catch (_) {}
-  }
-
-  Future<void> _tryWindows() async {
-    if (_extracted || _wndCtrl == null) return;
-    _extracted = true;
-    try {
-      final raw = await _wndCtrl!.executeScript('document.cookie');
-      await _saveCookie(raw?.toString() ?? '');
-    } catch (_) {
-      _extracted = false;
-    }
-  }
-
-  // ==================== 通用 ====================
-
-  void _setLoading(bool v) {
-    if (mounted) setState(() => _loading = v);
-  }
-
-  String _filterCookies(String raw) {
-    final keep = [
-      'DedeUserID', 'DedeUserID__ckMd5', 'SESSDATA', 'bili_jct',
-      'buvid3', 'buvid4', 'b_nut', '_uuid',
-    ];
-    final parts = raw.split(';');
-    final result = <String>[];
-    for (final p in parts) {
-      final t = p.trim();
-      for (final k in keep) {
-        if (t.startsWith('$k=')) { result.add(t); break; }
-      }
-    }
-    return result.join('; ');
-  }
-
-  Future<void> _saveCookie(String raw) async {
-    final filtered = _filterCookies(raw);
-    if (filtered.isEmpty) {
-      _extracted = false;
-      return;
-    }
-    final service = await SettingsService.getInstance();
-    await service.setBilibiliCookie(filtered);
-    BilibiliApi.cookie = filtered; // 同步到 API 实例
-    if (!mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('登录成功！'), backgroundColor: Colors.green),
-    );
-    Navigator.pop(context, true);
-  }
-
-  // ==================== UI ====================
+  double _progress = 0;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('B站登录'), centerTitle: true),
+      appBar: AppBar(
+        title: const Text('B站登录'),
+        centerTitle: true,
+        actions: [
+          TextButton(
+            onPressed: _extractCookies,
+            child: const Text('完成登录'),
+          ),
+        ],
+      ),
       body: Stack(
         children: [
-          if (Platform.isAndroid && _androidCtrl != null)
-            WebViewWidget(controller: _androidCtrl!),
-          if (Platform.isWindows && _wndCtrl != null)
-            Webview(_wndCtrl!),
+          InAppWebView(
+            initialUrlRequest: URLRequest(
+              url: WebUri('https://passport.bilibili.com/login'),
+            ),
+            initialSettings: InAppWebViewSettings(
+              useWideViewPort: true,
+              supportZoom: false,
+            ),
+            onWebViewCreated: (c) => _ctrl = c,
+            onLoadStart: (_, url) {
+              if (mounted) setState(() => _loading = true);
+            },
+            onLoadStop: (_, url) {
+              if (mounted) setState(() => _loading = false);
+              // 登录成功后自动提取
+              if (url != null &&
+                  url.toString().contains('bilibili.com') &&
+                  !url.toString().contains('passport')) {
+                _extractCookies();
+              }
+            },
+            onProgressChanged: (_, p) {
+              if (mounted) setState(() => _progress = p / 100);
+            },
+          ),
           if (_loading)
-            const Center(child: CircularProgressIndicator()),
+            Positioned(
+              top: 0, left: 0, right: 0,
+              child: LinearProgressIndicator(value: _progress),
+            ),
         ],
       ),
     );
+  }
+
+  Future<void> _extractCookies() async {
+    if (_extracted) return;
+    _extracted = true;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    try {
+      final cookieManager = CookieManager.instance();
+      final allCookies = await cookieManager.getCookies(
+        url: WebUri('https://bilibili.com'),
+      );
+
+      if (allCookies.isEmpty) {
+        _extracted = false;
+        if (mounted) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('未检测到登录状态，请先登录')),
+          );
+        }
+        return;
+      }
+
+      // 取所有 B站域名的 Cookie（不过滤，因为需要 httpOnly 的）
+      final parts = <String>[];
+      for (final c in allCookies) {
+        parts.add('${c.name}=${c.value}');
+      }
+      final cookieStr = parts.join('; ');
+
+      // 验证是否有关键的 SESSDATA
+      final hasSessdata = allCookies.any((c) => c.name == 'SESSDATA');
+      if (!hasSessdata) {
+        _extracted = false;
+        if (mounted) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('未获取到登录凭证(SESSDATA)，请在浏览器中完成登录')),
+          );
+        }
+        return;
+      }
+
+      // 保存
+      final service = await SettingsService.getInstance();
+      await service.setBilibiliCookie(cookieStr);
+      BilibiliApi.cookie = cookieStr;
+
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('登录成功！已获取全部Cookie'), backgroundColor: Colors.green),
+      );
+      navigator.pop(true);
+    } catch (e) {
+      _extracted = false;
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('提取失败: $e')),
+        );
+      }
+    }
   }
 }
