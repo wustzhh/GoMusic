@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -182,10 +183,18 @@ class PlaylistService {
     final list = p.getStringList(_key) ?? [];
     return list.map((e) {
       final parts = e.split('|||');
-      final songPaths = parts.length > 3 ? parts[3].split(',').where((s) => s.isNotEmpty).toList() : <String>[];
+      final name = parts.length > 1 ? parts[1] : '';
+      final songsJson = parts.length > 3 ? parts[3] : '[]';
+      List<String> songPaths;
+      try {
+        final decoded = jsonDecode(songsJson);
+        songPaths = (decoded as List).map((x) => x.toString()).toList();
+      } catch (_) {
+        songPaths = [];
+      }
       return Playlist(
         id: parts[0],
-        name: parts[1],
+        name: name,
         icon: parts[2],
         songs: songPaths.map((fp) => Song(id: fp, title: fp.split(Platform.pathSeparator).last.split('.').first, uploader: '', duration: Duration.zero, filePath: fp)).toList(),
       );
@@ -196,7 +205,7 @@ class PlaylistService {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
     final id = DateTime.now().millisecondsSinceEpoch.toString();
-    list.add('$id|||$name|||📋|||');
+    list.add('$id|||$name|||📋|||[]');
     await p.setStringList(_key, list);
   }
 
@@ -206,14 +215,14 @@ class PlaylistService {
     for (var i = 0; i < list.length; i++) {
       final parts = list[i].split('|||');
       if (parts[0] == playlistId) {
-        final songPaths = parts.length > 3 ? parts[3] : '';
-        final paths = songPaths.split(',').where((s) => s.isNotEmpty).toList();
-        if (!paths.contains(filePath)) {
-          paths.add(filePath);
-          parts[3] = paths.join(',');
-          list[i] = parts.join('|||');
-          await p.setStringList(_key, list);
-        }
+        final songsJson = parts.length > 3 ? parts[3] : '[]';
+        List<dynamic> paths;
+        try { paths = jsonDecode(songsJson); } catch (_) { paths = []; }
+        final pathSet = paths.map((x) => x.toString()).toSet();
+        pathSet.add(filePath);
+        parts[3] = jsonEncode(pathSet.toList());
+        list[i] = parts.join('|||');
+        await p.setStringList(_key, list);
         return;
       }
     }
@@ -225,8 +234,13 @@ class PlaylistService {
     for (final entry in list) {
       final parts = entry.split('|||');
       if (parts[0] == playlistId) {
-        final songPaths = parts.length > 3 ? parts[3] : '';
-        return songPaths.split(',').contains(filePath);
+        final songsJson = parts.length > 3 ? parts[3] : '[]';
+        try {
+          final paths = jsonDecode(songsJson) as List;
+          return paths.map((x) => x.toString()).contains(filePath);
+        } catch (_) {
+          return false;
+        }
       }
     }
     return false;

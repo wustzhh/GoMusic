@@ -32,10 +32,23 @@ class _SongListPageState extends State<SongListPage> {
   }
 
   Future<void> _refresh() async {
-    final svc = await SettingsService.getInstance();
-    final dir = await svc.getDownloadPath();
-    final newSongs = await scanLocalAudioFiles(dir);
-    if (mounted) setState(() => _songs = newSongs);
+    if (widget.playlist.id == 'local') {
+      final svc = await SettingsService.getInstance();
+      final dir = await svc.getDownloadPath();
+      _songs = await scanLocalAudioFiles(dir);
+    } else if (widget.playlist.id == 'fav') {
+      final favPaths = await AudioPlayerService.getFavorites();
+      final svc = await SettingsService.getInstance();
+      final dir = await svc.getDownloadPath();
+      final all = await scanLocalAudioFiles(dir);
+      _songs = all.where((s) => favPaths.contains(s.filePath)).toList();
+    } else {
+      // 自定义歌单：重新加载
+      final pls = await PlaylistService.getPlaylists();
+      final found = pls.where((p) => p.id == widget.playlist.id).firstOrNull;
+      if (found != null) _songs = found.songs;
+    }
+    if (mounted) setState(() {});
   }
 
   void _playSong(Song song) {
