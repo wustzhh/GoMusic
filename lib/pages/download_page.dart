@@ -117,6 +117,22 @@ class _DownloadPageState extends State<DownloadPage> {
     }
 
     if (!mounted) return;
+
+    // 更新文件大小显示（覆盖"未知"）
+    try {
+      final audioFile = File(audioPath);
+      if (await audioFile.exists()) {
+        _info!.audioSize = await audioFile.length();
+      }
+      if (_downloadVideo) {
+        final videoPath = '$dir\\${_safeFileName(_nameController.text.trim())}.mp4';
+        final videoFile = File(videoPath);
+        if (await videoFile.exists()) {
+          _info!.videoSize = await videoFile.length();
+        }
+      }
+    } catch (_) {}
+
     setState(() => _isDownloading = false);
 
     // 检查文件大小
