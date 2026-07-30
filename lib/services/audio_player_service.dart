@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -66,7 +67,16 @@ class AudioPlayerService {
   Future<void> next() async {
     if (_queue.isEmpty) return;
     if (_playMode == PlayMode.loopOne) { await seek(Duration.zero); return; }
-    _queueIndex = (_queueIndex + 1) % _queue.length;
+    if (_playMode == PlayMode.shuffle) {
+      final rng = Random();
+      var next = _queueIndex;
+      while (next == _queueIndex && _queue.length > 1) {
+        next = rng.nextInt(_queue.length);
+      }
+      _queueIndex = next;
+    } else {
+      _queueIndex = (_queueIndex + 1) % _queue.length;
+    }
     await playSong(_queue[_queueIndex]);
   }
 

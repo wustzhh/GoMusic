@@ -394,12 +394,37 @@ class _DownloadPageState extends State<DownloadPage> {
         title: Text(item.info.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
         subtitle: Text('${item.info.author} · ${item.info.durationText}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (item.status == _BatchStatus.failed)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.orange, size: 18),
+                padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                onPressed: () => _retryItem(item),
+              ),
+            ),
           Text(_downloadVideo ? '🎵🎬' : '🎵', style: const TextStyle(fontSize: 11)),
           const SizedBox(width: 6),
           Text(label, style: TextStyle(fontSize: 11, color: color)),
         ]),
       ),
     );
+  }
+
+  Future<void> _retryItem(_BatchItem item) async {
+    setState(() { item.status = _BatchStatus.downloading; item.exists = false; });
+
+    final full = await _api.getVideoInfo(item.info.url);
+    if (full?.audioUrl == null) { setState(() => item.status = _BatchStatus.failed); return; }
+
+    if (full!.coverUrl.isNotEmpty) {
+      await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}\\${item.name}.jpg', onProgress: (_) {});
+    }
+    final ok = await StreamDownloader.download(
+      url: full.audioUrl!, savePath: '${_downloadDir}\\${item.name}.m4a',
+      onProgress: (_) {},
+    );
+    setState(() { item.status = ok ? _BatchStatus.done : _BatchStatus.failed; if (ok) item.exists = true; });
   }
 
   // ---- 固定底部按钮 ----
