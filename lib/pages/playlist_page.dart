@@ -87,14 +87,24 @@ class PlaylistPageState extends State<PlaylistPage> {
                 leading: const Icon(Icons.add_circle_outline, color: Colors.blue, size: 28),
                 title: const Text('新建播放列表', style: TextStyle(fontSize: 16, color: Colors.blue)),
                 onTap: () {
+                  final ctrl = TextEditingController();
                   showDialog(
                     context: context,
                     builder: (ctx) => AlertDialog(
                       title: const Text('新建播放列表'),
-                      content: const TextField(decoration: InputDecoration(hintText: '输入列表名称')),
+                      content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: '输入列表名称', border: OutlineInputBorder())),
                       actions: [
                         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-                        FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('创建')),
+                        FilledButton(
+                          onPressed: () async {
+                            if (ctrl.text.trim().isNotEmpty) {
+                              await PlaylistService.addPlaylist(ctrl.text.trim());
+                            }
+                            Navigator.pop(ctx);
+                            refresh();
+                          },
+                          child: const Text('创建'),
+                        ),
                       ],
                     ),
                   );
