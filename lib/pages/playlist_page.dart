@@ -7,10 +7,10 @@ import 'song_list_page.dart';
 class PlaylistPage extends StatefulWidget {
   const PlaylistPage({super.key});
   @override
-  State<PlaylistPage> createState() => _PlaylistPageState();
+  PlaylistPageState createState() => PlaylistPageState();
 }
 
-class _PlaylistPageState extends State<PlaylistPage> {
+class PlaylistPageState extends State<PlaylistPage> {
   List<Playlist> _playlists = [];
   bool _loaded = false;
 
@@ -19,6 +19,8 @@ class _PlaylistPageState extends State<PlaylistPage> {
     super.initState();
     _loadPlaylists();
   }
+
+  Future<void> refresh() => _loadPlaylists();
 
   Future<void> _loadPlaylists() async {
     final service = await SettingsService.getInstance();

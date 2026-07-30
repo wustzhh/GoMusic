@@ -43,11 +43,12 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
+  final _playlistKey = GlobalKey<PlaylistPageState>();
 
-  final List<Widget> _pages = const [
-    DownloadPage(),
-    PlaylistPage(),
-    SettingsPage(),
+  late final List<Widget> _pages = [
+    const DownloadPage(),
+    PlaylistPage(key: _playlistKey),
+    const SettingsPage(),
   ];
 
   @override
@@ -60,7 +61,11 @@ class _MainScreenState extends State<MainScreen> {
           const MiniPlayerBar(),
           BottomNavigationBar(
             currentIndex: _currentIndex,
-            onTap: (index) => setState(() => _currentIndex = index),
+            onTap: (index) {
+              setState(() => _currentIndex = index);
+              // 切换到播放页时刷新
+              if (index == 1) _playlistKey.currentState?.refresh();
+            },
             selectedItemColor: Colors.deepPurple,
             items: const [
               BottomNavigationBarItem(icon: Icon(Icons.download), label: '下载'),
