@@ -214,9 +214,22 @@ class _SongListPageState extends State<SongListPage> {
 
   Widget _buildQueueSheet(void Function(VoidCallback) setSheetState) {
     final queue = _service.queue.isNotEmpty ? _service.queue : _getFiltered();
+    final scrollCtrl = ScrollController();
+    final targetIndex = _service.queueIndex;
+
+    // 定位到正在播放的歌曲
+    if (targetIndex >= 0 && targetIndex < queue.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final itemHeight = 56.0;
+        final offset = (targetIndex * itemHeight).clamp(0.0, scrollCtrl.position.maxScrollExtent);
+        scrollCtrl.animateTo(offset, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+      });
+    }
+
     return SizedBox(height: MediaQuery.of(context).size.height * 0.5, child: Column(children: [
       Padding(padding: const EdgeInsets.all(16), child: Text('播放列表 (${queue.length}首)', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-      Expanded(child: queue.isEmpty ? const Center(child: Text('队列为空')) : ListView.builder(itemCount: queue.length, itemBuilder: (_, i) {
+      Expanded(child: queue.isEmpty ? const Center(child: Text('队列为空')) : ListView.builder(
+        controller: scrollCtrl, itemCount: queue.length, itemBuilder: (_, i) {
         final s = queue[i]; final isCur = i == _service.queueIndex;
         return ListTile(
           leading: Icon(isCur ? Icons.play_arrow : Icons.music_note, color: isCur ? Colors.deepPurple : Colors.grey, size: 22),
