@@ -205,7 +205,7 @@ class _PlayerPageState extends State<PlayerPage> {
   Widget _buildCover(Song song) {
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
       final f = File(song.coverUrl!);
-      if (f.existsSync()) return Image.file(f, fit: BoxFit.cover);
+      if (f.existsSync() && f.lengthSync() > 0) return Image.file(f, fit: BoxFit.cover);
     }
     return Center(child: Icon(Icons.album, size: 100, color: Colors.grey[600]));
   }
