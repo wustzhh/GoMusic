@@ -1,73 +1,129 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_windows/webview_windows.dart';
 import '../services/settings_service.dart';
 
-/// B站登录页
-/// - Android：内嵌 WebView，登录后自动提取 Cookie
-/// - Windows：引导用户在浏览器中登录，手动粘贴 Cookie
+/// B站自动登录页
+/// - Windows: webview_windows (Edge WebView2)
+/// - Android: webview_flutter (系统WebView)
 class BilibiliLoginPage extends StatefulWidget {
   const BilibiliLoginPage({super.key});
-
   @override
   State<BilibiliLoginPage> createState() => _BilibiliLoginPageState();
 }
 
 class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
-  // Android WebView
-  late final WebViewController _webController;
-  bool _webLoading = true;
+  bool _loading = true;
+  bool _extracted = false;
+
+  WebViewController? _androidCtrl;
+  WebviewController? _wndCtrl;
+  StreamSubscription? _wndUrlSub;
+  StreamSubscription? _wndLoadingSub;
 
   @override
   void initState() {
     super.initState();
-    if (Platform.isAndroid) {
-      _initWebView();
+    if (Platform.isWindows) {
+      _initWindows();
     } else {
-      // Windows：直接弹对话框
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showCookieDialog());
+      _initAndroid();
     }
   }
 
-  void _initWebView() {
-    _webController = WebViewController()
+  @override
+  void dispose() {
+    _wndUrlSub?.cancel();
+    _wndLoadingSub?.cancel();
+    _wndCtrl?.dispose();
+    super.dispose();
+  }
+
+  // ==================== Android ====================
+
+  void _initAndroid() {
+    _androidCtrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (_) {
-            if (mounted) setState(() => _webLoading = true);
-          },
-          onPageFinished: (_) {
-            if (mounted) setState(() => _webLoading = false);
-            _tryAutoExtract();
-          },
-          onUrlChange: (change) {
-            if (change.url?.contains('bilibili.com') == true &&
-                !change.url!.contains('passport')) {
-              _tryAutoExtract();
-            }
-          },
-        ),
-      )
+      ..setNavigationDelegate(NavigationDelegate(
+        onPageStarted: (_) => _setLoading(true),
+        onPageFinished: (_) {
+          _setLoading(false);
+          _tryAndroid();
+        },
+        onUrlChange: (change) {
+          if ((change.url ?? '').contains('bilibili.com') &&
+              !(change.url ?? '').contains('passport')) {
+            _tryAndroid();
+          }
+        },
+      ))
       ..loadRequest(Uri.parse('https://passport.bilibili.com/login'));
   }
 
-  Future<void> _tryAutoExtract() async {
+  Future<void> _tryAndroid() async {
+    if (_extracted || _androidCtrl == null) return;
+    _extracted = true;
     try {
-      final result = await _webController.runJavaScriptReturningResult("document.cookie");
-      final cookies = (result as String?) ?? '';
-      if (cookies.isNotEmpty) {
-        final filtered = _filterCookies(cookies);
-        if (filtered.isNotEmpty) {
-          await _saveCookie(filtered);
+      final raw = await _androidCtrl!.runJavaScriptReturningResult('document.cookie');
+      await _saveCookie((raw as String?) ?? '');
+    } catch (_) {
+      _extracted = false;
+    }
+  }
+
+  // ==================== Windows ====================
+
+  void _initWindows() async {
+    try {
+      final ctrl = WebviewController();
+      await ctrl.initialize();
+      ctrl.loadUrl('https://passport.bilibili.com/login');
+
+      // 监听 URL
+      _wndUrlSub = ctrl.url.listen((url) {
+        if (url.contains('bilibili.com') && !url.contains('passport')) {
+          _tryWindows();
         }
-      }
+      });
+
+      // 监听加载状态
+      _wndLoadingSub = ctrl.loadingState.listen((state) {
+        if (state == LoadingState.loading) {
+          _setLoading(true);
+        } else {
+          _setLoading(false);
+          _tryWindows();
+        }
+      });
+
+      setState(() => _wndCtrl = ctrl);
     } catch (_) {}
   }
 
+  Future<void> _tryWindows() async {
+    if (_extracted || _wndCtrl == null) return;
+    _extracted = true;
+    try {
+      final raw = await _wndCtrl!.executeScript('document.cookie');
+      await _saveCookie(raw?.toString() ?? '');
+    } catch (_) {
+      _extracted = false;
+    }
+  }
+
+  // ==================== 通用 ====================
+
+  void _setLoading(bool v) {
+    if (mounted) setState(() => _loading = v);
+  }
+
   String _filterCookies(String raw) {
-    final keep = ['DedeUserID', 'DedeUserID__ckMd5', 'SESSDATA', 'bili_jct', 'buvid3', 'buvid4', 'b_nut', '_uuid'];
+    final keep = [
+      'DedeUserID', 'DedeUserID__ckMd5', 'SESSDATA', 'bili_jct',
+      'buvid3', 'buvid4', 'b_nut', '_uuid',
+    ];
     final parts = raw.split(';');
     final result = <String>[];
     for (final p in parts) {
@@ -79,152 +135,38 @@ class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
     return result.join('; ');
   }
 
-  Future<void> _saveCookie(String cookie) async {
+  Future<void> _saveCookie(String raw) async {
+    final filtered = _filterCookies(raw);
+    if (filtered.isEmpty) {
+      _extracted = false;
+      return;
+    }
     final service = await SettingsService.getInstance();
-    await service.setBilibiliCookie(cookie);
+    await service.setBilibiliCookie(filtered);
     if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('登录成功！'), backgroundColor: Colors.green),
     );
     Navigator.pop(context, true);
   }
 
-  // ==================== Windows：浏览器 + 手动粘贴 ====================
-
-  void _showCookieDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => _CookieInputDialog(
-        onSaved: () {
-          Navigator.pop(ctx);
-          if (mounted) Navigator.pop(context, true);
-        },
-      ),
-    );
-  }
+  // ==================== UI ====================
 
   @override
   Widget build(BuildContext context) {
-    if (Platform.isAndroid) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('B站登录'), centerTitle: true),
-        body: Stack(
-          children: [
-            WebViewWidget(controller: _webController),
-            if (_webLoading) const Center(child: CircularProgressIndicator()),
-          ],
-        ),
-      );
-    }
-
-    // Windows：空白页（对话框在 initState 弹出）
     return Scaffold(
       appBar: AppBar(title: const Text('B站登录'), centerTitle: true),
-      body: const Center(child: Text('请在弹窗中操作')),
-    );
-  }
-}
-
-/// Windows 端 Cookie 输入对话框
-class _CookieInputDialog extends StatefulWidget {
-  final VoidCallback onSaved;
-  const _CookieInputDialog({required this.onSaved});
-
-  @override
-  State<_CookieInputDialog> createState() => _CookieInputDialogState();
-}
-
-class _CookieInputDialogState extends State<_CookieInputDialog> {
-  final _controller = TextEditingController();
-  bool _saving = false;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _openBrowser() async {
-    final uri = Uri.parse('https://passport.bilibili.com/login');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
-
-  Future<void> _save() async {
-    final cookie = _controller.text.trim();
-    if (cookie.isEmpty) return;
-
-    setState(() => _saving = true);
-    final service = await SettingsService.getInstance();
-    await service.setBilibiliCookie(cookie);
-    if (!mounted) return;
-    setState(() => _saving = false);
-    widget.onSaved();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('B站登录'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('步骤1：点击下方按钮在浏览器中打开B站并登录',
-                style: TextStyle(fontSize: 13)),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _openBrowser,
-                icon: const Icon(Icons.open_in_browser),
-                label: const Text('打开浏览器登录'),
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text('步骤2：登录后，按 F12 → Application → Cookies',
-                style: TextStyle(fontSize: 13)),
-            const Text('复制以下关键字段，格式为 字段名=值（分号分隔）',
-                style: TextStyle(fontSize: 11, color: Colors.grey)),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.grey.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Text(
-                'DedeUserID=xxx; SESSDATA=xxx; bili_jct=xxx; buvid3=xxx',
-                style: TextStyle(fontSize: 10, fontFamily: 'monospace'),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _controller,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                hintText: '粘贴 Cookie...',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              style: const TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
+      body: Stack(
+        children: [
+          if (Platform.isAndroid && _androidCtrl != null)
+            WebViewWidget(controller: _androidCtrl!),
+          if (Platform.isWindows && _wndCtrl != null)
+            Webview(_wndCtrl!),
+          if (_loading)
+            const Center(child: CircularProgressIndicator()),
+        ],
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: _saving
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('保存'),
-        ),
-      ],
     );
   }
 }
