@@ -34,6 +34,10 @@ class AudioPlayerService {
   // ==================== 播放控制 ====================
 
   Future<void> playSong(Song song) async {
+    // 更新队列索引
+    final idx = _queue.indexWhere((s) => s.filePath == song.filePath);
+    if (idx >= 0) _queueIndex = idx;
+
     if (_currentSong?.filePath == song.filePath) {
       if (_player.state == PlayerState.playing) {
         await _player.pause();
