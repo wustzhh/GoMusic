@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/bilibili_api.dart';
 import '../services/settings_service.dart';
@@ -118,9 +119,21 @@ class _DownloadPageState extends State<DownloadPage> {
     if (!mounted) return;
     setState(() => _isDownloading = false);
 
+    // 检查文件大小
+    String sizeText = '';
+    try {
+      final audioFile = File(audioPath);
+      if (await audioFile.exists()) {
+        final bytes = await audioFile.length();
+        sizeText = '${(bytes / 1048576).toStringAsFixed(1)} MB';
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+
     if (audioOk && videoOk) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('下载完成！已保存到: $dir')),
+        SnackBar(content: Text('下载完成！$sizeText\n已保存到: $dir')),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(

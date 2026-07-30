@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/settings_service.dart';
+import 'bilibili_login_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -106,12 +108,15 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 8),
-          // B站 Cookie
+          // B站 Cookie / 登录
           Card(
             child: ListTile(
-              leading: const Icon(Icons.cookie_outlined),
-              title: const Text('B站 Cookie', style: TextStyle(fontSize: 15)),
-              subtitle: const Text('配置后支持需登录的视频', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              leading: const Icon(Icons.login_outlined),
+              title: Text(Platform.isAndroid ? 'B站登录' : 'B站 Cookie', style: const TextStyle(fontSize: 15)),
+              subtitle: Text(
+                Platform.isAndroid ? '点击自动登录获取' : '配置后支持需登录的视频（手机上可自动获取）',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: _changeCookie,
             ),
@@ -133,42 +138,56 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _changeCookie() async {
-    final service = await SettingsService.getInstance();
-    if (!mounted) return;
-    final current = await service.getBilibiliCookie();
-    if (!mounted) return;
-    final controller = TextEditingController(text: current);
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('B站 Cookie'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: TextField(
-            controller: controller,
-            maxLines: 5,
-            decoration: const InputDecoration(
-              hintText: '从浏览器F12 → Network → 请求头中复制Cookie',
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            style: const TextStyle(fontSize: 12),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
-        ],
-      ),
-    );
-
-    if (result == true) {
-      await service.setBilibiliCookie(controller.text.trim());
-      if (mounted) {
+    if (Platform.isAndroid) {
+      // Android：跳转 WebView 登录页自动获取
+      final result = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(builder: (_) => const BilibiliLoginPage()),
+      );
+      if (result == true && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cookie 已保存')),
+          const SnackBar(content: Text('B站登录信息已保存')),
         );
+      }
+    } else {
+      // Windows：弹窗手动输入
+      final service = await SettingsService.getInstance();
+      if (!mounted) return;
+      final current = await service.getBilibiliCookie();
+      final controller = TextEditingController(text: current);
+
+      if (!mounted) return;
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('B站 Cookie'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: TextField(
+              controller: controller,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                hintText: '从浏览器F12 → Network → 请求头中复制Cookie\n（手机上可自动获取）',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('保存')),
+          ],
+        ),
+      );
+
+      if (result == true) {
+        await service.setBilibiliCookie(controller.text.trim());
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Cookie 已保存')),
+          );
+        }
       }
     }
   }

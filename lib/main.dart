@@ -2,8 +2,14 @@ import 'package:flutter/material.dart';
 import 'pages/download_page.dart';
 import 'pages/playlist_page.dart';
 import 'pages/settings_page.dart';
+import 'services/settings_service.dart';
+import 'services/bilibili_api.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // 启动时加载 B站 Cookie
+  final service = await SettingsService.getInstance();
+  BilibiliApi.cookie = await service.getBilibiliCookie();
   runApp(const GoMusicApp());
 }
 
