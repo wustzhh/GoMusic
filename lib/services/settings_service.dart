@@ -20,17 +20,16 @@ class SettingsService {
     return _instance!;
   }
 
-  /// 获取默认下载路径（根据平台自动选择）
+  /// 获取默认下载路径（exe所在目录下的 downloads 文件夹）
   static Future<String> getDefaultDownloadPath() async {
     if (Platform.isWindows) {
-      final home = Platform.environment['USERPROFILE'] ?? 'C:\\Users\\Default';
-      return '$home\\GoMusic';
-    } else if (Platform.isAndroid) {
-      final dir = await getApplicationDocumentsDirectory();
-      return '${dir.path}/GoMusic';
+      // exe 所在目录，如 D:\pyProj\GoMusic\build\windows\x64\runner\Release\
+      final exeDir = File(Platform.resolvedExecutable).parent.path;
+      return '$exeDir\\downloads';
     } else {
+      // Android/其他：应用文档目录
       final dir = await getApplicationDocumentsDirectory();
-      return '${dir.path}/GoMusic';
+      return '${dir.path}/downloads';
     }
   }
 
