@@ -140,16 +140,20 @@ class _SongListPageState extends State<SongListPage> {
               itemBuilder: (_, i) {
                 final song = filtered[i]; final isFav = _favs.contains(song.filePath);
                 final isPlaying = _service.currentSong?.filePath == song.filePath;
-                return ListTile(
-                  leading: _buildCover(song),
-                  title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal, color: isPlaying ? Colors.deepPurple : null)),
-                  subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                return Container(
+                  color: isPlaying ? Colors.deepPurple.withValues(alpha: 0.12) : Colors.transparent,
+                  child: ListTile(
+                    leading: isPlaying
+                      ? const Icon(Icons.volume_up, color: Colors.deepPurple, size: 28)
+                      : _buildCover(song),
+                    title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal)),
+                    subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                   trailing: Stack(clipBehavior: Clip.none, children: [
                     IconButton(icon: Icon(Icons.add_circle_outline, color: Colors.grey[500], size: 24), onPressed: () => _showAddToList(song)),
                     if (isFav) Positioned(right: 0, bottom: 0, child: Container(width: 12, height: 12, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle), child: const Icon(Icons.favorite, color: Colors.white, size: 7))),
                   ]),
                   onTap: () => _playSong(song),
-                );
+                ));
               })),
         _buildBottomBar(),
       ]),
@@ -251,7 +255,10 @@ class _SongListPageState extends State<SongListPage> {
   Widget _buildCover(Song song) {
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
       final f = File(song.coverUrl!);
-      if (f.existsSync() && f.lengthSync() > 0) {
+      final exists = f.existsSync();
+      final size = exists ? f.lengthSync() : -1;
+      try { File('D:/pyProj/GoMusic/cover_debug.log').writeAsStringSync('url=${song.coverUrl} exists=$exists size=$size\n', mode: FileMode.append); } catch (_) {}
+      if (exists && size > 0) {
         try {
           final bytes = f.readAsBytesSync();
           return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.memory(bytes, width: 36, height: 36, fit: BoxFit.cover, cacheWidth: 72, errorBuilder: (_, e, s) => _icon()));
