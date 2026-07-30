@@ -182,7 +182,13 @@ class PlaylistService {
     final list = p.getStringList(_key) ?? [];
     return list.map((e) {
       final parts = e.split('|||');
-      return Playlist(id: parts[0], name: parts[1], icon: parts[2], songs: []);
+      final songPaths = parts.length > 3 ? parts[3].split(',').where((s) => s.isNotEmpty).toList() : <String>[];
+      return Playlist(
+        id: parts[0],
+        name: parts[1],
+        icon: parts[2],
+        songs: songPaths.map((fp) => Song(id: fp, title: fp.split(Platform.pathSeparator).last.split('.').first, uploader: '', duration: Duration.zero, filePath: fp)).toList(),
+      );
     }).toList();
   }
 
@@ -190,7 +196,39 @@ class PlaylistService {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
     final id = DateTime.now().millisecondsSinceEpoch.toString();
-    list.add('$id|||$name|||📋');
+    list.add('$id|||$name|||📋|||');
     await p.setStringList(_key, list);
+  }
+
+  static Future<void> addSongToPlaylist(String playlistId, String filePath) async {
+    final p = await SharedPreferences.getInstance();
+    final list = p.getStringList(_key) ?? [];
+    for (var i = 0; i < list.length; i++) {
+      final parts = list[i].split('|||');
+      if (parts[0] == playlistId) {
+        final songPaths = parts.length > 3 ? parts[3] : '';
+        final paths = songPaths.split(',').where((s) => s.isNotEmpty).toList();
+        if (!paths.contains(filePath)) {
+          paths.add(filePath);
+          parts[3] = paths.join(',');
+          list[i] = parts.join('|||');
+          await p.setStringList(_key, list);
+        }
+        return;
+      }
+    }
+  }
+
+  static Future<bool> isSongInPlaylist(String playlistId, String filePath) async {
+    final p = await SharedPreferences.getInstance();
+    final list = p.getStringList(_key) ?? [];
+    for (final entry in list) {
+      final parts = entry.split('|||');
+      if (parts[0] == playlistId) {
+        final songPaths = parts.length > 3 ? parts[3] : '';
+        return songPaths.split(',').contains(filePath);
+      }
+    }
+    return false;
   }
 }

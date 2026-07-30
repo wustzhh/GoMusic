@@ -69,13 +69,18 @@ class _PlayerPageState extends State<PlayerPage> {
               setState(() => _isFav = !_isFav);
             },
           ),
-          ...existing.map((pl) => ListTile(
-            leading: const Icon(Icons.list, color: Colors.grey, size: 22),
-            title: Text(pl.name),
-            onTap: () {
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}')));
-            },
+          ...existing.map((pl) => FutureBuilder<bool>(
+            future: PlaylistService.isSongInPlaylist(pl.id, _song!.filePath),
+            builder: (_, snap) => ListTile(
+              leading: const Icon(Icons.list, color: Colors.grey, size: 22),
+              title: Text(pl.name),
+              trailing: (snap.data == true) ? const Icon(Icons.check, color: Colors.green) : null,
+              onTap: () async {
+                Navigator.pop(ctx);
+                await PlaylistService.addSongToPlaylist(pl.id, _song!.filePath);
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}')));
+              },
+            ),
           )),
           const Divider(),
           ListTile(

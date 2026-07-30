@@ -73,14 +73,18 @@ class _SongListPageState extends State<SongListPage> {
             },
           ),
           // 已有的自定义列表
-          ...existing.map((pl) => ListTile(
-            leading: const Icon(Icons.list, color: Colors.grey, size: 22),
-            title: Text(pl.name),
-            trailing: _favs.contains(song.filePath) ? const Icon(Icons.check, color: Colors.green) : null,
-            onTap: () {
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}')));
-            },
+          ...existing.map((pl) => FutureBuilder<bool>(
+            future: PlaylistService.isSongInPlaylist(pl.id, song.filePath),
+            builder: (_, snap) => ListTile(
+              leading: const Icon(Icons.list, color: Colors.grey, size: 22),
+              title: Text(pl.name),
+              trailing: (snap.data == true) ? const Icon(Icons.check, color: Colors.green) : null,
+              onTap: () async {
+                Navigator.pop(ctx);
+                await PlaylistService.addSongToPlaylist(pl.id, song.filePath);
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}')));
+              },
+            ),
           )),
           const Divider(),
           ListTile(
