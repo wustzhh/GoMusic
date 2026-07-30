@@ -318,7 +318,7 @@ class _DownloadPageState extends State<DownloadPage> {
                   const SizedBox(height: 4),
                   _infoRow(Icons.audiotrack, '音频 ${info.audioSizeText}'),
                   const SizedBox(height: 4),
-                  _infoRow(Icons.videocam, '视频 ${info.videoSizeText}'),
+                  _infoRow(Icons.videocam, '视频 ${info.videoSizeText}${info.videoWidth > 0 ? ' · ${info.videoWidth}x${info.videoHeight}' : ''}'),
                   const SizedBox(height: 4),
                   Text('BV: ${info.bvid}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                 ],

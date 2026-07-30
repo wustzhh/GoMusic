@@ -18,6 +18,8 @@ class BilibiliVideoInfo {
   int audioSize = 0;
   String? videoUrl;
   int videoSize = 0;
+  int videoWidth = 0;
+  int videoHeight = 0;
 
   BilibiliVideoInfo({
     required this.bvid,
@@ -159,8 +161,9 @@ class BilibiliApi {
         'bvid': info.bvid,
         'cid': info.cid.toString(),
         'fnver': '0',
-        'fnval': '4048',
+        'fnval': '4048',  // DASH + HDR + 杜比 + 4K
         'fourk': '1',
+        'qn': '127',       // 请求最高画质 (127=8K, 120=4K, 116=1080P60)
       });
 
       final uri = Uri.parse('https://api.bilibili.com/x/player/wbi/playurl')
@@ -175,20 +178,26 @@ class BilibiliApi {
       final dash = d['data']['dash'];
       if (dash == null) return;
 
+      // 音频流：按码率降序取最高质量
       final audios = (dash['audio'] as List?) ?? [];
       if (audios.isNotEmpty) {
-        audios.sort((a, b) => (b['id'] as int).compareTo(a['id'] as int));
+        audios.sort((a, b) =>
+            ((b['bandwidth'] as int?) ?? 0).compareTo((a['bandwidth'] as int?) ?? 0));
         final best = audios.first;
         info.audioUrl = (best['baseUrl'] ?? best['base_url']) as String?;
         info.audioSize = (best['size'] as int?) ?? 0;
       }
 
+      // 视频流：按码率降序取最高画质
       final videos = (dash['video'] as List?) ?? [];
       if (videos.isNotEmpty) {
-        videos.sort((a, b) => (b['id'] as int).compareTo(a['id'] as int));
+        videos.sort((a, b) =>
+            ((b['bandwidth'] as int?) ?? 0).compareTo((a['bandwidth'] as int?) ?? 0));
         final best = videos.first;
         info.videoUrl = (best['baseUrl'] ?? best['base_url']) as String?;
         info.videoSize = (best['size'] as int?) ?? 0;
+        info.videoWidth = (best['width'] as int?) ?? 0;
+        info.videoHeight = (best['height'] as int?) ?? 0;
       }
     } catch (_) {}
   }
