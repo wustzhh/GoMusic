@@ -255,22 +255,12 @@ class _SongListPageState extends State<SongListPage> {
   Widget _buildCover(Song song) {
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
       final f = File(song.coverUrl!);
-      final exists = f.existsSync();
-      final size = exists ? f.lengthSync() : -1;
-      try { File('D:/pyProj/GoMusic/cover_debug.log').writeAsStringSync('url=${song.coverUrl} exists=$exists size=$size\n', mode: FileMode.append); } catch (_) {}
-      if (exists && size > 0) {
-        try {
-          final bytes = f.readAsBytesSync();
-          return SizedBox(width: 36, height: 36, child: Image.memory(bytes, fit: BoxFit.cover, errorBuilder: (_, e, s) {
-            try { File('D:/pyProj/GoMusic/cover_debug.log').writeAsStringSync('ERR3 url=${song.coverUrl} err=$e\n', mode: FileMode.append); } catch (_) {}
-            return _icon();
-          }));
-        } catch (e) {
-          try { File('D:/pyProj/GoMusic/cover_debug.log').writeAsStringSync('CATCH3 url=${song.coverUrl} err=$e\n', mode: FileMode.append); } catch (_) {}
-        }
+      if (f.existsSync() && f.lengthSync() > 0) {
+        return Image.file(f, width: 36, height: 36, fit: BoxFit.cover, errorBuilder: (_, e, s) {
+          try { File('D:/pyProj/GoMusic/cover_debug.log').writeAsStringSync('ERRF url=${song.coverUrl} err=$e\n', mode: FileMode.append); } catch (_) {}
+          return _icon();
+        });
       }
-    } else {
-      try { File('D:/pyProj/GoMusic/cover_debug.log').writeAsStringSync('NOCOVER title=${song.title} filePath=${song.filePath}\n', mode: FileMode.append); } catch (_) {}
     }
     return _icon();
   }
