@@ -52,8 +52,12 @@ class _DownloadPageState extends State<DownloadPage> {
       _downloadedSizeText = '';
     });
 
-    // 检测是否收藏夹链接
-    if (url.contains('ml') || url.contains('favlist') || url.contains('collection')) {
+    // 检测是否收藏夹/合集链接
+    final isCollection = url.contains('/list/ml') ||
+        url.contains('medialist') ||
+        url.contains('favlist') ||
+        (url.contains('fid=') && url.contains('space.bilibili.com'));
+    if (isCollection) {
       _parseCollection(url);
       return;
     }
