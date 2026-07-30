@@ -208,7 +208,11 @@ class PlaylistService {
       valid.add(parts.join('|||'));
       result.add(Playlist(
         id: parts[0], name: name, icon: parts[2],
-        songs: songPaths.map((fp) => Song(id: fp, title: fp.split(Platform.pathSeparator).last.split('.').first, uploader: '', duration: Duration.zero, filePath: fp)).toList(),
+        songs: songPaths.map((fp) {
+          final coverPath = '${fp.substring(0, fp.lastIndexOf('.'))}.jpg';
+          final hasCover = File(coverPath).existsSync() && File(coverPath).lengthSync() > 0;
+          return Song(id: fp, title: fp.split(Platform.pathSeparator).last.split('.').first, uploader: '', duration: Duration.zero, filePath: fp, coverUrl: hasCover ? coverPath : null);
+        }).toList(),
       ));
     }
     if (!_listEquals(list, valid)) {
