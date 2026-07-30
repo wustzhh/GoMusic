@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart';
 import '../services/settings_service.dart';
+import '../services/bilibili_api.dart';
 
 /// B站自动登录页
 /// - Windows: webview_windows (Edge WebView2)
@@ -143,6 +144,7 @@ class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
     }
     final service = await SettingsService.getInstance();
     await service.setBilibiliCookie(filtered);
+    BilibiliApi.cookie = filtered; // 同步到 API 实例
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
