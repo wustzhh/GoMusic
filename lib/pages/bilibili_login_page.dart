@@ -3,7 +3,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../services/settings_service.dart';
 import '../services/bilibili_api.dart';
 
-/// B站自动登录页
+/// B站自动登录页 — 通过拦截请求头捕获完整 Cookie（含 httpOnly）
 class BilibiliLoginPage extends StatefulWidget {
   const BilibiliLoginPage({super.key});
   @override
@@ -12,9 +12,9 @@ class BilibiliLoginPage extends StatefulWidget {
 
 class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
   bool _loading = true;
-  bool _extracting = false;
   double _progress = 0;
   String _status = '请在页面中登录B站';
+  String? _capturedCookie;
 
   @override
   Widget build(BuildContext context) {
@@ -24,8 +24,8 @@ class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
         centerTitle: true,
         actions: [
           TextButton(
-            onPressed: _extracting ? null : _extractCookies,
-            child: Text(_extracting ? '提取中...' : '完成登录'),
+            onPressed: _capturedCookie != null ? _saveAndClose : null,
+            child: Text(_capturedCookie != null ? '保存并关闭' : '登录中...'),
           ),
         ],
       ),
@@ -44,17 +44,14 @@ class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
             },
             onLoadStop: (_, url) {
               if (mounted) setState(() => _loading = false);
-              // 检测登录成功跳转（延迟500ms等Cookie写入）
-              if (url != null &&
-                  url.toString().contains('bilibili.com') &&
-                  !url.toString().contains('passport')) {
-                Future.delayed(const Duration(milliseconds: 500), () {
-                  if (mounted && !_extracting) _extractCookies();
-                });
-              }
             },
             onProgressChanged: (_, p) {
               if (mounted) setState(() => _progress = p / 100);
+            },
+            // 核心：拦截请求头，捕获 Cookie
+            shouldInterceptRequest: (_, request) {
+              _tryCaptureCookie(request.headers);
+              return Future.value(null);
             },
           ),
           if (_loading)
@@ -62,88 +59,47 @@ class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
               top: 0, left: 0, right: 0,
               child: LinearProgressIndicator(value: _progress),
             ),
-          if (_extracting)
-            const Center(child: CircularProgressIndicator()),
         ],
       ),
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.all(12),
-        child: Text(_status, textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        child: Text(
+          _capturedCookie != null ? '已捕获登录Cookie ✅' : _status,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12,
+            color: _capturedCookie != null ? Colors.green : Colors.grey,
+          ),
+        ),
       ),
     );
   }
 
-  Future<void> _extractCookies() async {
-    setState(() {
-      _extracting = true;
-      _status = '正在提取Cookie...';
-    });
+  void _tryCaptureCookie(Map<String, String>? headers) {
+    if (_capturedCookie != null || headers == null) return;
+
+    // 从请求头中找 Cookie
+    final cookie = headers['Cookie'] ?? headers['cookie'] ?? '';
+    if (cookie.contains('SESSDATA') && cookie.contains('DedeUserID')) {
+      _capturedCookie = cookie;
+      setState(() => _status = '已捕获登录Cookie ✅');
+    }
+  }
+
+  Future<void> _saveAndClose() async {
+    if (_capturedCookie == null) return;
 
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
 
-    try {
-      final cookieManager = CookieManager.instance();
+    final service = await SettingsService.getInstance();
+    await service.setBilibiliCookie(_capturedCookie!);
+    BilibiliApi.cookie = _capturedCookie;
 
-      // 尝试多个域名（B站Cookie可能在 .bilibili.com 下）
-      var allCookies = await cookieManager.getCookies(
-        url: WebUri('https://www.bilibili.com'),
-      );
-      if (allCookies.isEmpty) {
-        allCookies = await cookieManager.getCookies(
-          url: WebUri('https://bilibili.com'),
-        );
-      }
-      if (allCookies.isEmpty) {
-        allCookies = await cookieManager.getCookies(
-          url: WebUri('https://.bilibili.com'),
-        );
-      }
-
-      if (allCookies.isEmpty) {
-        setState(() {
-          _extracting = false;
-          _status = '未获取到Cookie，请确认已登录后再点"完成登录"';
-        });
-        return;
-      }
-
-      // 检查 SESSDATA
-      final hasSessdata = allCookies.any((c) => c.name == 'SESSDATA');
-      if (!hasSessdata) {
-        setState(() {
-          _extracting = false;
-          _status = '未获取到SESSDATA(${allCookies.length}个Cookie)，请确认已登录';
-        });
-        return;
-      }
-
-      // 构建Cookie字符串
-      final parts = <String>[];
-      for (final c in allCookies) {
-        parts.add('${c.name}=${c.value}');
-      }
-      final cookieStr = parts.join('; ');
-
-      // 保存
-      final service = await SettingsService.getInstance();
-      await service.setBilibiliCookie(cookieStr);
-      BilibiliApi.cookie = cookieStr;
-
-      if (!mounted) return;
-      setState(() => _status = '登录成功！${allCookies.length}个Cookie已保存');
-      messenger.showSnackBar(
-        SnackBar(content: Text('登录成功！获取到${allCookies.length}个Cookie(含SESSDATA)'),
-            backgroundColor: Colors.green),
-      );
-      await Future.delayed(const Duration(milliseconds: 500));
-      navigator.pop(true);
-    } catch (e) {
-      setState(() {
-        _extracting = false;
-        _status = '提取失败: $e';
-      });
-    }
+    if (!mounted) return;
+    messenger.showSnackBar(
+      const SnackBar(content: Text('登录成功！Cookie已保存'), backgroundColor: Colors.green),
+    );
+    navigator.pop(true);
   }
 }
