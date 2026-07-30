@@ -237,6 +237,69 @@ class BilibiliApi {
         ..sort((a, b) => b.bandwidth.compareTo(a.bandwidth));
     } catch (_) {}
   }
+
+  /// 解析收藏夹/合集链接，返回视频列表
+  Future<List<BilibiliVideoInfo>?> getCollectionVideos(String url) async {
+    try {
+      // 提取 ml 合集ID 或 favlist fid
+      final mlMatch = RegExp(r'ml(\d+)').firstMatch(url);
+      final fidMatch = RegExp(r'[?&]fid=(\d+)').firstMatch(url);
+      final uidMatch = RegExp(r'space\.bilibili\.com/(\d+)').firstMatch(url);
+
+      List<dynamic> videoList = [];
+
+      if (mlMatch != null) {
+        // 合集: https://api.bilibili.com/x/v1/medialist/info?type=1&biz_id=xxx
+        final mlId = int.parse(mlMatch.group(1)!);
+        final p = await _signed({'type': '1', 'biz_id': mlId.toString()});
+        final uri = Uri.parse('https://api.bilibili.com/x/v1/medialist/info')
+            .replace(queryParameters: p);
+        final r = await http.get(uri, headers: _headers);
+        if (r.statusCode == 200) {
+          final d = jsonDecode(r.body);
+          if (d['code'] == 0) {
+            videoList = d['data']['medias'] ?? [];
+          }
+        }
+      } else if (fidMatch != null && uidMatch != null) {
+        // 收藏夹: https://api.bilibili.com/x/v3/fav/resource/list?media_id=xxx&ps=20
+        final fid = fidMatch.group(1)!;
+        var pn = 1;
+        while (true) {
+          final p = await _signed({'media_id': fid, 'ps': '20', 'pn': pn.toString()});
+          final uri = Uri.parse('https://api.bilibili.com/x/v3/fav/resource/list')
+              .replace(queryParameters: p);
+          final r = await http.get(uri, headers: _headers);
+          if (r.statusCode != 200) break;
+          final d = jsonDecode(r.body);
+          if (d['code'] != 0) break;
+          final medias = d['data']['medias'] as List?;
+          if (medias == null || medias.isEmpty) break;
+          videoList.addAll(medias);
+          if (!(d['data']['has_more'] as bool? ?? false)) break;
+          pn++;
+        }
+      }
+
+      if (videoList.isEmpty) return null;
+
+      return videoList.map((v) {
+        final bvid = v['bvid'] as String? ?? '';
+        final baseUrl = 'https://www.bilibili.com/video/$bvid';
+        return BilibiliVideoInfo(
+          bvid: bvid,
+          title: v['title'] as String? ?? '',
+          author: v['upper']?['name'] as String? ?? v['owner']?['name'] as String? ?? '',
+          coverUrl: (v['cover'] as String? ?? '').replaceAll('http:', 'https:'),
+          durationSeconds: v['duration'] as int? ?? 0,
+          url: baseUrl,
+          cid: 0,
+        );
+      }).toList();
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 /// 下载工具：带进度的流式下载

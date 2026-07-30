@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
+
 /// 歌曲数据模型
 class Song {
   final String id;
@@ -7,8 +10,9 @@ class Song {
   final String? coverUrl;
   final bool hasVideo;
   final String bvid;
+  final String filePath;
+  final DateTime? lastPlayed;
 
-  // 原始信息（保留B站源信息）
   final String originalUrl;
   final String originalTitle;
   final String originalAuthor;
@@ -21,6 +25,8 @@ class Song {
     this.coverUrl,
     this.hasVideo = false,
     this.bvid = '',
+    this.filePath = '',
+    this.lastPlayed,
     this.originalUrl = '',
     this.originalTitle = '',
     this.originalAuthor = '',
@@ -31,6 +37,17 @@ class Song {
     final s = duration.inSeconds % 60;
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
+
+  String get lastPlayedText {
+    if (lastPlayed == null) return '';
+    final now = DateTime.now();
+    final diff = now.difference(lastPlayed!);
+    if (diff.inMinutes < 1) return '刚刚';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}分钟前';
+    if (diff.inHours < 24) return '${diff.inHours}小时前';
+    if (diff.inDays < 7) return '${diff.inDays}天前';
+    return '${lastPlayed!.month.toString().padLeft(2, '0')}-${lastPlayed!.day.toString().padLeft(2, '0')} ${lastPlayed!.hour.toString().padLeft(2, '0')}:${lastPlayed!.minute.toString().padLeft(2, '0')}';
+  }
 }
 
 /// 播放列表模型
@@ -40,12 +57,7 @@ class Playlist {
   final String icon;
   final List<Song> songs;
 
-  const Playlist({
-    required this.id,
-    required this.name,
-    required this.icon,
-    required this.songs,
-  });
+  const Playlist({required this.id, required this.name, required this.icon, required this.songs});
 }
 
 /// 下载记录模型
@@ -54,29 +66,106 @@ class DownloadRecord {
   final String title;
   final String url;
   final bool downloadVideo;
-  final double progress; // 0.0 ~ 1.0
+  final double progress;
   final DownloadStatus status;
   final bool hasAudio;
   final bool hasVideo;
   final String? fileSize;
 
-  const DownloadRecord({
-    required this.id,
-    required this.title,
-    required this.url,
-    this.downloadVideo = false,
-    this.progress = 0.0,
-    this.status = DownloadStatus.pending,
-    this.hasAudio = false,
-    this.hasVideo = false,
-    this.fileSize,
-  });
+  const DownloadRecord({required this.id, required this.title, required this.url, this.downloadVideo = false, this.progress = 0.0, this.status = DownloadStatus.pending, this.hasAudio = false, this.hasVideo = false, this.fileSize});
 }
 
 enum DownloadStatus { pending, downloading, completed, failed }
 
 // ============================================================
-// 假数据
+// 最近播放服务 — 去重/上限1000/显示日期
+// ============================================================
+
+class RecentlyPlayedService {
+  static const _key = 'recently_played';
+
+  /// 添加歌曲到最近播放（去重：同一bvid只保留最后一次）
+  static Future<void> addIfNotExists(String bvid, String title, String uploader, int durationSec, String filePath, String coverUrl) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_key) ?? [];
+
+    // 移除已存在的同bvid记录
+    list.removeWhere((e) => e.startsWith('$bvid|'));
+
+    // 添加到最前面
+    final now = DateTime.now();
+    final entry = '$bvid|$title|$uploader|$durationSec|$filePath|$coverUrl|${now.millisecondsSinceEpoch}';
+    list.insert(0, entry);
+
+    // 上限1000
+    if (list.length > 1000) {
+      list.removeRange(1000, list.length);
+    }
+
+    await prefs.setStringList(_key, list);
+  }
+
+  /// 获取最近播放列表
+  static Future<List<Song>> getRecentSongs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_key) ?? [];
+    final songs = <Song>[];
+    for (final entry in list) {
+      final parts = entry.split('|');
+      if (parts.length >= 7) {
+        final ms = int.tryParse(parts[6]) ?? 0;
+        songs.add(Song(
+          id: parts[0],
+          title: parts[1],
+          uploader: parts[2],
+          duration: Duration(seconds: int.tryParse(parts[3]) ?? 0),
+          filePath: parts[4],
+          coverUrl: parts[5].isEmpty ? null : parts[5],
+          bvid: parts[0],
+          lastPlayed: DateTime.fromMillisecondsSinceEpoch(ms),
+        ));
+      }
+    }
+    return songs;
+  }
+}
+
+// ============================================================
+// 本地歌单扫描
+// ============================================================
+
+Future<List<Song>> scanLocalAudioFiles(String dirPath) async {
+  final songs = <Song>[];
+  final dir = Directory(dirPath);
+  if (!dir.existsSync()) return songs;
+
+  try {
+    final files = dir.listSync();
+    for (final f in files) {
+      if (f is File) {
+        final ext = f.path.split('.').last.toLowerCase();
+        if (ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav') {
+          final name = f.path.split(Platform.pathSeparator).last.split('.').first;
+          final coverPath = '$dirPath${Platform.pathSeparator}$name.jpg';
+          final hasCover = File(coverPath).existsSync();
+          songs.add(Song(
+            id: f.path,
+            title: name,
+            uploader: '',
+            duration: Duration.zero,
+            filePath: f.path,
+            coverUrl: hasCover ? coverPath : null,
+          ));
+        }
+      }
+    }
+  } catch (_) {}
+
+  return songs;
+}
+
+// ============================================================
+// 假数据（用于初始展示）
 // ============================================================
 
 final List<Song> mockAllSongs = [
@@ -86,17 +175,9 @@ final List<Song> mockAllSongs = [
   Song(id: '4', title: 'Lemon', uploader: '米津玄师', duration: Duration(minutes: 4, seconds: 16), hasVideo: true, bvid: 'BV1Ht41147fM'),
   Song(id: '5', title: '打上花火', uploader: 'DAOKO × 米津玄师', duration: Duration(minutes: 4, seconds: 50), hasVideo: false, bvid: ''),
   Song(id: '6', title: '前前前世', uploader: 'RADWIMPS', duration: Duration(minutes: 4, seconds: 36), hasVideo: true, bvid: 'BV1Ms411k7sV'),
-  Song(id: '7', title: 'なんでもないや', uploader: 'RADWIMPS', duration: Duration(minutes: 5, seconds: 46), hasVideo: false, bvid: ''),
-  Song(id: '8', title: 'スパークル', uploader: 'RADWIMPS', duration: Duration(minutes: 6, seconds: 50), hasVideo: true, bvid: 'BV1Vs41117BY'),
-  Song(id: '9', title: 'アイネクライネ', uploader: '米津玄师', duration: Duration(minutes: 4, seconds: 10), hasVideo: false, bvid: ''),
-  Song(id: '10', title: 'LOSER', uploader: '米津玄师', duration: Duration(minutes: 4, seconds: 3), hasVideo: true, bvid: 'BV1kx41117fW'),
-  Song(id: '11', title: 'Flamingo', uploader: '米津玄师', duration: Duration(minutes: 3, seconds: 35), hasVideo: false, bvid: ''),
-  Song(id: '12', title: '千本桜', uploader: '黒うさP', duration: Duration(minutes: 4, seconds: 3), hasVideo: true, bvid: 'BV1hx411c7Vw'),
 ];
 
 final List<Playlist> mockPlaylists = [
-  Playlist(id: 'fav', name: '我的收藏', icon: '❤️', songs: mockAllSongs.sublist(0, 6)),
+  Playlist(id: 'fav', name: '我的收藏', icon: '❤️', songs: mockAllSongs.sublist(0, 4)),
   Playlist(id: 'like', name: '我喜欢', icon: '👍', songs: mockAllSongs.sublist(2, 6)),
-  Playlist(id: 'recent', name: '最近播放', icon: '🕐', songs: mockAllSongs.sublist(4, 10)),
-  Playlist(id: 'all', name: '全部歌曲', icon: '📋', songs: mockAllSongs),
 ];
