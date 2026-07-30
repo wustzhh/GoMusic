@@ -23,11 +23,12 @@ class SettingsService {
   /// 获取默认下载路径（exe所在目录下的 downloads 文件夹）
   static Future<String> getDefaultDownloadPath() async {
     if (Platform.isWindows) {
-      // exe 所在目录，如 D:\pyProj\GoMusic\build\windows\x64\runner\Release\
+      // 项目根目录/downloads（不在build里，避免flutter clean误删）
       final exeDir = File(Platform.resolvedExecutable).parent.path;
-      return '$exeDir\\downloads';
+      // exeDir = .../build/windows/x64/runner/Release → 往上5级到项目根
+      final projRoot = File(exeDir).parent.parent.parent.parent.parent.path;
+      return '$projRoot\\downloads';
     } else {
-      // Android/其他：应用文档目录
       final dir = await getApplicationDocumentsDirectory();
       return '${dir.path}/downloads';
     }
@@ -36,9 +37,16 @@ class SettingsService {
   /// 获取下载路径（持久化，首次自动使用默认值）
   Future<String> getDownloadPath() async {
     final saved = _prefs.getString(_keyDownloadPath);
-    if (saved != null && saved.isNotEmpty) return saved;
+    if (saved != null && saved.isNotEmpty) {
+      // 旧路径在build里(已被flutter clean删)，自动迁移到新路径
+      if (saved.contains('\\build\\')) {
+        final newPath = await getDefaultDownloadPath();
+        await setDownloadPath(newPath);
+        return newPath;
+      }
+      return saved;
+    }
 
-    // 首次使用默认路径并保存
     final defaultPath = await getDefaultDownloadPath();
     await setDownloadPath(defaultPath);
     return defaultPath;
