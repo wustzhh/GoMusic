@@ -106,7 +106,16 @@ class _PlayerPageState extends State<PlayerPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(onPressed: () async {
-            if (ctrl.text.trim().isNotEmpty) { await PlaylistService.addPlaylist(ctrl.text.trim()); Navigator.pop(ctx); }
+            if (ctrl.text.trim().isNotEmpty) {
+              await PlaylistService.addPlaylist(ctrl.text.trim());
+              final pls = await PlaylistService.getPlaylists();
+              final created = pls.where((p) => p.name == ctrl.text.trim()).firstOrNull;
+              if (created != null) {
+                await PlaylistService.addSongToPlaylist(created.id, _song!.filePath);
+              }
+              Navigator.pop(ctx);
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已创建并添加')));
+            }
           }, child: const Text('创建')),
         ],
       ),

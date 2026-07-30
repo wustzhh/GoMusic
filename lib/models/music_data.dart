@@ -181,24 +181,38 @@ class PlaylistService {
   static Future<List<Playlist>> getPlaylists() async {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
-    return list.map((e) {
+    final valid = <String>[];
+    final result = <Playlist>[];
+    for (final e in list) {
       final parts = e.split('|||');
-      final name = parts.length > 1 ? parts[1] : '';
+      if (parts.length < 3) continue; // 跳过旧数据残骸
+      final name = parts[1];
       final songsJson = parts.length > 3 ? parts[3] : '[]';
       List<String> songPaths;
       try {
         final decoded = jsonDecode(songsJson);
-        songPaths = (decoded as List).map((x) => x.toString()).toList();
+        songPaths = (decoded as List).map((x) => x.toString()).where((fp) => fp.isNotEmpty).toList();
       } catch (_) {
-        songPaths = [];
+        // 旧逗号格式回退
+        songPaths = songsJson.split(',').where((s) => s.isNotEmpty).toList();
+        // 迁移为新JSON格式
+        final migrated = e.split('|||');
+        if (migrated.length >= 3) {
+          migrated.length >= 4 ? migrated[3] = jsonEncode(songPaths) : migrated.add(jsonEncode(songPaths));
+          valid.add(migrated.join('|||'));
+          continue;
+        }
       }
-      return Playlist(
-        id: parts[0],
-        name: name,
-        icon: parts[2],
+      valid.add(e);
+      result.add(Playlist(
+        id: parts[0], name: name, icon: parts[2],
         songs: songPaths.map((fp) => Song(id: fp, title: fp.split(Platform.pathSeparator).last.split('.').first, uploader: '', duration: Duration.zero, filePath: fp)).toList(),
-      );
-    }).toList();
+      ));
+    }
+    if (valid.length != list.length) {
+      await p.setStringList(_key, valid);
+    }
+    return result;
   }
 
   static Future<void> addPlaylist(String name) async {
