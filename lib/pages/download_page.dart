@@ -246,9 +246,6 @@ class _DownloadPageState extends State<DownloadPage> {
         if (full.coverUrl.isNotEmpty) {
           await StreamDownloader.download(url: full.coverUrl, savePath: '$dir\\$name.jpg', onProgress: (_) {});
         }
-        await RecentlyPlayedService.addIfNotExists(
-          full.bvid, name, full.author, full.durationSeconds, path, full.coverUrl,
-        );
       }
       if (mounted) setState(() => _downloadProgress = (i + 1) / total);
     }
