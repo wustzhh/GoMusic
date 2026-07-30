@@ -200,7 +200,7 @@ class _SongListPageState extends State<SongListPage> {
         color: Theme.of(context).colorScheme.surface,
         border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.12))),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -208,17 +208,22 @@ class _SongListPageState extends State<SongListPage> {
           if (displaySong != null)
             GestureDetector(
               onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage())),
-              child: Row(children: [
-                Icon(Icons.music_note, color: currentSong != null ? Colors.deepPurple : Colors.grey, size: 18),
-                const SizedBox(width: 8),
-                Expanded(child: Text(displaySong.title, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis)),
-                if (service.isPlaying)
-                  const Icon(Icons.volume_up, color: Colors.deepPurple, size: 16),
-              ]),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(children: [
+                  Icon(Icons.music_note, color: currentSong != null ? Colors.deepPurple : Colors.grey, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(displaySong.title, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
+                  if (service.isPlaying)
+                    const Icon(Icons.volume_up, color: Colors.deepPurple, size: 18),
+                ]),
+              ),
             ),
           // 播放列表 + 模式行
-          Row(children: [
-            GestureDetector(
+          SizedBox(
+            height: 40,
+            child: Row(children: [
+              GestureDetector(
               onTap: () {
                 final queue = service.queue;
                 if (queue.isEmpty) {
@@ -230,11 +235,14 @@ class _SongListPageState extends State<SongListPage> {
                   builder: (_) => _buildQueueSheet(),
                 );
               },
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.queue_music, size: 16, color: Colors.grey),
-                const SizedBox(width: 4),
-                Text('播放列表', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-              ]),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.queue_music, size: 18, color: Colors.grey),
+                  const SizedBox(width: 6),
+                  Text('播放列表', style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                ]),
+              ),
             ),
             const Spacer(),
             GestureDetector(
@@ -257,7 +265,7 @@ class _SongListPageState extends State<SongListPage> {
                 const Icon(Icons.arrow_drop_down, color: Colors.grey, size: 16),
               ]),
             ),
-          ]),
+          ])),
         ],
       ),
     );
