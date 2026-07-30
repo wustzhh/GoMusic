@@ -94,18 +94,20 @@ class AudioPlayerService {
     _queue.clear();
     _queue.addAll(songs);
     _queueIndex = startIndex.clamp(0, _queue.length - 1);
+    currentSongNotifier.notifyListeners();
   }
 
-  void addToQueue(Song song) => _queue.add(song);
+  void addToQueue(Song song) { _queue.add(song); currentSongNotifier.notifyListeners(); }
 
   void removeFromQueue(int index) {
     if (index >= _queue.length) return;
     _queue.removeAt(index);
     if (index < _queueIndex) _queueIndex--;
     if (_queueIndex >= _queue.length) _queueIndex = (_queue.length - 1).clamp(0, 999);
+    currentSongNotifier.notifyListeners();
   }
 
-  void setPlayMode(PlayMode mode) { _playMode = mode; _saveMode(); }
+  void setPlayMode(PlayMode mode) { _playMode = mode; _saveMode(); currentSongNotifier.notifyListeners(); }
 
   String get playModeLabel {
     switch (_playMode) {
