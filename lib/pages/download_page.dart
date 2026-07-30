@@ -133,9 +133,11 @@ class _DownloadPageState extends State<DownloadPage> {
 
     setState(() { _isDownloading = true; _downloadProgress = 0; });
 
-    // 封面
+    // 封面（失败不影响主流程）
+    var coverFailed = false;
     if (info.coverUrl.isNotEmpty) {
-      await StreamDownloader.download(url: info.coverUrl, savePath: '$dir\\$name.jpg', onProgress: (_) {});
+      final ok = await StreamDownloader.download(url: info.coverUrl, savePath: '$dir\\$name.jpg', onProgress: (_) {});
+      coverFailed = !ok;
     }
     // 音频
     final audioOk = await StreamDownloader.download(
@@ -156,7 +158,7 @@ class _DownloadPageState extends State<DownloadPage> {
     try { final f = File('$dir\\$name.m4a'); if (f.existsSync()) sizeText = '${(f.lengthSync() / 1048576).toStringAsFixed(1)} MB'; } catch (_) {}
 
     setState(() { _isDownloading = false; _alreadyDownloaded = audioOk; });
-    _snack(audioOk && videoOk ? '下载完成 $sizeText' : '下载失败');
+    _snack('${audioOk && videoOk ? "下载完成" : "下载失败"} $sizeText${coverFailed ? " ⚠封面下载失败" : ""}');
   }
 
   // ==================== 批量下载 ====================
@@ -200,7 +202,12 @@ class _DownloadPageState extends State<DownloadPage> {
     _snack('批量下载完成: $_batchDone/$_batchTotal');
   }
 
-  String _safeName(String s) => s.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  String _safeName(String s) {
+    // 替换非法字符并截断到安全长度
+    var name = s.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    if (name.length > 80) name = name.substring(0, 80);
+    return name;
+  }
 
   // ==================== UI ====================
 
