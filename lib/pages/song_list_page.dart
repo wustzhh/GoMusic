@@ -139,10 +139,11 @@ class _SongListPageState extends State<SongListPage> {
               separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (_, i) {
                 final song = filtered[i]; final isFav = _favs.contains(song.filePath);
+                final isPlaying = _service.currentSong?.filePath == song.filePath;
                 return ListTile(
                   leading: _buildCover(song),
-                  title: Text(song.title, style: const TextStyle(fontSize: 14)),
-                  subtitle: Text(song.uploader.isNotEmpty ? song.uploader : '', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal, color: isPlaying ? Colors.deepPurple : null)),
+                  subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                   trailing: Stack(clipBehavior: Clip.none, children: [
                     IconButton(icon: Icon(Icons.add_circle_outline, color: Colors.grey[500], size: 24), onPressed: () => _showAddToList(song)),
                     if (isFav) Positioned(right: 0, bottom: 0, child: Container(width: 12, height: 12, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle), child: const Icon(Icons.favorite, color: Colors.white, size: 7))),
@@ -238,7 +239,10 @@ class _SongListPageState extends State<SongListPage> {
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
       final f = File(song.coverUrl!);
       if (f.existsSync() && f.lengthSync() > 0) {
-        return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.file(f, width: 36, height: 36, fit: BoxFit.cover, cacheWidth: 72, errorBuilder: (_, e, s) => _icon()));
+        try {
+          final bytes = f.readAsBytesSync();
+          return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.memory(bytes, width: 36, height: 36, fit: BoxFit.cover, cacheWidth: 72, errorBuilder: (_, e, s) => _icon()));
+        } catch (_) {}
       }
     }
     return _icon();

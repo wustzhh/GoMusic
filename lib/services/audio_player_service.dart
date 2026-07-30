@@ -11,7 +11,11 @@ enum PlayMode { sequential, loopList, loopOne, shuffle }
 class AudioPlayerService {
   static final AudioPlayerService _instance = AudioPlayerService._();
   factory AudioPlayerService() => _instance;
-  AudioPlayerService._();
+  AudioPlayerService._() {
+    _player.onPlayerComplete.listen((_) {
+      next();
+    });
+  }
 
   final AudioPlayer _player = AudioPlayer();
   Song? _currentSong;
