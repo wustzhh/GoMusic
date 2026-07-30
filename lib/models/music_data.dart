@@ -33,6 +33,7 @@ class Song {
   });
 
   String get durationText {
+    if (duration == Duration.zero) return '';
     final m = duration.inMinutes;
     final s = duration.inSeconds % 60;
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
@@ -163,24 +164,6 @@ Future<List<Song>> scanLocalAudioFiles(String dirPath) async {
 
   return songs;
 }
-
-// ============================================================
-// 假数据（用于初始展示）
-// ============================================================
-
-final List<Song> mockAllSongs = [
-  Song(id: '1', title: '夜曲', uploader: '周杰伦', duration: Duration(minutes: 3, seconds: 42), hasVideo: true, bvid: 'BV1xx411c7mD'),
-  Song(id: '2', title: '晴天', uploader: '周杰伦', duration: Duration(minutes: 4, seconds: 29), hasVideo: false, bvid: ''),
-  Song(id: '3', title: '起风了', uploader: '买辣椒也用券', duration: Duration(minutes: 5, seconds: 15), hasVideo: true, bvid: 'BV1YW41127cV'),
-  Song(id: '4', title: 'Lemon', uploader: '米津玄师', duration: Duration(minutes: 4, seconds: 16), hasVideo: true, bvid: 'BV1Ht41147fM'),
-  Song(id: '5', title: '打上花火', uploader: 'DAOKO × 米津玄师', duration: Duration(minutes: 4, seconds: 50), hasVideo: false, bvid: ''),
-  Song(id: '6', title: '前前前世', uploader: 'RADWIMPS', duration: Duration(minutes: 4, seconds: 36), hasVideo: true, bvid: 'BV1Ms411k7sV'),
-];
-
-final List<Playlist> mockPlaylists = [
-  Playlist(id: 'fav', name: '我的收藏', icon: '❤️', songs: mockAllSongs.sublist(0, 4)),
-  Playlist(id: 'like', name: '我喜欢', icon: '👍', songs: mockAllSongs.sublist(2, 6)),
-];
 
 // ============================================================
 // 自定义播放列表持久化

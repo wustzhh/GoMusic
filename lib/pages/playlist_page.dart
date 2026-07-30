@@ -32,9 +32,9 @@ class _PlaylistPageState extends State<PlaylistPage> {
     if (!mounted) return;
     setState(() {
       _playlists = [
-        if (localSongs.isNotEmpty) Playlist(id: 'local', name: '本地歌单', icon: '📁', songs: localSongs),
-        if (favSongs.isNotEmpty) Playlist(id: 'fav', name: '我的收藏', icon: '❤️', songs: favSongs),
-        if (recentSongs.isNotEmpty) Playlist(id: 'recent', name: '最近播放', icon: '🕐', songs: recentSongs),
+        Playlist(id: 'local', name: '本地歌单', icon: '📁', songs: localSongs),
+        Playlist(id: 'fav', name: '我的收藏', icon: '❤️', songs: favSongs),
+        Playlist(id: 'recent', name: '最近播放', icon: '🕐', songs: recentSongs),
         ...customPls,
       ];
       _loaded = true;
