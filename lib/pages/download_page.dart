@@ -1,24 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/bilibili_api.dart';
-
-/// 解析后的视频信息
-class _ParsedInfo {
-  final String url;
-  final String coverUrl;
-  final String originalTitle;
-  final String originalAuthor;
-  final String duration;
-  final String bvid;
-
-  const _ParsedInfo({
-    required this.url,
-    required this.coverUrl,
-    required this.originalTitle,
-    required this.originalAuthor,
-    required this.duration,
-    required this.bvid,
-  });
-}
+import '../services/settings_service.dart';
 
 class DownloadPage extends StatefulWidget {
   const DownloadPage({super.key});
@@ -31,10 +13,13 @@ class _DownloadPageState extends State<DownloadPage> {
   final _urlController = TextEditingController();
   final _nameController = TextEditingController();
   final _authorController = TextEditingController();
+  final _api = BilibiliApi();
 
   bool _downloadVideo = false;
-  bool _isLoading = false;
-  _ParsedInfo? _parsedInfo;
+  bool _isParsing = false;
+  bool _isDownloading = false;
+  double _downloadProgress = 0;
+  BilibiliVideoInfo? _info;
 
   @override
   void dispose() {
@@ -44,35 +29,32 @@ class _DownloadPageState extends State<DownloadPage> {
     super.dispose();
   }
 
+  // ==================== 解析 ====================
+
   Future<void> _parseUrl() async {
     final url = _urlController.text.trim();
     if (url.isEmpty) return;
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isParsing = true;
+      _info = null;
+    });
 
-    final info = await BilibiliApi.getVideoInfo(url);
-
+    final info = await _api.getVideoInfo(url);
     if (!mounted) return;
 
     if (info != null) {
       setState(() {
-        _parsedInfo = _ParsedInfo(
-          url: info.url,
-          coverUrl: info.coverUrl,
-          originalTitle: info.title,
-          originalAuthor: info.author,
-          duration: info.durationText,
-          bvid: info.bvid,
-        );
+        _info = info;
         _nameController.text = info.title;
         _authorController.text = info.author;
-        _isLoading = false;
+        _isParsing = false;
       });
     } else {
-      setState(() => _isLoading = false);
+      setState(() => _isParsing = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('解析失败，请检查URL是否正确')),
+          const SnackBar(content: Text('解析失败，请检查URL是否正确，或尝试在设置中配置B站Cookie')),
         );
       }
     }
@@ -83,50 +65,96 @@ class _DownloadPageState extends State<DownloadPage> {
     _nameController.clear();
     _authorController.clear();
     setState(() {
-      _parsedInfo = null;
+      _info = null;
       _downloadVideo = false;
+      _downloadProgress = 0;
     });
   }
 
-  void _startDownload() {
-    final info = _parsedInfo;
-    if (info == null) return;
+  // ==================== 下载 ====================
 
-    final localName = _nameController.text.trim();
-    final localAuthor = _authorController.text.trim();
+  Future<void> _startDownload() async {
+    final info = _info;
+    if (info == null || info.audioUrl == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未获取到下载地址，请重新解析')),
+      );
+      return;
+    }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('开始下载: $localName / $localAuthor'
-            '${_downloadVideo ? " (含视频)" : ""}'
-            '\n原网址: ${info.url}'
-            '\n原标题: ${info.originalTitle}'
-            '\n原作者: ${info.originalAuthor}'),
-      ),
+    final service = await SettingsService.getInstance();
+    final dir = await service.getDownloadPath();
+
+    setState(() {
+      _isDownloading = true;
+      _downloadProgress = 0;
+    });
+
+    final audioPath = '$dir\\${_safeFileName(_nameController.text.trim())}.m4a';
+    var audioOk = false;
+    var videoOk = !_downloadVideo; // 不下载视频就直接算成功
+
+    // 下载音频
+    audioOk = await StreamDownloader.download(
+      url: info.audioUrl!,
+      savePath: audioPath,
+      onProgress: (p) {
+        if (mounted) setState(() => _downloadProgress = p * (_downloadVideo ? 0.5 : 1.0));
+      },
     );
+
+    // 下载视频
+    if (_downloadVideo && info.videoUrl != null && audioOk) {
+      final videoPath = '$dir\\${_safeFileName(_nameController.text.trim())}.mp4';
+      videoOk = await StreamDownloader.download(
+        url: info.videoUrl!,
+        savePath: videoPath,
+        onProgress: (p) {
+          if (mounted) setState(() => _downloadProgress = 0.5 + p * 0.5);
+        },
+      );
+    }
+
+    if (!mounted) return;
+    setState(() => _isDownloading = false);
+
+    if (audioOk && videoOk) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('下载完成！已保存到: $dir')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('下载失败，请重试')),
+      );
+    }
   }
+
+  String _safeFileName(String name) {
+    return name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  }
+
+  // ==================== UI ====================
 
   @override
   Widget build(BuildContext context) {
-    final parsed = _parsedInfo;
-
     return Scaffold(
       appBar: AppBar(title: const Text('下载'), centerTitle: true),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // ── URL输入区 ──
-            // 未解析时大块区域，已解析时紧凑行
-            if (parsed == null) _buildUrlInputLarge(),
-            if (parsed != null) _buildUrlInputCompact(),
-
-            // ── 解析结果区 ──
-            if (parsed != null) ...[
+            if (_info == null) _buildUrlInput(),
+            if (_info != null) _buildCompactUrlBar(),
+            if (_isParsing) _buildParsingIndicator(),
+            if (_info != null) ...[
               const SizedBox(height: 16),
-              _buildVideoInfoCard(parsed),
+              _buildInfoCard(_info!),
               const SizedBox(height: 16),
               _buildEditableFields(),
+              if (_isDownloading) ...[
+                const SizedBox(height: 16),
+                _buildProgressBar(),
+              ],
               const SizedBox(height: 16),
               _buildSwitch(),
               const SizedBox(height: 16),
@@ -138,10 +166,8 @@ class _DownloadPageState extends State<DownloadPage> {
     );
   }
 
-  // ===================== 子组件 =====================
-
-  /// 未解析时的大块URL输入
-  Widget _buildUrlInputLarge() {
+  // ---- 未解析 URL 输入 ----
+  Widget _buildUrlInput() {
     return Column(
       children: [
         const SizedBox(height: 40),
@@ -175,11 +201,9 @@ class _DownloadPageState extends State<DownloadPage> {
           width: double.infinity,
           height: 48,
           child: ElevatedButton.icon(
-            onPressed: _isLoading ? null : _parseUrl,
-            icon: _isLoading
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.search),
-            label: Text(_isLoading ? '解析中...' : '解析视频', style: const TextStyle(fontSize: 16)),
+            onPressed: _isParsing ? null : _parseUrl,
+            icon: const Icon(Icons.search),
+            label: const Text('解析视频', style: TextStyle(fontSize: 16)),
             style: ElevatedButton.styleFrom(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
@@ -189,8 +213,8 @@ class _DownloadPageState extends State<DownloadPage> {
     );
   }
 
-  /// 已解析时的紧凑URL行
-  Widget _buildUrlInputCompact() {
+  // ---- 已解析紧凑 URL 行 ----
+  Widget _buildCompactUrlBar() {
     return Row(
       children: [
         Expanded(
@@ -215,8 +239,22 @@ class _DownloadPageState extends State<DownloadPage> {
     );
   }
 
-  /// 视频信息卡片（封面+原标题+原作者+时长）
-  Widget _buildVideoInfoCard(_ParsedInfo info) {
+  // ---- 解析中 ----
+  Widget _buildParsingIndicator() {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 24),
+      child: Column(
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 12),
+          Text('正在解析...', style: TextStyle(color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
+  // ---- 视频信息卡片 ----
+  Widget _buildInfoCard(BilibiliVideoInfo info) {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
@@ -224,24 +262,18 @@ class _DownloadPageState extends State<DownloadPage> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 封面
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: Colors.grey[800],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.image, size: 36, color: Colors.grey),
-                    SizedBox(height: 4),
-                    Text('封面', style: TextStyle(color: Colors.grey, fontSize: 11)),
-                  ],
-                ),
-              ),
+            // 封面（网络图片）
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: info.coverUrl.isNotEmpty
+                  ? Image.network(
+                      info.coverUrl,
+                      width: 100,
+                      height: 100,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, e, s) => _placeholderCover(),
+                    )
+                  : _placeholderCover(),
             ),
             const SizedBox(width: 12),
             // 信息
@@ -249,33 +281,17 @@ class _DownloadPageState extends State<DownloadPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    info.originalTitle,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  Text(info.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(Icons.person, size: 14, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(info.originalAuthor, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                    ],
-                  ),
+                  _infoRow(Icons.person, info.author),
                   const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      const Icon(Icons.timer_outlined, size: 14, color: Colors.grey),
-                      const SizedBox(width: 4),
-                      Text(info.duration, style: const TextStyle(fontSize: 13, color: Colors.grey)),
-                    ],
-                  ),
+                  _infoRow(Icons.timer_outlined, info.durationText),
                   const SizedBox(height: 4),
-                  Text(
-                    'BV: ${info.bvid}',
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
-                  ),
+                  _infoRow(Icons.audiotrack, '音频 ${info.audioSizeText}'),
+                  const SizedBox(height: 4),
+                  _infoRow(Icons.videocam, '视频 ${info.videoSizeText}'),
+                  const SizedBox(height: 4),
+                  Text('BV: ${info.bvid}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                 ],
               ),
             ),
@@ -285,7 +301,35 @@ class _DownloadPageState extends State<DownloadPage> {
     );
   }
 
-  /// 可编辑字段
+  Widget _placeholderCover() {
+    return Container(
+      width: 100,
+      height: 100,
+      decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(8)),
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.image, size: 36, color: Colors.grey),
+            SizedBox(height: 4),
+            Text('封面', style: TextStyle(color: Colors.grey, fontSize: 11)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: Colors.grey),
+        const SizedBox(width: 4),
+        Expanded(child: Text(text, style: const TextStyle(fontSize: 13, color: Colors.grey))),
+      ],
+    );
+  }
+
+  // ---- 可编辑字段 ----
   Widget _buildEditableFields() {
     return Column(
       children: [
@@ -312,7 +356,18 @@ class _DownloadPageState extends State<DownloadPage> {
     );
   }
 
-  /// 视频下载开关
+  // ---- 进度条 ----
+  Widget _buildProgressBar() {
+    return Column(
+      children: [
+        LinearProgressIndicator(value: _downloadProgress, minHeight: 8),
+        const SizedBox(height: 6),
+        Text('${(_downloadProgress * 100).toStringAsFixed(0)}%', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+      ],
+    );
+  }
+
+  // ---- 视频开关 ----
   Widget _buildSwitch() {
     return Row(
       children: [
@@ -320,21 +375,26 @@ class _DownloadPageState extends State<DownloadPage> {
         const SizedBox(width: 8),
         const Text('同时下载视频', style: TextStyle(fontSize: 15)),
         const Spacer(),
-        Switch(value: _downloadVideo, onChanged: (v) => setState(() => _downloadVideo = v)),
+        Switch(
+          value: _downloadVideo,
+          onChanged: _isDownloading ? null : (v) => setState(() => _downloadVideo = v),
+        ),
       ],
     );
   }
 
-  /// 下载按钮（动态文字）
+  // ---- 下载按钮 ----
   Widget _buildDownloadButton() {
     return SizedBox(
       width: double.infinity,
       height: 48,
       child: ElevatedButton.icon(
-        onPressed: _startDownload,
-        icon: const Icon(Icons.download),
+        onPressed: _isDownloading ? null : _startDownload,
+        icon: _isDownloading
+            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            : const Icon(Icons.download),
         label: Text(
-          _downloadVideo ? '开始下载 (音频 + 视频)' : '开始下载 (仅音频)',
+          _isDownloading ? '下载中...' : (_downloadVideo ? '开始下载 (音频 + 视频)' : '开始下载 (仅音频)'),
           style: const TextStyle(fontSize: 16),
         ),
         style: ElevatedButton.styleFrom(
