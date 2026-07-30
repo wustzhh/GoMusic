@@ -4,6 +4,48 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
+/// 单个视频流（一种画质）
+class VideoStream {
+  final int id;
+  final int bandwidth;
+  final int width;
+  final int height;
+  final String codecs;
+  final String? baseUrl;
+  final int size;
+
+  const VideoStream({
+    required this.id,
+    required this.bandwidth,
+    required this.width,
+    required this.height,
+    required this.codecs,
+    this.baseUrl,
+    this.size = 0,
+  });
+
+  String get qualityLabel {
+    if (width >= 7680) return '8K';
+    if (width >= 3840) return '4K';
+    if (width >= 2560) return '2K';
+    if (width >= 1920) {
+      if (height >= 1080) return '1080P';
+      return '1080P';
+    }
+    if (width >= 1280) return '720P';
+    if (width >= 852) return '480P';
+    return '360P';
+  }
+
+  String get sizeText {
+    if (size <= 0) return '未知';
+    if (size < 1048576) return '${(size / 1024).toStringAsFixed(0)}KB';
+    return '${(size / 1048576).toStringAsFixed(1)}MB';
+  }
+
+  String get description => '$qualityLabel · ${width}x$height · $sizeText';
+}
+
 /// B站视频信息（含流信息）
 class BilibiliVideoInfo {
   final String bvid;
@@ -16,10 +58,7 @@ class BilibiliVideoInfo {
 
   String? audioUrl;
   int audioSize = 0;
-  String? videoUrl;
-  int videoSize = 0;
-  int videoWidth = 0;
-  int videoHeight = 0;
+  List<VideoStream> videoStreams = [];
 
   BilibiliVideoInfo({
     required this.bvid,
@@ -37,14 +76,10 @@ class BilibiliVideoInfo {
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
 
-  String get audioSizeText => _fmt(audioSize);
-  String get videoSizeText => _fmt(videoSize);
-
-  static String _fmt(int bytes) {
-    if (bytes <= 0) return '未知';
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1048576) return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    return '${(bytes / 1048576).toStringAsFixed(1)} MB';
+  String get audioSizeText {
+    if (audioSize <= 0) return '未知';
+    if (audioSize < 1048576) return '${(audioSize / 1024).toStringAsFixed(0)}KB';
+    return '${(audioSize / 1048576).toStringAsFixed(1)}MB';
   }
 }
 
@@ -188,17 +223,18 @@ class BilibiliApi {
         info.audioSize = (best['size'] as int?) ?? 0;
       }
 
-      // 视频流：按码率降序取最高画质
+      // 视频流：全部保存，按码率降序排列
       final videos = (dash['video'] as List?) ?? [];
-      if (videos.isNotEmpty) {
-        videos.sort((a, b) =>
-            ((b['bandwidth'] as int?) ?? 0).compareTo((a['bandwidth'] as int?) ?? 0));
-        final best = videos.first;
-        info.videoUrl = (best['baseUrl'] ?? best['base_url']) as String?;
-        info.videoSize = (best['size'] as int?) ?? 0;
-        info.videoWidth = (best['width'] as int?) ?? 0;
-        info.videoHeight = (best['height'] as int?) ?? 0;
-      }
+      info.videoStreams = videos.map((v) => VideoStream(
+        id: (v['id'] as int?) ?? 0,
+        bandwidth: (v['bandwidth'] as int?) ?? 0,
+        width: (v['width'] as int?) ?? 0,
+        height: (v['height'] as int?) ?? 0,
+        codecs: (v['codecs'] as String?) ?? '',
+        baseUrl: (v['baseUrl'] ?? v['base_url']) as String?,
+        size: (v['size'] as int?) ?? 0,
+      )).toList()
+        ..sort((a, b) => b.bandwidth.compareTo(a.bandwidth));
     } catch (_) {}
   }
 }

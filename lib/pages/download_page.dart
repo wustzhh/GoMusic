@@ -21,6 +21,7 @@ class _DownloadPageState extends State<DownloadPage> {
   bool _isDownloading = false;
   double _downloadProgress = 0;
   BilibiliVideoInfo? _info;
+  VideoStream? _selectedStream; // 用户选择的画质
 
   @override
   void dispose() {
@@ -50,6 +51,7 @@ class _DownloadPageState extends State<DownloadPage> {
         _nameController.text = info.title;
         _authorController.text = info.author;
         _isParsing = false;
+        _selectedStream = info.videoStreams.isNotEmpty ? info.videoStreams.first : null;
       });
     } else {
       setState(() => _isParsing = false);
@@ -105,10 +107,10 @@ class _DownloadPageState extends State<DownloadPage> {
     );
 
     // 下载视频
-    if (_downloadVideo && info.videoUrl != null && audioOk) {
+    if (_downloadVideo && _selectedStream?.baseUrl != null && audioOk) {
       final videoPath = '$dir\\${_safeFileName(_nameController.text.trim())}.mp4';
       videoOk = await StreamDownloader.download(
-        url: info.videoUrl!,
+        url: _selectedStream!.baseUrl!,
         savePath: videoPath,
         onProgress: (p) {
           if (mounted) setState(() => _downloadProgress = 0.5 + p * 0.5);
@@ -118,24 +120,7 @@ class _DownloadPageState extends State<DownloadPage> {
 
     if (!mounted) return;
 
-    // 更新文件大小显示（覆盖"未知"）
-    try {
-      final audioFile = File(audioPath);
-      if (await audioFile.exists()) {
-        _info!.audioSize = await audioFile.length();
-      }
-      if (_downloadVideo) {
-        final videoPath = '$dir\\${_safeFileName(_nameController.text.trim())}.mp4';
-        final videoFile = File(videoPath);
-        if (await videoFile.exists()) {
-          _info!.videoSize = await videoFile.length();
-        }
-      }
-    } catch (_) {}
-
-    setState(() => _isDownloading = false);
-
-    // 检查文件大小
+    // 读取实际文件大小用于提示
     String sizeText = '';
     try {
       final audioFile = File(audioPath);
@@ -144,6 +129,8 @@ class _DownloadPageState extends State<DownloadPage> {
         sizeText = '${(bytes / 1048576).toStringAsFixed(1)} MB';
       }
     } catch (_) {}
+
+    setState(() => _isDownloading = false);
 
     if (!mounted) return;
 
@@ -178,6 +165,10 @@ class _DownloadPageState extends State<DownloadPage> {
             if (_info != null) ...[
               const SizedBox(height: 16),
               _buildInfoCard(_info!),
+              if (_info!.videoStreams.length > 1) ...[
+                const SizedBox(height: 12),
+                _buildQualitySelector(),
+              ],
               const SizedBox(height: 16),
               _buildEditableFields(),
               if (_isDownloading) ...[
@@ -318,7 +309,7 @@ class _DownloadPageState extends State<DownloadPage> {
                   const SizedBox(height: 4),
                   _infoRow(Icons.audiotrack, '音频 ${info.audioSizeText}'),
                   const SizedBox(height: 4),
-                  _infoRow(Icons.videocam, '视频 ${info.videoSizeText}${info.videoWidth > 0 ? ' · ${info.videoWidth}x${info.videoHeight}' : ''}'),
+                  _infoRow(Icons.videocam, '视频 ${_selectedStream?.sizeText ?? '未知'}${(_selectedStream?.width ?? 0) > 0 ? ' · ${_selectedStream?.width}x${_selectedStream?.height}' : ''}'),
                   const SizedBox(height: 4),
                   Text('BV: ${info.bvid}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
                 ],
@@ -396,7 +387,28 @@ class _DownloadPageState extends State<DownloadPage> {
     );
   }
 
-  // ---- 视频开关 ----
+  // ---- 画质选择器 ----
+  Widget _buildQualitySelector() {
+    final streams = _info!.videoStreams;
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        child: DropdownButton<VideoStream>(
+          value: _selectedStream ?? streams.first,
+          isExpanded: true,
+          underline: const SizedBox(),
+          items: streams.map((s) => DropdownMenuItem(
+            value: s,
+            child: Text(s.description, style: const TextStyle(fontSize: 13)),
+          )).toList(),
+          onChanged: (v) {
+            if (v != null) setState(() => _selectedStream = v);
+          },
+        ),
+      ),
+    );
+  }
   Widget _buildSwitch() {
     return Row(
       children: [
