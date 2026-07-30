@@ -47,8 +47,10 @@ class _PlayerPageState extends State<PlayerPage> {
   @override
   void dispose() { _stateSub?.cancel(); _posSub?.cancel(); _durSub?.cancel(); super.dispose(); }
 
-  void _addToList() {
+  void _addToList() async {
     if (_song == null) return;
+    final existing = await PlaylistService.getPlaylists();
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
@@ -67,6 +69,14 @@ class _PlayerPageState extends State<PlayerPage> {
               setState(() => _isFav = !_isFav);
             },
           ),
+          ...existing.map((pl) => ListTile(
+            leading: const Icon(Icons.list, color: Colors.grey, size: 22),
+            title: Text(pl.name),
+            onTap: () {
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}')));
+            },
+          )),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.add, color: Colors.blue),

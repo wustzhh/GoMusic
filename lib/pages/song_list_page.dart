@@ -49,7 +49,10 @@ class _SongListPageState extends State<SongListPage> {
     return _songs.where((s) => s.title.toLowerCase().contains(_searchText.toLowerCase())).toList();
   }
 
-  void _showAddToList(Song song) {
+  void _showAddToList(Song song) async {
+    final existing = await PlaylistService.getPlaylists();
+    if (!mounted) return;
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
@@ -58,6 +61,7 @@ class _SongListPageState extends State<SongListPage> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Text('添加到收藏夹', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
+          // 我喜欢（固定）
           ListTile(
             leading: const Icon(Icons.favorite, color: Colors.red, size: 24),
             title: const Text('我喜欢'),
@@ -68,6 +72,16 @@ class _SongListPageState extends State<SongListPage> {
               _loadFavs();
             },
           ),
+          // 已有的自定义列表
+          ...existing.map((pl) => ListTile(
+            leading: const Icon(Icons.list, color: Colors.grey, size: 22),
+            title: Text(pl.name),
+            trailing: _favs.contains(song.filePath) ? const Icon(Icons.check, color: Colors.green) : null,
+            onTap: () {
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}')));
+            },
+          )),
           const Divider(),
           ListTile(
             leading: const Icon(Icons.add, color: Colors.blue),

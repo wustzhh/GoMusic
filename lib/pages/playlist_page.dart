@@ -76,7 +76,7 @@ class PlaylistPageState extends State<PlaylistPage> {
                 onTap: () {
                   Navigator.push(context, MaterialPageRoute(
                     builder: (_) => SongListPage(playlist: pl),
-                  ));
+                  )).then((_) => refresh());
                 },
               ),
             );
