@@ -154,7 +154,8 @@ Future<List<Song>> scanLocalAudioFiles(String dirPath) async {
         if (ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav') {
           final name = f.path.split(Platform.pathSeparator).last.split('.').first;
           final coverPath = '$dirPath${Platform.pathSeparator}$name.jpg';
-          final hasCover = File(coverPath).existsSync();
+          final coverFile = File(coverPath);
+          final hasCover = coverFile.existsSync() && coverFile.lengthSync() > 0;
           songs.add(Song(
             id: f.path,
             title: name,
