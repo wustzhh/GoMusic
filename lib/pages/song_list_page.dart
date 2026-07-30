@@ -261,8 +261,14 @@ class _SongListPageState extends State<SongListPage> {
       if (exists && size > 0) {
         try {
           final bytes = f.readAsBytesSync();
-          return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.memory(bytes, width: 36, height: 36, fit: BoxFit.cover, cacheWidth: 72, errorBuilder: (_, e, s) => _icon()));
-        } catch (_) {}
+          return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.memory(bytes, width: 36, height: 36, fit: BoxFit.cover,
+            errorBuilder: (_, e, s) {
+              try { File('D:/pyProj/GoMusic/cover_debug.log').writeAsStringSync('ERROR url=${song.coverUrl} err=$e\n', mode: FileMode.append); } catch (_) {}
+              return _icon();
+            }));
+        } catch (e) {
+          try { File('D:/pyProj/GoMusic/cover_debug.log').writeAsStringSync('CATCH url=${song.coverUrl} err=$e\n', mode: FileMode.append); } catch (_) {}
+        }
       }
     }
     return _icon();
