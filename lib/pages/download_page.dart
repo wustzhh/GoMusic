@@ -77,10 +77,11 @@ class _DownloadPageState extends State<DownloadPage> {
         _isParsing = false;
       });
     } else {
-      setState(() => _isParsing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('解析收藏夹失败')),
-      );
+      // 收藏夹解析失败，回退为普通视频链接
+      final info = await _api.getVideoInfo(url);
+      if (!mounted) return;
+      setState(() => _isCollection = false);
+      await _afterParse(info);
     }
   }
 
