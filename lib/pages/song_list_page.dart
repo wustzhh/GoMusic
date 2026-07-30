@@ -281,7 +281,12 @@ class _SongListPageState extends State<SongListPage> {
         return ListTile(
           leading: Icon(isCur ? Icons.play_arrow : Icons.music_note, color: isCur ? Colors.deepPurple : Colors.grey, size: 22),
           title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: isCur ? FontWeight.bold : FontWeight.normal)),
-          onTap: () { service.playSong(s); Navigator.pop(context); },
+          onTap: () {
+            if (service.queue.isEmpty) service.setQueue(_getFiltered(), startIndex: i);
+            service.playSong(s);
+            Navigator.pop(context);
+            Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage()));
+          },
         );
       })),
     ]));
