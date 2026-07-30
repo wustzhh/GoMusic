@@ -169,7 +169,7 @@ class _SongListPageState extends State<SongListPage> {
                   itemBuilder: (context, index) {
                     final song = filtered[index];
                     final idx = _songs.indexWhere((s) => s.filePath == song.filePath);
-                    final isFav = _favs.contains(song.bvid);
+                    final isFav = _favs.contains(song.filePath);
                     return ListTile(
                       leading: _buildCover(song),
                       title: Text(song.title, style: const TextStyle(fontSize: 15)),
@@ -177,7 +177,7 @@ class _SongListPageState extends State<SongListPage> {
                       trailing: IconButton(
                         icon: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? Colors.red : Colors.grey, size: 22),
                         onPressed: () async {
-                          await AudioPlayerService.toggleFavorite(song.bvid);
+                          await AudioPlayerService.toggleFavorite(song.filePath);
                           _loadFavs();
                         },
                       ),

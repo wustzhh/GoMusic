@@ -37,6 +37,11 @@ class AudioPlayerService {
     _currentSong = song;
     await _player.stop();
     await _player.play(DeviceFileSource(song.filePath));
+    // 记录最近播放
+    await RecentlyPlayedService.addIfNotExists(
+      song.filePath, song.title, song.uploader,
+      song.duration.inSeconds, song.filePath, song.coverUrl ?? '',
+    );
     _saveState();
   }
 
@@ -120,20 +125,20 @@ class AudioPlayerService {
     return (p.getStringList(_favKey) ?? []).toSet();
   }
 
-  static Future<void> toggleFavorite(String bvid) async {
+  static Future<void> toggleFavorite(String filePath) async {
     final p = await SharedPreferences.getInstance();
     final set = (p.getStringList(_favKey) ?? []).toSet();
-    if (set.contains(bvid)) {
-      set.remove(bvid);
+    if (set.contains(filePath)) {
+      set.remove(filePath);
     } else {
-      set.add(bvid);
+      set.add(filePath);
     }
     await p.setStringList(_favKey, set.toList());
   }
 
-  static Future<bool> isFavorite(String bvid) async {
+  static Future<bool> isFavorite(String filePath) async {
     final f = await getFavorites();
-    return f.contains(bvid);
+    return f.contains(filePath);
   }
 
   // ==================== 持久化 ====================

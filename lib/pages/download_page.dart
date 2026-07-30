@@ -201,11 +201,6 @@ class _DownloadPageState extends State<DownloadPage> {
       }
     } catch (_) {}
 
-    // 记录最近播放
-    await RecentlyPlayedService.addIfNotExists(
-      info.bvid, name, _authorController.text.trim(), info.durationSeconds, audioPath, info.coverUrl,
-    );
-
     setState(() {
       _isDownloading = false;
       _alreadyDownloaded = audioOk;

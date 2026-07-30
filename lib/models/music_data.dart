@@ -181,3 +181,28 @@ final List<Playlist> mockPlaylists = [
   Playlist(id: 'fav', name: '我的收藏', icon: '❤️', songs: mockAllSongs.sublist(0, 4)),
   Playlist(id: 'like', name: '我喜欢', icon: '👍', songs: mockAllSongs.sublist(2, 6)),
 ];
+
+// ============================================================
+// 自定义播放列表持久化
+// ============================================================
+
+class PlaylistService {
+  static const _key = 'custom_playlists';
+
+  static Future<List<Playlist>> getPlaylists() async {
+    final p = await SharedPreferences.getInstance();
+    final list = p.getStringList(_key) ?? [];
+    return list.map((e) {
+      final parts = e.split('|||');
+      return Playlist(id: parts[0], name: parts[1], icon: parts[2], songs: []);
+    }).toList();
+  }
+
+  static Future<void> addPlaylist(String name) async {
+    final p = await SharedPreferences.getInstance();
+    final list = p.getStringList(_key) ?? [];
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    list.add('$id|||$name|||📋');
+    await p.setStringList(_key, list);
+  }
+}

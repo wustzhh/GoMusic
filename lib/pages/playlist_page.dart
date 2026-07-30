@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/music_data.dart';
 import '../services/settings_service.dart';
+import '../services/audio_player_service.dart';
 import 'song_list_page.dart';
 
 class PlaylistPage extends StatefulWidget {
@@ -22,21 +23,19 @@ class _PlaylistPageState extends State<PlaylistPage> {
   Future<void> _loadPlaylists() async {
     final service = await SettingsService.getInstance();
     final dir = await service.getDownloadPath();
-
-    // 本地音频文件
     final localSongs = await scanLocalAudioFiles(dir);
-
-    // 最近播放
     final recentSongs = await RecentlyPlayedService.getRecentSongs();
+    final favPaths = await AudioPlayerService.getFavorites();
+    final favSongs = localSongs.where((s) => favPaths.contains(s.filePath)).toList();
+    final customPls = await PlaylistService.getPlaylists();
 
     if (!mounted) return;
     setState(() {
       _playlists = [
-        if (localSongs.isNotEmpty)
-          Playlist(id: 'local', name: '本地歌单', icon: '📁', songs: localSongs),
-        if (recentSongs.isNotEmpty)
-          Playlist(id: 'recent', name: '最近播放', icon: '🕐', songs: recentSongs),
-        ...mockPlaylists,
+        if (localSongs.isNotEmpty) Playlist(id: 'local', name: '本地歌单', icon: '📁', songs: localSongs),
+        if (favSongs.isNotEmpty) Playlist(id: 'fav', name: '我的收藏', icon: '❤️', songs: favSongs),
+        if (recentSongs.isNotEmpty) Playlist(id: 'recent', name: '最近播放', icon: '🕐', songs: recentSongs),
+        ...customPls,
       ];
       _loaded = true;
     });

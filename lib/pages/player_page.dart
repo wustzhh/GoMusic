@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import '../models/music_data.dart';
@@ -53,14 +54,14 @@ class _PlayerPageState extends State<PlayerPage> {
 
   Future<void> _checkFav() async {
     if (_song != null) {
-      final f = await AudioPlayerService.isFavorite(_song!.bvid);
+      final f = await AudioPlayerService.isFavorite(_song!.filePath);
       if (mounted) setState(() => _isFav = f);
     }
   }
 
   Future<void> _toggleFav() async {
-    if (_song == null) return;
-    await AudioPlayerService.toggleFavorite(_song!.bvid);
+    if (_song == null || _song!.filePath.isEmpty) return;
+    await AudioPlayerService.toggleFavorite(_song!.filePath);
     setState(() => _isFav = !_isFav);
   }
 
@@ -106,9 +107,8 @@ class _PlayerPageState extends State<PlayerPage> {
             width: 260, height: 260,
             margin: const EdgeInsets.symmetric(horizontal: 40),
             decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(16)),
-            child: Center(
-              child: Icon(_song!.hasVideo ? Icons.play_circle_outline : Icons.album, size: 100, color: Colors.grey[600]),
-            ),
+            clipBehavior: Clip.antiAlias,
+            child: _buildCover(_song!),
           ),
           const Spacer(),
           // 歌曲信息
@@ -160,16 +160,31 @@ class _PlayerPageState extends State<PlayerPage> {
     final s = (d.inSeconds % 60).toString().padLeft(2, '0');
     return '$m:$s';
   }
+
+  Widget _buildCover(Song song) {
+    if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
+      final file = File(song.coverUrl!);
+      if (file.existsSync()) {
+        return Image.file(file, fit: BoxFit.cover);
+      }
+    }
+    return Center(child: Icon(Icons.album, size: 100, color: Colors.grey[600]));
+  }
 }
 
 // ==================== 播放队列底部弹窗 ====================
 
-class _QueueSheet extends StatelessWidget {
+class _QueueSheet extends StatefulWidget {
   final AudioPlayerService player;
   const _QueueSheet({required this.player});
+  @override
+  State<_QueueSheet> createState() => _QueueSheetState();
+}
 
+class _QueueSheetState extends State<_QueueSheet> {
   @override
   Widget build(BuildContext context) {
+    final player = widget.player;
     final queue = player.queue;
     return SizedBox(
       height: MediaQuery.of(context).size.height * 0.6,
