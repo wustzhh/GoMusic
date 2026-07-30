@@ -106,26 +106,31 @@ class RecentlyPlayedService {
     await prefs.setStringList(_key, list);
   }
 
-  /// 获取最近播放列表
+  /// 获取最近播放列表（只返回文件真实存在的）
   static Future<List<Song>> getRecentSongs() async {
     final prefs = await SharedPreferences.getInstance();
     final list = prefs.getStringList(_key) ?? [];
     final songs = <Song>[];
+    final valid = <String>[];
     for (final entry in list) {
       final parts = entry.split('|');
       if (parts.length >= 7) {
+        final filePath = parts[4];
+        // 只保留文件真实存在的记录
+        if (!File(filePath).existsSync()) continue;
+        valid.add(entry);
         final ms = int.tryParse(parts[6]) ?? 0;
         songs.add(Song(
-          id: parts[0],
-          title: parts[1],
-          uploader: parts[2],
+          id: parts[0], title: parts[1], uploader: parts[2],
           duration: Duration(seconds: int.tryParse(parts[3]) ?? 0),
-          filePath: parts[4],
-          coverUrl: parts[5].isEmpty ? null : parts[5],
-          bvid: parts[0],
-          lastPlayed: DateTime.fromMillisecondsSinceEpoch(ms),
+          filePath: filePath, coverUrl: parts[5].isEmpty ? null : parts[5],
+          bvid: parts[0], lastPlayed: DateTime.fromMillisecondsSinceEpoch(ms),
         ));
       }
+    }
+    // 清理已删除文件的记录
+    if (valid.length != list.length) {
+      await prefs.setStringList(_key, valid);
     }
     return songs;
   }
