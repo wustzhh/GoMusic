@@ -183,36 +183,43 @@ class PlaylistService {
     final list = p.getStringList(_key) ?? [];
     final valid = <String>[];
     final result = <Playlist>[];
-    for (final e in list) {
-      final parts = e.split('|||');
-      if (parts.length < 3) continue; // 跳过旧数据残骸
+    for (final raw in list) {
+      if (raw.isEmpty) continue;
+      var parts = raw.split('|||');
+      // 丢弃末尾空元素
+      while (parts.length > 3 && (parts.last.isEmpty)) { parts.removeLast(); }
+      // 补齐到至少4段（id/name/icon/songsJson）
+      while (parts.length < 4) { parts.add(''); }
+      if (parts[0].isEmpty) continue;
+
       final name = parts[1];
-      final songsJson = parts.length > 3 ? parts[3] : '[]';
+      final songsJson = parts[3].isEmpty ? '[]' : parts[3];
       List<String> songPaths;
       try {
         final decoded = jsonDecode(songsJson);
         songPaths = (decoded as List).map((x) => x.toString()).where((fp) => fp.isNotEmpty).toList();
       } catch (_) {
-        // 旧逗号格式回退
         songPaths = songsJson.split(',').where((s) => s.isNotEmpty).toList();
-        // 迁移为新JSON格式
-        final migrated = e.split('|||');
-        if (migrated.length >= 3) {
-          migrated.length >= 4 ? migrated[3] = jsonEncode(songPaths) : migrated.add(jsonEncode(songPaths));
-          valid.add(migrated.join('|||'));
-          continue;
-        }
+        parts[3] = jsonEncode(songPaths);
       }
-      valid.add(e);
+      // 清理空尾后回写
+      while (parts.length > 3 && (parts.last.isEmpty)) { parts.removeLast(); }
+      valid.add(parts.join('|||'));
       result.add(Playlist(
         id: parts[0], name: name, icon: parts[2],
         songs: songPaths.map((fp) => Song(id: fp, title: fp.split(Platform.pathSeparator).last.split('.').first, uploader: '', duration: Duration.zero, filePath: fp)).toList(),
       ));
     }
-    if (valid.length != list.length) {
+    if (!_listEquals(list, valid)) {
       await p.setStringList(_key, valid);
     }
     return result;
+  }
+
+  static bool _listEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) { if (a[i] != b[i]) return false; }
+    return true;
   }
 
   static Future<void> addPlaylist(String name) async {
@@ -227,14 +234,20 @@ class PlaylistService {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
     for (var i = 0; i < list.length; i++) {
-      final parts = list[i].split('|||');
+      var parts = list[i].split('|||');
+      // 丢弃末尾空元素
+      while (parts.length > 3 && (parts.last.isEmpty)) { parts.removeLast(); }
+      // 补齐到至少4段
+      while (parts.length < 4) { parts.add(''); }
       if (parts[0] == playlistId) {
-        final songsJson = parts.length > 3 ? parts[3] : '[]';
+        final songsJson = parts[3].isEmpty ? '[]' : parts[3];
         List<dynamic> paths;
-        try { paths = jsonDecode(songsJson); } catch (_) { paths = []; }
-        final pathSet = paths.map((x) => x.toString()).toSet();
+        try { paths = jsonDecode(songsJson); } catch (_) { paths = (songsJson.isEmpty ? [] : songsJson.split(',')); }
+        final pathSet = paths.map((x) => x.toString()).where((x) => x.isNotEmpty).toSet();
         pathSet.add(filePath);
         parts[3] = jsonEncode(pathSet.toList());
+        // 丢弃空尾
+        while (parts.length > 3 && (parts.last.isEmpty)) { parts.removeLast(); }
         list[i] = parts.join('|||');
         await p.setStringList(_key, list);
         return;
