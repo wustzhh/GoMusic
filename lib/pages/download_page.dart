@@ -23,6 +23,7 @@ class _DownloadPageState extends State<DownloadPage> {
   BilibiliVideoInfo? _singleInfo;
   VideoStream? _selectedStream;
   bool _alreadyDownloaded = false;
+  bool _coverMissing = false;
 
   // 批量下载
   List<_BatchItem> _batchItems = [];
@@ -116,7 +117,10 @@ class _DownloadPageState extends State<DownloadPage> {
   void _checkSingleExists(BilibiliVideoInfo info) {
     final dir = _downloadDir ?? '';
     final name = _safeName(info.title);
-    _alreadyDownloaded = File('$dir\\$name.m4a').existsSync();
+    final hasAudio = File('$dir\\$name.m4a').existsSync();
+    final hasCover = File('$dir\\$name.jpg').existsSync();
+    _alreadyDownloaded = hasAudio && hasCover;
+    _coverMissing = hasAudio && !hasCover;
   }
 
   void _snack(String msg) {
@@ -281,7 +285,9 @@ class _DownloadPageState extends State<DownloadPage> {
       _buildInfoCard(info),
       if (_alreadyDownloaded)
         _buildAlreadyBadge(),
-      if (!_alreadyDownloaded) ...[
+      if (_coverMissing)
+        _buildCoverMissingBadge(),
+      if (!_alreadyDownloaded && !_coverMissing) ...[
         if (info.videoStreams.length > 1) _buildQualityPicker(),
         const SizedBox(height: 12),
         _buildEditableFields(),
@@ -309,6 +315,48 @@ class _DownloadPageState extends State<DownloadPage> {
         Text('本地已下载', style: TextStyle(color: Colors.green, fontSize: 13)),
       ]),
     );
+  }
+
+  Widget _buildCoverMissingBadge() {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.warning_amber, color: Colors.orange, size: 16),
+        const SizedBox(width: 6),
+        const Text('封面缺失', style: TextStyle(color: Colors.orange, fontSize: 13)),
+        const SizedBox(width: 8),
+        SizedBox(
+          height: 26,
+          child: ElevatedButton.icon(
+            onPressed: _redownloadCover,
+            icon: const Icon(Icons.download, size: 14),
+            label: const Text('补下封面', style: TextStyle(fontSize: 11)),
+            style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _redownloadCover() async {
+    final info = _singleInfo;
+    if (info == null || info.coverUrl.isEmpty) return;
+    final dir = _downloadDir ?? '';
+    final name = _safeName(_nameController.text.trim());
+    final ok = await StreamDownloader.download(
+      url: info.coverUrl, savePath: '$dir\\$name.jpg', onProgress: (_) {},
+    );
+    if (ok) {
+      setState(() {
+        _coverMissing = false;
+        _alreadyDownloaded = true;
+      });
+      _snack('封面已补下');
+    } else {
+      _snack('封面下载失败');
+    }
   }
 
   Widget _buildInfoCard(BilibiliVideoInfo info) {
