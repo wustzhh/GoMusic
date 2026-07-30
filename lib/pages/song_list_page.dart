@@ -256,10 +256,7 @@ class _SongListPageState extends State<SongListPage> {
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
       final f = File(song.coverUrl!);
       if (f.existsSync() && f.lengthSync() > 0) {
-        return Image.file(f, width: 36, height: 36, fit: BoxFit.cover, errorBuilder: (_, e, s) {
-          try { File('D:/pyProj/GoMusic/cover_debug.log').writeAsStringSync('ERRF url=${song.coverUrl} err=$e\n', mode: FileMode.append); } catch (_) {}
-          return _icon();
-        });
+        return Image(image: FileImage(f), width: 36, height: 36, fit: BoxFit.cover);
       }
     }
     return _icon();
