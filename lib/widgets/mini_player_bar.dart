@@ -4,10 +4,8 @@ import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
 import '../pages/player_page.dart';
 
-/// 全局底部迷你播放器（毛玻璃效果）
 class MiniPlayerBar extends StatefulWidget {
   const MiniPlayerBar({super.key});
-
   @override
   State<MiniPlayerBar> createState() => _MiniPlayerBarState();
 }
@@ -23,7 +21,9 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
   void initState() {
     super.initState();
     _song = _service.currentSong;
-    _checkPlaying();
+    _isPlaying = _service.isPlaying;
+
+    _service.currentSongNotifier.addListener(_onSongChanged);
     _service.player.onPlayerStateChanged.listen((s) {
       if (mounted) setState(() => _isPlaying = s == PlayerState.playing);
     });
@@ -35,13 +35,18 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
     });
   }
 
-  void _checkPlaying() {
-    _isPlaying = _service.isPlaying;
+  void _onSongChanged() {
+    if (mounted) setState(() => _song = _service.currentSong);
+  }
+
+  @override
+  void dispose() {
+    _service.currentSongNotifier.removeListener(_onSongChanged);
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    _song = _service.currentSong;
     if (_song == null) return const SizedBox.shrink();
 
     final progress = _duration.inMilliseconds > 0
@@ -49,61 +54,35 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
         : 0.0;
 
     return GestureDetector(
-      onTap: () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage()));
-      },
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage())),
       child: Container(
-        height: 56,
+        height: 52,
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.92),
-          border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.15))),
+          color: Theme.of(context).colorScheme.surface,
+          border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.12))),
         ),
         child: Column(
           children: [
-            SizedBox(
-              height: 2,
-              child: LinearProgressIndicator(value: progress, minHeight: 2, backgroundColor: Colors.transparent, color: Colors.deepPurple),
-            ),
+            LinearProgressIndicator(value: progress, minHeight: 1.5, backgroundColor: Colors.transparent, color: Colors.deepPurple),
             Expanded(
-              child: Row(
-                children: [
-                  const SizedBox(width: 12),
-                  // 封面
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: _song!.coverUrl != null && _song!.coverUrl!.isNotEmpty
-                        ? Image.asset('', width: 36, height: 36, errorBuilder: (_, e, s) => _musicIcon())
-                        : _musicIcon(),
-                  ),
-                  const SizedBox(width: 10),
-                  // 歌曲信息
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(_song!.title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
-                        Text(_song!.uploader, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                      ],
-                    ),
-                  ),
-                  // 控制按钮
-                  IconButton(
-                    icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 28, color: Colors.deepPurple),
-                    onPressed: () {
-                      _service.togglePause();
-                      setState(() => _isPlaying = !_isPlaying);
-                    },
-                  ),
-                  const SizedBox(width: 4),
-                ],
-              ),
+              child: Row(children: [
+                const SizedBox(width: 12),
+                Icon(Icons.music_note, color: Colors.deepPurple, size: 24),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('${_song!.title} · ${_song!.uploader}',
+                      style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                ),
+                IconButton(
+                  icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 26, color: Colors.deepPurple),
+                  onPressed: () { _service.togglePause(); setState(() => _isPlaying = !_isPlaying); },
+                ),
+                const SizedBox(width: 4),
+              ]),
             ),
           ],
         ),
       ),
     );
   }
-
-  Widget _musicIcon() => const Icon(Icons.music_note, color: Colors.deepPurple, size: 30);
 }
