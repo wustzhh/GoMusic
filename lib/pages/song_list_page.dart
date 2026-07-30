@@ -256,7 +256,10 @@ class _SongListPageState extends State<SongListPage> {
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
       final f = File(song.coverUrl!);
       if (f.existsSync() && f.lengthSync() > 0) {
-        return Image(image: FileImage(f), width: 36, height: 36, fit: BoxFit.cover);
+        try {
+          final bytes = f.readAsBytesSync();
+          return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.memory(bytes, width: 36, height: 36, fit: BoxFit.cover));
+        } catch (_) {}
       }
     }
     return _icon();
