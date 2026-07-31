@@ -1,0 +1,537 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/material.dart';
+import '../services/bilibili_api.dart';
+import '../services/settings_service.dart';
+
+class DownloadPage extends StatefulWidget {
+  const DownloadPage({super.key});
+  @override
+  State<DownloadPage> createState() => _DownloadPageState();
+}
+
+class _DownloadPageState extends State<DownloadPage> {
+  final _urlController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _authorController = TextEditingController();
+  final _api = BilibiliApi();
+
+  bool _downloadVideo = false;
+  bool _isParsing = false;
+  bool _isDownloading = false;
+  double _downloadProgress = 0;
+
+  BilibiliVideoInfo? _singleInfo;
+  VideoStream? _selectedStream;
+  bool _alreadyDownloaded = false;
+  bool _coverMissing = false;
+
+  // 批量下载
+  List<_BatchItem> _batchItems = [];
+  int _batchTotal = 0;
+  int _batchDone = 0;
+
+  String? _downloadDir;
+
+  @override
+  void initState() {
+    super.initState();
+    SettingsService.getInstance().then((s) => s.getDownloadPath().then((d) => _downloadDir = d));
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    _nameController.dispose();
+    _authorController.dispose();
+    super.dispose();
+  }
+
+  // ==================== 解析 ====================
+
+  Future<void> _parseUrl() async {
+    final url = _urlController.text.trim();
+    if (url.isEmpty) return;
+
+    setState(() {
+      _isParsing = true; _singleInfo = null; _batchItems = [];
+      _alreadyDownloaded = false; _downloadVideo = false;
+    });
+
+    if (_isCollectionUrl(url)) {
+      await _parseCollection(url);
+    } else {
+      final info = await _api.getVideoInfo(url);
+      if (!mounted) return;
+      if (info != null) {
+        _checkSingleExists(info);
+        setState(() {
+          _singleInfo = info; _isParsing = false;
+          _nameController.text = info.title;
+          _authorController.text = info.author;
+          _selectedStream = info.videoStreams.isNotEmpty ? info.videoStreams.first : null;
+        });
+      } else {
+        setState(() => _isParsing = false);
+        _snack('解析失败，请检查URL');
+      }
+    }
+  }
+
+  bool _isCollectionUrl(String url) =>
+      url.contains('/list/ml') || url.contains('medialist') || url.contains('favlist') ||
+      (url.contains('fid=') && url.contains('space.bilibili.com'));
+
+  Future<void> _parseCollection(String url) async {
+    final videos = await _api.getCollectionVideos(url);
+    if (!mounted) return;
+    if (videos == null || videos.isEmpty) {
+      // 回退普通解析
+      final info = await _api.getVideoInfo(url);
+      if (!mounted) return;
+      if (info != null) {
+        _checkSingleExists(info);
+        setState(() {
+          _singleInfo = info; _isParsing = false;
+          _nameController.text = info.title;
+          _authorController.text = info.author;
+          _selectedStream = info.videoStreams.isNotEmpty ? info.videoStreams.first : null;
+        });
+      } else {
+        setState(() => _isParsing = false);
+        _snack('解析失败');
+      }
+      return;
+    }
+
+    final dir = _downloadDir ?? '';
+    setState(() {
+      _batchItems = videos.map((v) {
+        final name = _safeName(v.title);
+        final exists = File('$dir\\$name.m4a').existsSync();
+        return _BatchItem(info: v, exists: exists, name: name);
+      }).toList();
+      _isParsing = false;
+    });
+  }
+
+  void _checkSingleExists(BilibiliVideoInfo info) {
+    final dir = _downloadDir ?? '';
+    final name = _safeName(info.title);
+    final hasAudio = File('$dir\\$name.m4a').existsSync();
+    final hasCover = File('$dir\\$name.jpg').existsSync();
+    _alreadyDownloaded = hasAudio && hasCover;
+    _coverMissing = hasAudio && !hasCover;
+  }
+
+  void _snack(String msg) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  void _saveMeta(String dir, String name, String author, BilibiliVideoInfo info) {
+    try {
+      final meta = {'author': author, 'duration': info.durationSeconds};
+      File('$dir\\$name.json').writeAsStringSync(jsonEncode(meta));
+    } catch (_) {}
+  }
+
+  // ==================== 单个下载 ====================
+
+  Future<void> _startSingle() async {
+    final info = _singleInfo;
+    if (info == null || info.audioUrl == null) { _snack('无下载地址'); return; }
+    final dir = _downloadDir ?? '';
+    final name = _safeName(_nameController.text.trim());
+
+    setState(() { _isDownloading = true; _downloadProgress = 0; });
+
+    // 封面（失败不影响主流程）
+    var coverFailed = false;
+    if (info.coverUrl.isNotEmpty) {
+      final ok = await StreamDownloader.download(url: info.coverUrl, savePath: '$dir\\$name.jpg', onProgress: (_) {});
+      coverFailed = !ok;
+    }
+    // 音频
+    final audioOk = await StreamDownloader.download(
+      url: info.audioUrl!, savePath: '$dir\\$name.m4a',
+      onProgress: (p) { if (mounted) setState(() => _downloadProgress = p * (_downloadVideo ? 0.5 : 1.0)); },
+    );
+    // 视频
+    var videoOk = !_downloadVideo;
+    if (_downloadVideo && _selectedStream?.baseUrl != null && audioOk) {
+      videoOk = await StreamDownloader.download(
+        url: _selectedStream!.baseUrl!, savePath: '$dir\\$name.mp4',
+        onProgress: (p) { if (mounted) setState(() => _downloadProgress = 0.5 + p * 0.5); },
+      );
+    }
+
+    if (!mounted) return;
+    String sizeText = '';
+    try { final f = File('$dir\\$name.m4a'); if (f.existsSync()) sizeText = '${(f.lengthSync() / 1048576).toStringAsFixed(1)} MB'; } catch (_) {}
+
+    // 保存元数据（作者+时长）
+    _saveMeta(dir, name, _authorController.text.trim(), info);
+
+    setState(() { _isDownloading = false; _alreadyDownloaded = audioOk; });
+    _snack('${audioOk && videoOk ? "下载完成" : "下载失败"} $sizeText${coverFailed ? " ⚠封面下载失败" : ""}');
+  }
+
+  // ==================== 批量下载 ====================
+
+  Future<void> _startBatch() async {
+    setState(() { _isDownloading = true; _batchTotal = 0; _batchDone = 0; });
+
+    final toDownload = _batchItems.where((b) => !b.exists).toList();
+    _batchTotal = toDownload.length;
+
+    for (final item in toDownload) {
+      if (!mounted) return;
+      setState(() => item.status = _BatchStatus.downloading);
+
+      final full = await _api.getVideoInfo(item.info.url);
+      if (full?.audioUrl == null) {
+        setState(() => item.status = _BatchStatus.failed);
+        _batchDone++;
+        continue;
+      }
+
+      // 封面
+      if (full!.coverUrl.isNotEmpty) {
+        await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}\\${item.name}.jpg', onProgress: (_) {});
+      }
+      // 音频
+      final ok = await StreamDownloader.download(
+        url: full.audioUrl!, savePath: '${_downloadDir}\\${item.name}.m4a',
+        onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
+      );
+
+      setState(() {
+        item.status = ok ? _BatchStatus.done : _BatchStatus.failed;
+        if (ok) item.exists = true;
+        _batchDone++;
+      });
+    }
+
+    if (!mounted) return;
+    setState(() => _isDownloading = false);
+    _snack('批量下载完成: $_batchDone/$_batchTotal');
+  }
+
+  String _safeName(String s) {
+    // 替换非法字符并截断到安全长度
+    var name = s.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    if (name.length > 80) name = name.substring(0, 80);
+    return name;
+  }
+
+  // ==================== UI ====================
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('下载'), centerTitle: true),
+      body: Column(children: [
+        // URL输入区——始终可见
+        _buildUrlInput(),
+        // 内容区可滚动
+        Expanded(child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(children: [
+            if (_isParsing) _buildLoading(),
+            if (_singleInfo != null) _buildSingleResult(),
+            if (_batchItems.isNotEmpty) _buildBatchResult(),
+            const SizedBox(height: 80), // 底部留空给固定按钮
+          ]),
+        )),
+      ]),
+      // 固定底部按钮
+      bottomSheet: _buildBottomBar(),
+    );
+  }
+
+  // ---- URL输入 ----
+  Widget _buildUrlInput() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.15))),
+      ),
+      child: Row(children: [
+        Expanded(
+          child: TextField(
+            controller: _urlController,
+            decoration: InputDecoration(
+              hintText: '粘贴B站视频链接或收藏夹链接...',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              prefixIcon: const Icon(Icons.link, size: 20),
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
+            ),
+            style: const TextStyle(fontSize: 13),
+            onSubmitted: (_) => _parseUrl(),
+          ),
+        ),
+        const SizedBox(width: 8),
+        ElevatedButton(
+          onPressed: _isParsing ? null : _parseUrl,
+          style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12)),
+          child: _isParsing
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('解析'),
+        ),
+      ]),
+    );
+  }
+
+  // ---- 加载中 ----
+  Widget _buildLoading() {
+    return const Padding(padding: EdgeInsets.symmetric(vertical: 24), child: Center(child: CircularProgressIndicator()));
+  }
+
+  // ---- 单个视频结果 ----
+  Widget _buildSingleResult() {
+    final info = _singleInfo!;
+    return Column(children: [
+      const SizedBox(height: 12),
+      _buildInfoCard(info),
+      if (_alreadyDownloaded)
+        _buildAlreadyBadge(),
+      if (_coverMissing)
+        _buildCoverMissingBadge(),
+      if (!_alreadyDownloaded && !_coverMissing) ...[
+        if (info.videoStreams.length > 1) _buildQualityPicker(),
+        const SizedBox(height: 12),
+        _buildEditableFields(),
+        if (_isDownloading && _batchItems.isEmpty) _buildProgressBar(),
+        const SizedBox(height: 8),
+        Row(children: [
+          const Icon(Icons.video_file_outlined, color: Colors.grey, size: 18),
+          const SizedBox(width: 4),
+          const Text('同时下载视频', style: TextStyle(fontSize: 14)),
+          const Spacer(),
+          Switch(value: _downloadVideo, onChanged: _isDownloading ? null : (v) => setState(() => _downloadVideo = v)),
+        ]),
+      ],
+    ]);
+  }
+
+  Widget _buildAlreadyBadge() {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.check_circle, color: Colors.green, size: 16),
+        SizedBox(width: 6),
+        Text('本地已下载', style: TextStyle(color: Colors.green, fontSize: 13)),
+      ]),
+    );
+  }
+
+  Widget _buildCoverMissingBadge() {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(8)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.warning_amber, color: Colors.orange, size: 16),
+        const SizedBox(width: 6),
+        const Text('封面缺失', style: TextStyle(color: Colors.orange, fontSize: 13)),
+        const SizedBox(width: 8),
+        SizedBox(
+          height: 26,
+          child: ElevatedButton.icon(
+            onPressed: _redownloadCover,
+            icon: const Icon(Icons.download, size: 14),
+            label: const Text('补下封面', style: TextStyle(fontSize: 11)),
+            style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8)),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _redownloadCover() async {
+    final info = _singleInfo;
+    if (info == null || info.coverUrl.isEmpty) return;
+    final dir = _downloadDir ?? '';
+    final name = _safeName(_nameController.text.trim());
+    final ok = await StreamDownloader.download(
+      url: info.coverUrl, savePath: '$dir\\$name.jpg', onProgress: (_) {},
+    );
+    if (ok) {
+      setState(() {
+        _coverMissing = false;
+        _alreadyDownloaded = true;
+      });
+      _snack('封面已补下');
+    } else {
+      _snack('封面下载失败');
+    }
+  }
+
+  Widget _buildInfoCard(BilibiliVideoInfo info) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(padding: const EdgeInsets.all(10), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ClipRRect(borderRadius: BorderRadius.circular(8),
+          child: info.coverUrl.isNotEmpty
+              ? Image.network(info.coverUrl, width: 80, height: 80, fit: BoxFit.cover, errorBuilder: (_, e, s) => _placeholder())
+              : _placeholder()),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(info.title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 4),
+          Text('${info.author} · ${info.durationText}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 2),
+          Text('音频 ${info.audioSizeText} | 视频 ${_selectedStream?.sizeText ?? '未知'}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Text('BV: ${info.bvid}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        ])),
+      ])),
+    );
+  }
+
+  Widget _placeholder() => Container(width: 80, height: 80, decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.image, color: Colors.grey, size: 30));
+
+  Widget _buildQualityPicker() {
+    final streams = _singleInfo!.videoStreams;
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: DropdownButton<VideoStream>(
+          value: _selectedStream ?? streams.first, isExpanded: true, underline: const SizedBox(),
+          items: streams.map((s) => DropdownMenuItem(value: s, child: Text(s.description, style: const TextStyle(fontSize: 12)))).toList(),
+          onChanged: (v) { if (v != null) setState(() => _selectedStream = v); },
+        )),
+    );
+  }
+
+  Widget _buildEditableFields() {
+    return Column(children: [
+      TextField(controller: _nameController, decoration: const InputDecoration(labelText: '本地名称', border: OutlineInputBorder(), isDense: true), style: const TextStyle(fontSize: 13)),
+      const SizedBox(height: 8),
+      TextField(controller: _authorController, decoration: const InputDecoration(labelText: '本地作者', border: OutlineInputBorder(), isDense: true), style: const TextStyle(fontSize: 13)),
+    ]);
+  }
+
+  Widget _buildProgressBar() {
+    return Column(children: [
+      const SizedBox(height: 8),
+      LinearProgressIndicator(value: _downloadProgress, minHeight: 6),
+      const SizedBox(height: 4),
+      Text('${(_downloadProgress * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+    ]);
+  }
+
+  // ---- 批量下载结果 ----
+  Widget _buildBatchResult() {
+    return Column(children: [
+      const SizedBox(height: 8),
+      Row(children: [
+        Text('收藏夹 · ${_batchItems.length}个视频', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        const Spacer(),
+        Text('已完成 ${_batchItems.where((b) => b.exists || b.status == _BatchStatus.done).length}/${_batchItems.length}',
+            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+      ]),
+      if (_isDownloading) ...[const SizedBox(height: 4), _buildProgressBar()],
+      const SizedBox(height: 8),
+      ..._batchItems.map((item) => _buildBatchRow(item)),
+      const SizedBox(height: 12),
+    ]);
+  }
+
+  Widget _buildBatchRow(_BatchItem item) {
+    IconData icon; Color color; String label;
+    switch (item.status) {
+      case _BatchStatus.done: icon = Icons.check_circle; color = Colors.green; label = '已下载'; break;
+      case _BatchStatus.downloading: icon = Icons.downloading; color = Colors.orange; label = '下载中'; break;
+      case _BatchStatus.failed: icon = Icons.error; color = Colors.red; label = '失败'; break;
+      case _BatchStatus.waiting: icon = Icons.hourglass_empty; color = Colors.grey; label = '等待'; break;
+    }
+    if (item.exists && item.status == _BatchStatus.waiting) {
+      icon = Icons.check_circle; color = Colors.green; label = '已下载';
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 4),
+      child: ListTile(
+        dense: true,
+        leading: Icon(icon, color: color, size: 20),
+        title: Text(item.info.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+        subtitle: Text('${item.info.author} · ${item.info.durationText}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (item.status == _BatchStatus.failed)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.orange, size: 18),
+                padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                onPressed: () => _retryItem(item),
+              ),
+            ),
+          Text(_downloadVideo ? '🎵🎬' : '🎵', style: const TextStyle(fontSize: 11)),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(fontSize: 11, color: color)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _retryItem(_BatchItem item) async {
+    setState(() { item.status = _BatchStatus.downloading; item.exists = false; });
+
+    final full = await _api.getVideoInfo(item.info.url);
+    if (full?.audioUrl == null) { setState(() => item.status = _BatchStatus.failed); return; }
+
+    if (full!.coverUrl.isNotEmpty) {
+      await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}\\${item.name}.jpg', onProgress: (_) {});
+    }
+    final ok = await StreamDownloader.download(
+      url: full.audioUrl!, savePath: '${_downloadDir}\\${item.name}.m4a',
+      onProgress: (_) {},
+    );
+    setState(() { item.status = ok ? _BatchStatus.done : _BatchStatus.failed; if (ok) item.exists = true; });
+  }
+
+  // ---- 固定底部按钮 ----
+  Widget? _buildBottomBar() {
+    if (_isParsing || (!_isDownloading && _singleInfo == null && _batchItems.isEmpty)) return null;
+    if (_singleInfo != null && _alreadyDownloaded) return null;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.15))),
+      ),
+      child: SizedBox(
+        width: double.infinity, height: 44,
+        child: ElevatedButton.icon(
+          onPressed: _isDownloading ? null : (_batchItems.isNotEmpty ? _startBatch : _startSingle),
+          icon: _isDownloading
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Icon(Icons.download),
+          label: Text(
+            _isDownloading ? '下载中...'
+                : _batchItems.isNotEmpty ? '一键下载全部(${_batchItems.where((b) => !b.exists).length}首${_downloadVideo ? " 音频+视频" : " 仅音频"})'
+                : (_downloadVideo ? '开始下载 (音频+视频)' : '开始下载 (仅音频)'),
+            style: const TextStyle(fontSize: 15),
+          ),
+          style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+        ),
+      ),
+    );
+  }
+}
+
+// ==================== 批量下载项状态 ====================
+
+enum _BatchStatus { waiting, downloading, done, failed }
+
+class _BatchItem {
+  final BilibiliVideoInfo info;
+  final String name;
+  bool exists;
+  _BatchStatus status;
+  _BatchItem({required this.info, required this.name, this.exists = false, this.status = _BatchStatus.waiting});
+}
