@@ -107,6 +107,19 @@ class RecentlyPlayedService {
     await prefs.setStringList(_key, list);
   }
 
+  static Future<List<Map<String, String>>> getRecentSongsRaw() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_key) ?? [];
+    return list.map((entry) {
+      final parts = entry.split('|');
+      return <String, String>{
+        if (parts.length >= 7) 'filePath': parts[4],
+        if (parts.length >= 3) 'uploader': parts[2],
+        if (parts.length >= 4) 'durationSec': parts[3],
+      };
+    }).toList();
+  }
+
   /// 获取最近播放列表（只返回文件真实存在的）
   static Future<List<Song>> getRecentSongs() async {
     final prefs = await SharedPreferences.getInstance();
@@ -166,6 +179,21 @@ Future<List<Song>> scanLocalAudioFiles(String dirPath) async {
               author = meta['author'] as String? ?? '';
               duration = Duration(seconds: meta['duration'] as int? ?? 0);
             } catch (_) {}
+          } else {
+            // 回退：从最近播放记录中匹配
+            final recent = await RecentlyPlayedService.getRecentSongsRaw();
+            for (final r in recent) {
+              if (r['filePath'] == f.path) {
+                author = r['uploader'] ?? '';
+                duration = Duration(seconds: int.tryParse(r['durationSec'] ?? '0') ?? 0);
+                // 同时补写metadata.json
+                try {
+                  final meta = {'author': author, 'duration': duration.inSeconds};
+                  metaFile.writeAsStringSync(jsonEncode(meta));
+                } catch (_) {}
+                break;
+              }
+            }
           }
           songs.add(Song(
             id: f.path,
