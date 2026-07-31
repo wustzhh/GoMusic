@@ -30,6 +30,13 @@ class _PlayerPageState extends State<PlayerPage> {
     _refresh();
     _stateSub = _service.onPlayerStateChanged.listen((s) {
       if (mounted) setState(() { _isPlaying = s == PlayerState.playing; _refresh(); });
+      // fallback: M4A在某些平台onDurationChanged不触发，主动获取
+      if (s == PlayerState.playing && _duration == Duration.zero) {
+        Future.delayed(const Duration(seconds: 1), () async {
+          final d = await _service.player.getDuration();
+          if (d != null && mounted) setState(() => _duration = d);
+        });
+      }
     });
     _posSub = _service.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
     _durSub = _service.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
