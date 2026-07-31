@@ -29,7 +29,7 @@ class MusicPlayer:
         if HAS_VLC:
             self._vlc = vlc.Instance("--no-xlib")
             self._player = self._vlc.media_player_new()
-            self._vlc.event_manager().event_attach(
+            self._player.event_manager().event_attach(
                 vlc.EventType.MediaPlayerEndReached, self._on_end)
 
     def _check(self) -> bool:
