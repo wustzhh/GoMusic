@@ -303,7 +303,6 @@ class _DownloadPageState extends State<DownloadPage> {
         if (info.videoStreams.length > 1) _buildQualityPicker(),
         const SizedBox(height: 12),
         _buildEditableFields(),
-        if (_isDownloading && _batchItems.isEmpty) _buildProgressBar(),
         const SizedBox(height: 8),
         Row(children: [
           const Icon(Icons.video_file_outlined, color: Colors.grey, size: 18),
@@ -312,6 +311,11 @@ class _DownloadPageState extends State<DownloadPage> {
           const Spacer(),
           Switch(value: _downloadVideo, onChanged: _isDownloading ? null : (v) => setState(() => _downloadVideo = v)),
         ]),
+      ],
+      // 下载进度（单独显示，不受条件控制）
+      if (_isDownloading) ...[
+        const SizedBox(height: 12),
+        _buildProgressBar(),
       ],
     ]);
   }
@@ -506,22 +510,33 @@ class _DownloadPageState extends State<DownloadPage> {
         color: Theme.of(context).colorScheme.surface,
         border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.15))),
       ),
-      child: SizedBox(
-        width: double.infinity, height: 44,
-        child: ElevatedButton.icon(
-          onPressed: _isDownloading ? null : (_batchItems.isNotEmpty ? _startBatch : _startSingle),
-          icon: _isDownloading
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Icon(Icons.download),
-          label: Text(
-            _isDownloading ? '下载中...'
-                : _batchItems.isNotEmpty ? '一键下载全部(${_batchItems.where((b) => !b.exists).length}首${_downloadVideo ? " 音频+视频" : " 仅音频"})'
-                : (_downloadVideo ? '开始下载 (音频+视频)' : '开始下载 (仅音频)'),
-            style: const TextStyle(fontSize: 15),
-          ),
-          style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-        ),
-      ),
+      child: _isDownloading
+          ? SizedBox(
+              width: double.infinity, height: 44,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  // TODO: 真正取消下载
+                  setState(() => _isDownloading = false);
+                },
+                icon: const Icon(Icons.close, color: Colors.red, size: 18),
+                label: const Text('取消下载', style: TextStyle(fontSize: 15, color: Colors.red)),
+                style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              ),
+            )
+          : SizedBox(
+              width: double.infinity, height: 44,
+              child: ElevatedButton.icon(
+                onPressed: _batchItems.isNotEmpty ? _startBatch : _startSingle,
+                icon: const Icon(Icons.download),
+                label: Text(
+                  _batchItems.isNotEmpty
+                      ? '一键下载全部(${_batchItems.where((b) => !b.exists).length}首${_downloadVideo ? " 音频+视频" : " 仅音频"})'
+                      : (_downloadVideo ? '开始下载 (音频+视频)' : '开始下载 (仅音频)'),
+                  style: const TextStyle(fontSize: 15),
+                ),
+                style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              ),
+            ),
     );
   }
 }
