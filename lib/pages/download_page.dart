@@ -232,8 +232,9 @@ class _DownloadPageState extends State<DownloadPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('下载'), centerTitle: true),
       body: Column(children: [
-        // URL输入区——始终可见
         _buildUrlInput(),
+        // 下载进度固定在顶部
+        if (_isDownloading) _buildProgressBar(),
         // 内容区可滚动
         Expanded(child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -241,7 +242,7 @@ class _DownloadPageState extends State<DownloadPage> {
             if (_isParsing) _buildLoading(),
             if (_singleInfo != null) _buildSingleResult(),
             if (_batchItems.isNotEmpty) _buildBatchResult(),
-            const SizedBox(height: 80), // 底部留空给固定按钮
+            const SizedBox(height: 80),
           ]),
         )),
       ]),
