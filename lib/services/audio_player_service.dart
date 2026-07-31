@@ -17,6 +17,11 @@ class AudioPlayerService {
     _player.onPlayerComplete.listen((_) {
       next();
     });
+    _player.onDurationChanged.listen((d) {
+      if (d.inMilliseconds > 0 && _currentSong != null) {
+        _writeMeta(_currentSong!, d);
+      }
+    });
   }
 
   final AudioPlayer _player = AudioPlayer();
@@ -56,10 +61,6 @@ class AudioPlayerService {
     currentSongNotifier.value = song;
     await _player.stop();
     await _player.play(DeviceFileSource(song.filePath));
-
-    // 播放后补写元数据（为没有metadata的旧歌）
-    _fixMeta(song);
-
     _saveState();
     // 异步记录最近播放（不阻塞播放）
     RecentlyPlayedService.addIfNotExists(
@@ -158,21 +159,14 @@ class AudioPlayerService {
         '${_currentSong!.filePath}|${_currentSong!.title}|${_currentSong!.uploader}|${_currentSong!.duration.inSeconds}|${_currentSong!.bvid}|${_currentSong!.coverUrl ?? ''}');
   }
 
-  void _fixMeta(Song song) {
-    // 延迟获取真实时长并写入metadata
-    Future.delayed(const Duration(seconds: 2), () async {
-      try {
-        final d = await _player.getDuration();
-        if (d != null && d.inMilliseconds > 0) {
-          final metaPath = '${song.filePath.substring(0, song.filePath.lastIndexOf('.'))}.json';
-          final metaFile = File(metaPath);
-          if (!metaFile.existsSync()) {
-            final meta = {'author': song.uploader, 'duration': d.inSeconds};
-            await metaFile.writeAsString(jsonEncode(meta));
-          }
-        }
-      } catch (_) {}
-    });
+  void _writeMeta(Song song, Duration d) {
+    try {
+      final metaPath = '${song.filePath.substring(0, song.filePath.lastIndexOf('.'))}.json';
+      final metaFile = File(metaPath);
+      final author = song.uploader.isNotEmpty ? song.uploader : '';
+      final meta = {'author': author, 'duration': d.inSeconds};
+      metaFile.writeAsStringSync(jsonEncode(meta));
+    } catch (_) {}
   }
 
   Future<void> _saveMode() async {
