@@ -14,6 +14,11 @@ class AudioPlayerService {
   factory AudioPlayerService() => _instance;
   AudioPlayerService._() {
     _player.onPlayerComplete.listen((_) => next());
+    _player.onDurationChanged.listen((d) {
+      if (d.inMilliseconds > 0 && _currentSong != null) {
+        _writeMeta(_currentSong!, d);
+      }
+    });
   }
 
   final AudioPlayer _player = AudioPlayer();
@@ -88,4 +93,11 @@ class AudioPlayerService {
   Future<void> _saveState() async { if (_currentSong == null) return; final p = await SharedPreferences.getInstance(); await p.setString('last_song', '${_currentSong!.filePath}|${_currentSong!.title}|${_currentSong!.uploader}|${_currentSong!.duration.inSeconds}|${_currentSong!.bvid}|${_currentSong!.coverUrl ?? ''}'); }
   Future<void> _saveMode() async { final p = await SharedPreferences.getInstance(); await p.setInt('play_mode', _playMode.index); }
   Future<Song?> restoreLastSong() async { final p = await SharedPreferences.getInstance(); final last = p.getString('last_song'); if (last == null) return null; final parts = last.split('|'); if (parts.length < 5) return null; final sm = p.getInt('play_mode'); if (sm != null && sm < PlayMode.values.length) _playMode = PlayMode.values[sm]; return Song(id: parts[4], title: parts[1], uploader: parts.length > 2 ? parts[2] : '', duration: Duration(seconds: int.tryParse(parts[3]) ?? 0), filePath: parts[0], bvid: parts[4], coverUrl: parts.length > 5 && parts[5].isNotEmpty ? parts[5] : null); }
+
+  void _writeMeta(Song song, Duration d) {
+    try {
+      final metaPath = '${song.filePath.substring(0, song.filePath.lastIndexOf('.'))}.json';
+      File(metaPath).writeAsStringSync(jsonEncode({'author': song.uploader, 'duration': d.inSeconds}));
+    } catch (_) {}
+  }
 }

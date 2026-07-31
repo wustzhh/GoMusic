@@ -205,6 +205,7 @@ class _DownloadPageState extends State<DownloadPage> {
         onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
       );
 
+      if (ok) _saveMeta(_downloadDir!, item.name, full.author, full);
       setState(() {
         item.status = ok ? _BatchStatus.done : _BatchStatus.failed;
         if (ok) item.exists = true;
@@ -490,6 +491,7 @@ class _DownloadPageState extends State<DownloadPage> {
       url: full.audioUrl!, savePath: '${_downloadDir}\\${item.name}.m4a',
       onProgress: (_) {},
     );
+    if (ok) _saveMeta(_downloadDir!, item.name, full.author, full);
     setState(() { item.status = ok ? _BatchStatus.done : _BatchStatus.failed; if (ok) item.exists = true; });
   }
 
