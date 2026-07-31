@@ -1,4 +1,3 @@
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
@@ -24,13 +23,13 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
     _isPlaying = _service.isPlaying;
 
     _service.currentSongNotifier.addListener(_onSongChanged);
-    _service.player.onPlayerStateChanged.listen((s) {
-      if (mounted) setState(() => _isPlaying = s == PlayerState.playing);
+    _service.onPlayingChanged.listen((playing) {
+      if (mounted) setState(() => _isPlaying = playing);
     });
-    _service.player.onPositionChanged.listen((p) {
+    _service.onPositionChanged.listen((p) {
       if (mounted) setState(() => _position = p);
     });
-    _service.player.onDurationChanged.listen((d) {
+    _service.onDurationChanged.listen((d) {
       if (mounted) setState(() => _duration = d);
     });
   }

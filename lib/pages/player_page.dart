@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
@@ -28,15 +27,8 @@ class _PlayerPageState extends State<PlayerPage> {
     super.initState();
     if (widget.song != null) _service.playSong(widget.song!);
     _refresh();
-    _stateSub = _service.onPlayerStateChanged.listen((s) {
-      if (mounted) setState(() { _isPlaying = s == PlayerState.playing; _refresh(); });
-      // fallback: M4A在某些平台onDurationChanged不触发，主动获取
-      if (s == PlayerState.playing && _duration == Duration.zero) {
-        Future.delayed(const Duration(seconds: 1), () async {
-          final d = await _service.player.getDuration();
-          if (d != null && mounted) setState(() => _duration = d);
-        });
-      }
+    _stateSub = _service.onPlayingChanged.listen((playing) {
+      if (mounted) setState(() { _isPlaying = playing; _refresh(); });
     });
     _posSub = _service.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
     _durSub = _service.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
