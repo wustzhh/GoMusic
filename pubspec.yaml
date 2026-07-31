@@ -39,7 +39,7 @@ dependencies:
   http: ^1.6.0
   crypto: ^3.0.7
   flutter_inappwebview: ^6.1.5
-  just_audio: ^0.10.6
+  audioplayers: ^6.8.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
