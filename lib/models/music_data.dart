@@ -156,11 +156,22 @@ Future<List<Song>> scanLocalAudioFiles(String dirPath) async {
           final coverPath = '$dirPath${Platform.pathSeparator}$name.jpg';
           final coverFile = File(coverPath);
           final hasCover = coverFile.existsSync() && coverFile.lengthSync() > 0;
+          // 读元数据
+          String author = '';
+          Duration duration = Duration.zero;
+          final metaFile = File('$dirPath${Platform.pathSeparator}$name.json');
+          if (metaFile.existsSync()) {
+            try {
+              final meta = jsonDecode(metaFile.readAsStringSync());
+              author = meta['author'] as String? ?? '';
+              duration = Duration(seconds: meta['duration'] as int? ?? 0);
+            } catch (_) {}
+          }
           songs.add(Song(
             id: f.path,
             title: name,
-            uploader: '',
-            duration: Duration.zero,
+            uploader: author,
+            duration: duration,
             filePath: f.path,
             coverUrl: hasCover ? coverPath : null,
           ));

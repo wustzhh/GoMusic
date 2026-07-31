@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/bilibili_api.dart';
@@ -127,6 +128,13 @@ class _DownloadPageState extends State<DownloadPage> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  void _saveMeta(String dir, String name, String author, BilibiliVideoInfo info) {
+    try {
+      final meta = {'author': author, 'duration': info.durationSeconds};
+      File('$dir\\$name.json').writeAsStringSync(jsonEncode(meta));
+    } catch (_) {}
+  }
+
   // ==================== 单个下载 ====================
 
   Future<void> _startSingle() async {
@@ -160,6 +168,9 @@ class _DownloadPageState extends State<DownloadPage> {
     if (!mounted) return;
     String sizeText = '';
     try { final f = File('$dir\\$name.m4a'); if (f.existsSync()) sizeText = '${(f.lengthSync() / 1048576).toStringAsFixed(1)} MB'; } catch (_) {}
+
+    // 保存元数据（作者+时长）
+    _saveMeta(dir, name, _authorController.text.trim(), info);
 
     setState(() { _isDownloading = false; _alreadyDownloaded = audioOk; });
     _snack('${audioOk && videoOk ? "下载完成" : "下载失败"} $sizeText${coverFailed ? " ⚠封面下载失败" : ""}');
