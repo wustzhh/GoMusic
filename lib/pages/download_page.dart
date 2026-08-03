@@ -316,7 +316,6 @@ class _DownloadPageState extends State<DownloadPage> {
       // 下载进度（单独显示，不受条件控制）
       if (_isDownloading) ...[
         const SizedBox(height: 12),
-        _buildProgressBar(),
       ],
     ]);
   }
@@ -421,12 +420,23 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   Widget _buildProgressBar() {
-    return Column(children: [
-      const SizedBox(height: 8),
-      LinearProgressIndicator(value: _downloadProgress, minHeight: 6),
-      const SizedBox(height: 4),
-      Text('${(_downloadProgress * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-    ]);
+    final pct = (_downloadProgress * 100).toStringAsFixed(0);
+    final name = _singleInfo != null ? _nameController.text.trim() : '';
+    final batch = _batchItems.isNotEmpty ? '${_batchDone}/${_batchTotal}' : '';
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Colors.deepPurple.withValues(alpha: 0.12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (batch.isNotEmpty) Text('下载 $batch 首', style: TextStyle(fontSize: 11, color: Colors.grey)),
+        if (name.isNotEmpty) Text(name, style: TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+        SizedBox(height: 6),
+        Row(children: [
+          Expanded(child: LinearProgressIndicator(value: _downloadProgress, minHeight: 6)),
+          SizedBox(width: 12),
+          Text('$pct%', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        ]),
+      ]),
+    );
   }
 
   // ---- 批量下载结果 ----
@@ -439,8 +449,6 @@ class _DownloadPageState extends State<DownloadPage> {
         Text('已完成 ${_batchItems.where((b) => b.exists || b.status == _BatchStatus.done).length}/${_batchItems.length}',
             style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ]),
-      if (_isDownloading) ...[const SizedBox(height: 4), _buildProgressBar()],
-      const SizedBox(height: 8),
       ..._batchItems.map((item) => _buildBatchRow(item)),
       const SizedBox(height: 12),
     ]);
