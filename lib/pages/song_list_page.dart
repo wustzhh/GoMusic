@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
@@ -140,20 +141,46 @@ class _SongListPageState extends State<SongListPage> {
               itemBuilder: (_, i) {
                 final song = filtered[i]; final isFav = _favs.contains(song.filePath);
                 final isPlaying = _service.currentSong?.filePath == song.filePath;
-                return Container(
-                  color: isPlaying ? Colors.deepPurple.withValues(alpha: 0.12) : Colors.transparent,
-                  child: ListTile(
-                    leading: isPlaying
-                      ? const Icon(Icons.volume_up, color: Colors.deepPurple, size: 28)
-                      : _buildCover(song),
-                    title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal)),
-                    subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                  trailing: Stack(clipBehavior: Clip.none, children: [
-                    IconButton(icon: Icon(Icons.add_circle_outline, color: Colors.grey[500], size: 24), onPressed: () => _showAddToList(song)),
-                    if (isFav) Positioned(right: 0, bottom: 0, child: Container(width: 12, height: 12, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle), child: const Icon(Icons.favorite, color: Colors.white, size: 7))),
-                  ]),
-                  onTap: () => _playSong(song),
-                ));
+                return GestureDetector(
+                  onLongPress: () {
+                    Clipboard.setData(ClipboardData(text: song.title));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已复制: ${song.title}')));
+                  },
+                  child: Container(
+                    color: isPlaying ? Colors.deepPurple.withValues(alpha: 0.12) : Colors.transparent,
+                    child: ListTile(
+                      leading: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          _buildCover(song),
+                          if (isFav)
+                            Positioned(right: -4, bottom: -4,
+                              child: Icon(Icons.favorite, color: Colors.red, size: 14)),
+                        ],
+                      ),
+                      title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      trailing: PopupMenuButton<String>(
+                        icon: Icon(Icons.more_vert, color: Colors.grey[500], size: 20),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(maxWidth: 32),
+                        itemBuilder: (_) => [
+                          const PopupMenuItem(value: 'fav', child: Text(isFav ? '取消收藏' : '添加到我喜欢')),
+                          const PopupMenuItem(value: 'add', child: Text('添加到歌单...')),
+                        ],
+                        onSelected: (v) {
+                          if (v == 'fav') {
+                            AudioPlayerService.toggleFavorite(song.filePath);
+                            _loadFavs();
+                          } else {
+                            _showAddToList(song);
+                          }
+                        },
+                      ),
+                      onTap: () => _playSong(song),
+                    ),
+                  ),
+                );
               })),
         _buildBottomBar(),
       ]),
@@ -171,7 +198,7 @@ class _SongListPageState extends State<SongListPage> {
           GestureDetector(
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage())),
             child: Container(padding: const EdgeInsets.symmetric(vertical: 6), child: Row(children: [
-              Icon(Icons.music_note, color: currentSong != null ? Colors.deepPurple : Colors.grey, size: 20),
+              ClipRRect(borderRadius: BorderRadius.circular(4), child: _buildCoverSmall(displaySong),),
               const SizedBox(width: 10),
               Expanded(child: Text(displaySong.title, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
               if (_service.isPlaying) const Icon(Icons.volume_up, color: Colors.deepPurple, size: 18),
@@ -266,4 +293,16 @@ class _SongListPageState extends State<SongListPage> {
   }
 
   Widget _icon() => const Icon(Icons.music_note, color: Colors.deepPurple, size: 28);
+
+  Widget _buildCoverSmall(Song song) {
+    if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
+      final f = File(song.coverUrl!);
+      if (f.existsSync() && f.lengthSync() > 0) {
+        try {
+          return Image.memory(f.readAsBytesSync(), width: 36, height: 36, fit: BoxFit.cover);
+        } catch (_) {}
+      }
+    }
+    return Icon(Icons.music_note, color: Colors.deepPurple, size: 24);
+  }
 }
