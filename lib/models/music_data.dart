@@ -26,6 +26,7 @@ class Song {
     this.hasVideo = false,
     this.bvid = '',
     this.filePath = '',
+    this.lastPlayed,
     this.originalUrl = '',
     this.originalTitle = '',
     this.originalAuthor = '',
