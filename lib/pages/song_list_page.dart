@@ -18,6 +18,8 @@ class _SongListPageState extends State<SongListPage> {
   late List<Song> _songs;
   Set<String> _favs = {};
   String _searchText = '';
+  Duration _position = Duration.zero;
+  Duration _duration = Duration.zero;
 
   @override
   void initState() {
@@ -25,6 +27,8 @@ class _SongListPageState extends State<SongListPage> {
     _songs = List.from(widget.playlist.songs);
     _loadFavs();
     _service.currentSongNotifier.addListener(_onSongChanged);
+    _service.onPositionChanged.listen((p) => setState(() => _position = p));
+    _service.onDurationChanged.listen((d) => setState(() => _duration = d));
   }
 
   @override
@@ -121,6 +125,27 @@ class _SongListPageState extends State<SongListPage> {
     ));
   }
 
+  void _showSongMenu(Song song, bool isFav) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? Colors.red : Colors.grey),
+            title: Text(isFav ? '取消收藏' : '添加到我喜欢'),
+            onTap: () { Navigator.pop(ctx); AudioPlayerService.toggleFavorite(song.filePath); _loadFavs(); }),
+          ListTile(leading: const Icon(Icons.playlist_add), title: const Text('添加到歌单...'),
+            onTap: () { Navigator.pop(ctx); _showAddToList(song); }),
+        ]),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _getFiltered();
@@ -167,22 +192,16 @@ class _SongListPageState extends State<SongListPage> {
                       ),
                       title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                      trailing: PopupMenuButton<String>(
-                        icon: Icon(Icons.more_vert, color: Colors.grey, size: 18),
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(maxWidth: 32, maxHeight: 32),
-                        itemBuilder: (_) => [
-                          PopupMenuItem(value: 'fav', height: 32, padding: const EdgeInsets.symmetric(horizontal: 12), child: Text(isFav ? '取消收藏' : '添加到我喜欢', style: const TextStyle(fontSize: 13))),
-                          PopupMenuItem(value: 'add', height: 32, padding: const EdgeInsets.symmetric(horizontal: 12), child: const Text('添加到歌单...', style: TextStyle(fontSize: 13))),
-                        ],
-                        onSelected: (v) {
-                          if (v == 'fav') {
-                            AudioPlayerService.toggleFavorite(song.filePath);
-                            _loadFavs();
-                          } else {
-                            _showAddToList(song);
-                          }
-                        },
+                      trailing: SizedBox(
+                        width: 32, height: 32,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(4),
+                            onTap: () => _showSongMenu(song, isFav),
+                            child: const Icon(Icons.more_horiz, color: Colors.grey, size: 20),
+                          ),
+                        ),
                       ),
                       onTap: () => _playSong(song),
                     ),
@@ -197,91 +216,116 @@ class _SongListPageState extends State<SongListPage> {
   Widget _buildBottomBar() {
     final currentSong = _service.currentSong;
     final displaySong = currentSong ?? (_getFiltered().isNotEmpty ? _getFiltered().first : null);
-    return Container(
-      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surface, border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.12)))),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (displaySong != null)
-          GestureDetector(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage())),
-            child: Container(padding: const EdgeInsets.symmetric(vertical: 6), child: Row(children: [
-              ClipRRect(borderRadius: BorderRadius.circular(4), child: _buildCoverSmall(displaySong),),
-              const SizedBox(width: 10),
-              Expanded(child: Text(displaySong.title, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
-              if (_service.isPlaying) const Icon(Icons.volume_up, color: Colors.deepPurple, size: 18),
-            ])),
+    if (displaySong == null) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(children: [
+          ClipRRect(borderRadius: BorderRadius.circular(6), child: _buildCoverSmall(displaySong)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: GestureDetector(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage())),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(displaySong.title, style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+                if (displaySong.uploader.isNotEmpty)
+                  Text(displaySong.uploader, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              ]),
+            ),
           ),
-        SizedBox(height: 40, child: Row(children: [
-          GestureDetector(
-            onTap: () {
-              if (_service.queue.isEmpty) _service.setQueue(_getFiltered(), startIndex: 0);
-              showModalBottomSheet(context: context, isScrollControlled: true,
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-                builder: (_) => StatefulBuilder(builder: (ctx, setSheetState) => _buildQueueSheet(setSheetState)),
-              );
-            },
-            child: Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8), child: Row(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.queue_music, size: 18, color: Colors.grey), const SizedBox(width: 6),
-              Text('播放列表', style: TextStyle(fontSize: 13, color: Colors.grey[600])),
-            ])),
-          ),
-          const Spacer(),
-          GestureDetector(
-            onTap: () {
-              showModalBottomSheet(context: context,
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-                builder: (_) => StatefulBuilder(builder: (ctx, setSheetState) => Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: PlayMode.values.map((m) {
-                  final sel = _service.playMode == m;
-                  return ListTile(
-                    leading: Icon(sel ? Icons.radio_button_checked : Icons.radio_button_off, color: sel ? Colors.deepPurple : Colors.grey, size: 20),
-                    title: Text(_modeLabel(m)),
-                    onTap: () { _service.setPlayMode(m); setState(() {}); setSheetState(() {}); Navigator.pop(context); },
-                  );
-                }).toList()))),
-              );
-            },
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Text(_service.playModeLabel, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-              const Icon(Icons.arrow_drop_down, color: Colors.grey, size: 16),
+          const SizedBox(width: 8),
+          // 圆形进度播放按钮
+          SizedBox(
+            width: 40, height: 40,
+            child: Stack(alignment: Alignment.center, children: [
+              CircularProgressIndicator(
+                value: _duration.inMilliseconds > 0 ? _position.inMilliseconds / _duration.inMilliseconds : 0,
+                strokeWidth: 2.5, color: Colors.deepPurple, backgroundColor: Colors.grey.withValues(alpha: 0.2),
+              ),
+              IconButton(
+                icon: Icon(_service.isPlaying ? Icons.pause : Icons.play_arrow, size: 22, color: Colors.deepPurple),
+                onPressed: () => _service.togglePause(),
+                padding: EdgeInsets.zero,
+              ),
             ]),
           ),
-        ])),
-      ]),
+          IconButton(icon: const Icon(Icons.queue_music, size: 22, color: Colors.grey), onPressed: _showQueueSheet),
+        ]),
+      ),
     );
   }
 
-  Widget _buildQueueSheet(void Function(VoidCallback) setSheetState) {
-    final queue = _service.queue.isNotEmpty ? _service.queue : _getFiltered();
-    final scrollCtrl = ScrollController();
-    final targetIndex = _service.queueIndex;
+  void _showQueueSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.65, minChildSize: 0.4, maxChildSize: 0.9,
+        builder: (ctx, scrollCtrl) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(children: [
+            Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+              const Icon(Icons.drag_handle, color: Colors.grey, size: 24),
+              const Spacer(),
+              Text(_service.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  Navigator.pop(context);
+                  _showModePicker();
+                },
+                child: const Icon(Icons.swap_horiz, color: Colors.grey, size: 20),
+              ),
+            ])),
+            Expanded(child: ListView.builder(
+              controller: scrollCtrl,
+              itemCount: _service.queue.length,
+              itemBuilder: (_, i) {
+                final s = _service.queue[i]; final cur = i == _service.queueIndex;
+                return ListTile(
+                  leading: Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.deepPurple : Colors.grey, size: 20),
+                  title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: cur ? FontWeight.bold : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { _service.removeFromQueue(i); setState(() {}); }),
+                  onTap: () { _service.playSong(s); Navigator.pop(context); },
+                );
+              },
+            )),
+          ]),
+        ),
+      ),
+    );
+  }
 
-    // 定位到正在播放的歌曲
-    if (targetIndex >= 0 && targetIndex < queue.length) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final itemHeight = 56.0;
-        final offset = (targetIndex * itemHeight).clamp(0.0, scrollCtrl.position.maxScrollExtent);
-        scrollCtrl.animateTo(offset, duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
-      });
-    }
-
-    return SizedBox(height: MediaQuery.of(context).size.height * 0.5, child: Column(children: [
-      Padding(padding: const EdgeInsets.all(16), child: Text('播放列表 (${queue.length}首)', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-      Expanded(child: queue.isEmpty ? const Center(child: Text('队列为空')) : ListView.builder(
-        controller: scrollCtrl, itemCount: queue.length, itemBuilder: (_, i) {
-        final s = queue[i]; final isCur = i == _service.queueIndex;
-        return ListTile(
-          leading: Icon(isCur ? Icons.play_arrow : Icons.music_note, color: isCur ? Colors.deepPurple : Colors.grey, size: 22),
-          title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: isCur ? FontWeight.bold : FontWeight.normal)),
-          onTap: () {
-            if (_service.queue.isEmpty) _service.setQueue(_getFiltered(), startIndex: i);
-            _service.playSong(s);
-            setState(() {});
-            setSheetState(() {});
-            Navigator.pop(context);
-          },
-        );
-      })),
-    ]));
+  void _showModePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Column(mainAxisSize: MainAxisSize.min, children: PlayMode.values.map((m) {
+          final sel = _service.playMode == m;
+          return ListTile(
+            leading: Icon(sel ? Icons.radio_button_checked : Icons.radio_button_off, color: sel ? Colors.deepPurple : Colors.grey),
+            title: Text(_modeLabel(m)),
+            onTap: () { _service.setPlayMode(m); setState(() {}); Navigator.pop(context); },
+          );
+        }).toList()),
+      ),
+    );
   }
 
   String _modeLabel(PlayMode m) { switch (m) { case PlayMode.sequential: return '顺序播放'; case PlayMode.loopList: return '列表循环'; case PlayMode.loopOne: return '单曲循环'; case PlayMode.shuffle: return '随机播放'; }}
