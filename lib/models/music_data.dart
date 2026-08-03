@@ -12,8 +12,6 @@ class Song {
   final bool hasVideo;
   final String bvid;
   final String filePath;
-  final DateTime? lastPlayed;
-
   final String originalUrl;
   final String originalTitle;
   final String originalAuthor;
@@ -27,7 +25,6 @@ class Song {
     this.hasVideo = false,
     this.bvid = '',
     this.filePath = '',
-    this.lastPlayed,
     this.originalUrl = '',
     this.originalTitle = '',
     this.originalAuthor = '',
@@ -39,17 +36,6 @@ class Song {
     final s = duration.inSeconds % 60;
     return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
   }
-
-  String get lastPlayedText {
-    if (lastPlayed == null) return '';
-    final now = DateTime.now();
-    final diff = now.difference(lastPlayed!);
-    if (diff.inMinutes < 1) return '刚刚';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}分钟前';
-    if (diff.inHours < 24) return '${diff.inHours}小时前';
-    if (diff.inDays < 7) return '${diff.inDays}天前';
-    return '${lastPlayed!.month.toString().padLeft(2, '0')}-${lastPlayed!.day.toString().padLeft(2, '0')} ${lastPlayed!.hour.toString().padLeft(2, '0')}:${lastPlayed!.minute.toString().padLeft(2, '0')}';
-  }
 }
 
 /// 播放列表模型
@@ -58,92 +44,147 @@ class Playlist {
   final String name;
   final String icon;
   final List<Song> songs;
-
   const Playlist({required this.id, required this.name, required this.icon, required this.songs});
 }
 
-/// 下载记录模型
-class DownloadRecord {
-  final String id;
-  final String title;
-  final String url;
-  final bool downloadVideo;
-  final double progress;
-  final DownloadStatus status;
-  final bool hasAudio;
-  final bool hasVideo;
-  final String? fileSize;
+// ============================================================
+// 歌曲管理器 — 统一管理 metadata_map.json
+// ============================================================
 
-  const DownloadRecord({required this.id, required this.title, required this.url, this.downloadVideo = false, this.progress = 0.0, this.status = DownloadStatus.pending, this.hasAudio = false, this.hasVideo = false, this.fileSize});
+class SongManager {
+  static String? _downloadDir;
+
+  static Future<void> init(String dir) async {
+    _downloadDir = dir;
+  }
+
+  static String get _mapPath => '$_downloadDir${Platform.pathSeparator}metadata_map.json';
+
+  /// 读取全部元数据
+  static Map<String, dynamic> _readMap() {
+    final f = File(_mapPath);
+    if (!f.existsSync()) return {};
+    try {
+      return jsonDecode(f.readAsStringSync());
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// 写入元数据
+  static void _writeMap(Map<String, dynamic> map) {
+    File(_mapPath).writeAsStringSync(jsonEncode(map));
+  }
+
+  /// 下载完全成功后登记歌曲
+  static void registerSong({
+    required String filePath,
+    required String title,
+    required String uploader,
+    required int durationSec,
+    required String bvid,
+    required String url,
+    String? coverPath,
+  }) {
+    final map = _readMap();
+    map[filePath] = {
+      'title': title,
+      'uploader': uploader,
+      'duration': durationSec,
+      'bvid': bvid,
+      'url': url,
+      'coverPath': coverPath ?? '',
+    };
+    _writeMap(map);
+  }
+
+  /// 删除歌曲登记
+  static void unregisterSong(String filePath) {
+    final map = _readMap();
+    map.remove(filePath);
+    _writeMap(map);
+  }
+
+  /// 扫描本地文件，返回 Song 列表
+  static List<Song> scanLocalSongs() {
+    if (_downloadDir == null) return [];
+    final dir = Directory(_downloadDir!);
+    if (!dir.existsSync()) return [];
+
+    final map = _readMap();
+    final songs = <Song>[];
+    for (final f in dir.listSync()) {
+      if (f is File) {
+        final ext = f.path.split('.').last.toLowerCase();
+        if (ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav') {
+          // 从注册表中查元数据
+          final meta = map[f.path] as Map<String, dynamic>?;
+          final title = meta?['title'] as String? ?? f.path.split(Platform.pathSeparator).last.split('.').first;
+          final uploader = meta?['uploader'] as String? ?? '';
+          final duration = Duration(seconds: meta?['duration'] as int? ?? 0);
+          final bvid = meta?['bvid'] as String? ?? '';
+          final url = meta?['url'] as String? ?? '';
+          final coverPath = meta?['coverPath'] as String? ?? '';
+          // 检查封面文件是否存在
+          String? cover;
+          if (coverPath.isNotEmpty && File(coverPath).existsSync()) {
+            cover = coverPath;
+          }
+          songs.add(Song(
+            id: f.path,
+            title: title,
+            uploader: uploader,
+            duration: duration,
+            filePath: f.path,
+            bvid: bvid,
+            coverUrl: cover,
+            originalUrl: url,
+            originalTitle: title,
+            originalAuthor: uploader,
+          ));
+        }
+      }
+    }
+    return songs;
+  }
 }
 
-enum DownloadStatus { pending, downloading, completed, failed }
-
 // ============================================================
-// 最近播放服务 — 去重/上限1000/显示日期
+// 最近播放服务
 // ============================================================
 
 class RecentlyPlayedService {
   static const _key = 'recently_played';
 
-  /// 添加歌曲到最近播放（去重：同一bvid只保留最后一次）
-  static Future<void> addIfNotExists(String bvid, String title, String uploader, int durationSec, String filePath, String coverUrl) async {
+  static Future<void> addIfNotExists(String key, String title, String uploader, int durationSec, String filePath, String coverUrl) async {
     final prefs = await SharedPreferences.getInstance();
     final list = prefs.getStringList(_key) ?? [];
-
-    // 移除已存在的同bvid记录
-    list.removeWhere((e) => e.startsWith('$bvid|'));
-
-    // 添加到最前面
+    list.removeWhere((e) => e.startsWith('$key|'));
     final now = DateTime.now();
-    final entry = '$bvid|$title|$uploader|$durationSec|$filePath|$coverUrl|${now.millisecondsSinceEpoch}';
+    final entry = '$key|$title|$uploader|$durationSec|$filePath|$coverUrl|${now.millisecondsSinceEpoch}';
     list.insert(0, entry);
-
-    // 上限1000
-    if (list.length > 1000) {
-      list.removeRange(1000, list.length);
-    }
-
+    if (list.length > 1000) list.removeRange(1000, list.length);
     await prefs.setStringList(_key, list);
   }
 
-  static Future<List<Map<String, String>>> getRecentSongsRaw() async {
-    final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList(_key) ?? [];
-    return list.map((entry) {
-      final parts = entry.split('|');
-      return <String, String>{
-        if (parts.length >= 7) 'filePath': parts[4],
-        if (parts.length >= 3) 'uploader': parts[2],
-        if (parts.length >= 4) 'durationSec': parts[3],
-      };
-    }).toList();
-  }
-
-  /// 获取最近播放列表（只返回文件真实存在的）
   static Future<List<Song>> getRecentSongs() async {
     final prefs = await SharedPreferences.getInstance();
     final list = prefs.getStringList(_key) ?? [];
     final songs = <Song>[];
-    final valid = <String>[];
     for (final entry in list) {
       final parts = entry.split('|');
-      if (parts.length >= 7) {
-        final filePath = parts[4];
-        // 只保留文件真实存在的记录
-        if (!File(filePath).existsSync()) continue;
-        valid.add(entry);
-        final ms = int.tryParse(parts[6]) ?? 0;
+      if (parts.length >= 7 && File(parts[4]).existsSync()) {
         songs.add(Song(
           id: parts[0], title: parts[1], uploader: parts[2],
           duration: Duration(seconds: int.tryParse(parts[3]) ?? 0),
-          filePath: filePath, coverUrl: parts[5].isEmpty ? null : parts[5],
-          bvid: parts[0], lastPlayed: DateTime.fromMillisecondsSinceEpoch(ms),
+          filePath: parts[4], coverUrl: parts[5].isEmpty ? null : parts[5],
+          bvid: parts[0], lastPlayed: DateTime.fromMillisecondsSinceEpoch(int.tryParse(parts[6]) ?? 0),
         ));
       }
     }
-    // 清理已删除文件的记录
-    if (valid.length != list.length) {
+    // 清理无效记录
+    if (songs.length != list.length) {
+      final valid = list.where((e) => File(e.split('|')[4]).existsSync()).toList();
       await prefs.setStringList(_key, valid);
     }
     return songs;
@@ -151,71 +192,7 @@ class RecentlyPlayedService {
 }
 
 // ============================================================
-// 本地歌单扫描
-// ============================================================
-
-Future<List<Song>> scanLocalAudioFiles(String dirPath) async {
-  final songs = <Song>[];
-  final dir = Directory(dirPath);
-  if (!dir.existsSync()) return songs;
-
-  try {
-    final files = dir.listSync();
-    for (final f in files) {
-      if (f is File) {
-        final ext = f.path.split('.').last.toLowerCase();
-        if (ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav') {
-          final name = f.path.split(Platform.pathSeparator).last.split('.').first;
-          final coverPath = '$dirPath${Platform.pathSeparator}$name.jpg';
-          final coverFile = File(coverPath);
-          final hasCover = coverFile.existsSync() && coverFile.lengthSync() > 0;
-          // 读元数据（优先从全局映射文件，避开Unicode文件名匹配问题）
-          String author = '';
-          Duration duration = Duration.zero;
-          String title = name; // 默认用文件名，后续从metadata覆盖
-          final mapFile = File('$dirPath${Platform.pathSeparator}metadata_map.json');
-          if (mapFile.existsSync()) {
-            try {
-              final map = jsonDecode(mapFile.readAsStringSync());
-              if (map[f.path] != null) {
-                title = map[f.path]['title'] as String? ?? name;
-                author = map[f.path]['author'] as String? ?? '';
-                duration = Duration(seconds: map[f.path]['duration'] as int? ?? 0);
-              }
-            } catch (_) {}
-          }
-          if (duration == Duration.zero) {
-            // fallback: 文件名匹配 .json
-            var metaFile = File('$dirPath${Platform.pathSeparator}$name.json');
-            if (!metaFile.existsSync() && name.length > 80) {
-              metaFile = File('$dirPath${Platform.pathSeparator}${name.substring(0, 80)}.json');
-            }
-            if (metaFile.existsSync()) {
-              try {
-                final meta = jsonDecode(metaFile.readAsStringSync());
-                author = meta['author'] as String? ?? '';
-                duration = Duration(seconds: meta['duration'] as int? ?? 0);
-              } catch (_) {}
-            }
-          }
-          songs.add(Song(
-            id: f.path,
-            title: title,
-            uploader: author,
-            duration: duration,
-            filePath: f.path,
-            coverUrl: hasCover ? coverPath : null,
-          ));
-        }
-      }
-    }
-  } catch (_) {}
-
-  return songs;
-}
-
-// ============================================================
-// 自定义播放列表持久化
+// 播放列表持久化
 // ============================================================
 
 class PlaylistService {
@@ -224,77 +201,43 @@ class PlaylistService {
   static Future<List<Playlist>> getPlaylists() async {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
-    final valid = <String>[];
     final result = <Playlist>[];
     for (final raw in list) {
-      if (raw.isEmpty) continue;
       var parts = raw.split('|||');
-      // 丢弃末尾空元素
-      while (parts.length > 3 && (parts.last.isEmpty)) { parts.removeLast(); }
-      // 补齐到至少4段（id/name/icon/songsJson）
-      while (parts.length < 4) { parts.add(''); }
+      while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
+      while (parts.length < 4) parts.add('');
       if (parts[0].isEmpty) continue;
-
-      final name = parts[1];
-      final songsJson = parts[3].isEmpty ? '[]' : parts[3];
       List<String> songPaths;
-      try {
-        final decoded = jsonDecode(songsJson);
-        songPaths = (decoded as List).map((x) => x.toString()).where((fp) => fp.isNotEmpty).toList();
-      } catch (_) {
-        songPaths = songsJson.split(',').where((s) => s.isNotEmpty).toList();
-        parts[3] = jsonEncode(songPaths);
-      }
-      // 清理空尾后回写
-      while (parts.length > 3 && (parts.last.isEmpty)) { parts.removeLast(); }
-      valid.add(parts.join('|||'));
-      result.add(Playlist(
-        id: parts[0], name: name, icon: parts[2],
-        songs: songPaths.map((fp) {
-          final coverPath = '${fp.substring(0, fp.lastIndexOf('.'))}.jpg';
-          final hasCover = File(coverPath).existsSync() && File(coverPath).lengthSync() > 0;
-          return Song(id: fp, title: fp.split(Platform.pathSeparator).last.split('.').first, uploader: '', duration: Duration.zero, filePath: fp, coverUrl: hasCover ? coverPath : null);
-        }).toList(),
+      try { songPaths = (jsonDecode(parts[3]) as List).map((x) => x.toString()).where((x) => x.isNotEmpty).toList(); }
+      catch (_) { songPaths = parts[3].split(',').where((s) => s.isNotEmpty).toList(); }
+      result.add(Playlist(id: parts[0], name: parts[1], icon: parts[2],
+        songs: songPaths.map((fp) => Song(id: fp, title: fp.split(Platform.pathSeparator).last.split('.').first, uploader: '', duration: Duration.zero, filePath: fp)).toList(),
       ));
     }
-    if (!_listEquals(list, valid)) {
-      await p.setStringList(_key, valid);
-    }
     return result;
-  }
-
-  static bool _listEquals(List<String> a, List<String> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) { if (a[i] != b[i]) return false; }
-    return true;
   }
 
   static Future<void> addPlaylist(String name) async {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    list.add('$id|||$name|||📋|||[]');
+    list.add('${DateTime.now().millisecondsSinceEpoch}|||$name|||📋|||[]');
     await p.setStringList(_key, list);
   }
 
-  static Future<void> addSongToPlaylist(String playlistId, String filePath) async {
+  static Future<void> addSongToPlaylist(String pid, String filePath) async {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
     for (var i = 0; i < list.length; i++) {
       var parts = list[i].split('|||');
-      // 丢弃末尾空元素
-      while (parts.length > 3 && (parts.last.isEmpty)) { parts.removeLast(); }
-      // 补齐到至少4段
-      while (parts.length < 4) { parts.add(''); }
-      if (parts[0] == playlistId) {
-        final songsJson = parts[3].isEmpty ? '[]' : parts[3];
-        List<dynamic> paths;
-        try { paths = jsonDecode(songsJson); } catch (_) { paths = (songsJson.isEmpty ? [] : songsJson.split(',')); }
-        final pathSet = paths.map((x) => x.toString()).where((x) => x.isNotEmpty).toSet();
-        pathSet.add(filePath);
-        parts[3] = jsonEncode(pathSet.toList());
-        // 丢弃空尾
-        while (parts.length > 3 && (parts.last.isEmpty)) { parts.removeLast(); }
+      while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
+      while (parts.length < 4) parts.add('');
+      if (parts[0] == pid) {
+        List<dynamic> paths = [];
+        try { paths = jsonDecode(parts[3]); } catch (_) { paths = parts[3].split(','); }
+        final set = paths.map((x) => x.toString()).where((x) => x.isNotEmpty).toSet();
+        set.add(filePath);
+        parts[3] = jsonEncode(set.toList());
+        while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
         list[i] = parts.join('|||');
         await p.setStringList(_key, list);
         return;
@@ -302,21 +245,25 @@ class PlaylistService {
     }
   }
 
-  static Future<bool> isSongInPlaylist(String playlistId, String filePath) async {
+  static Future<bool> isSongInPlaylist(String pid, String filePath) async {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
     for (final entry in list) {
       final parts = entry.split('|||');
-      if (parts[0] == playlistId) {
+      if (parts[0] == pid) {
         final songsJson = parts.length > 3 ? parts[3] : '[]';
-        try {
-          final paths = jsonDecode(songsJson) as List;
-          return paths.map((x) => x.toString()).contains(filePath);
-        } catch (_) {
-          return false;
-        }
+        try { return (jsonDecode(songsJson) as List).map((x) => x.toString()).contains(filePath); }
+        catch (_) { return false; }
       }
     }
     return false;
   }
+}
+
+// ============================================================
+// 本地歌单扫描（兼容旧接口）
+// ============================================================
+Future<List<Song>> scanLocalAudioFiles(String dirPath) async {
+  SongManager.init(dirPath);
+  return SongManager.scanLocalSongs();
 }

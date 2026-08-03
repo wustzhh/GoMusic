@@ -129,24 +129,7 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   void _saveMeta(String dir, String name, String author, BilibiliVideoInfo info) {
-    try {
-      // 写入独立的 metadata.json（按文件名）
-      final meta = {'title': info.title, 'author': author, 'duration': info.durationSeconds};
-      File('$dir\\$name.json').writeAsStringSync(jsonEncode(meta));
-      _saveToMap('$dir\\$name.m4a', info.title, author, info.durationSeconds);
-    } catch (_) {}
-  }
-
-  static void _saveToMap(String filepath, String title, String author, int durationSec) {
-    try {
-      final mapFile = File('${filepath.substring(0, filepath.lastIndexOf('\\'))}\\metadata_map.json');
-      Map<String, dynamic> map = {};
-      if (mapFile.existsSync()) {
-        map = jsonDecode(mapFile.readAsStringSync());
-      }
-      map[filepath] = {'title': title, 'author': author, 'duration': durationSec};
-      mapFile.writeAsStringSync(jsonEncode(map));
-    } catch (_) {}
+    // 全部下载成功后才在 SongManager 统一登记
   }
 
   // ==================== 单个下载 ====================
@@ -183,8 +166,18 @@ class _DownloadPageState extends State<DownloadPage> {
     String sizeText = '';
     try { final f = File('$dir\\$name.m4a'); if (f.existsSync()) sizeText = '${(f.lengthSync() / 1048576).toStringAsFixed(1)} MB'; } catch (_) {}
 
-    // 保存元数据（作者+时长）
-    _saveMeta(dir, name, _authorController.text.trim(), info);
+    // 完全下载成功后才登记
+    if (audioOk && videoOk) {
+      SongManager.registerSong(
+        filePath: '$dir\\$name.m4a',
+        title: info.title,
+        uploader: _authorController.text.trim(),
+        durationSec: info.durationSeconds,
+        bvid: info.bvid,
+        url: info.url,
+        coverPath: '$dir\\$name.jpg',
+      );
+    }
 
     setState(() { _isDownloading = false; _alreadyDownloaded = audioOk; });
     _snack('${audioOk && videoOk ? "下载完成" : "下载失败"} $sizeText${coverFailed ? " ⚠封面下载失败" : ""}');
@@ -219,7 +212,15 @@ class _DownloadPageState extends State<DownloadPage> {
         onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
       );
 
-      if (ok) _saveMeta(_downloadDir!, item.name, full.author, full);
+      if (ok) {
+        item.exists = true;
+        SongManager.registerSong(
+          filePath: '${_downloadDir}\\${item.name}.m4a',
+          title: full.title, uploader: full.author, durationSec: full.durationSeconds,
+          bvid: full.bvid, url: full.url,
+          coverPath: '${_downloadDir}\\${item.name}.jpg',
+        );
+      }
       setState(() {
         item.status = ok ? _BatchStatus.done : _BatchStatus.failed;
         if (ok) item.exists = true;
