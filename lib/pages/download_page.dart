@@ -130,8 +130,23 @@ class _DownloadPageState extends State<DownloadPage> {
 
   void _saveMeta(String dir, String name, String author, BilibiliVideoInfo info) {
     try {
+      // 写入独立的 metadata.json（按文件名）
       final meta = {'author': author, 'duration': info.durationSeconds};
       File('$dir\\$name.json').writeAsStringSync(jsonEncode(meta));
+      // 同时写入全局映射（按文件路径，避免Unicode文件名匹配问题）
+      _saveToMap('$dir\\$name.m4a', author, info.durationSeconds);
+    } catch (_) {}
+  }
+
+  static void _saveToMap(String filepath, String author, int durationSec) {
+    try {
+      final mapFile = File('${filepath.substring(0, filepath.lastIndexOf('\\'))}\\metadata_map.json');
+      Map<String, dynamic> map = {};
+      if (mapFile.existsSync()) {
+        map = jsonDecode(mapFile.readAsStringSync());
+      }
+      map[filepath] = {'author': author, 'duration': durationSec};
+      mapFile.writeAsStringSync(jsonEncode(map));
     } catch (_) {}
   }
 

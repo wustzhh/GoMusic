@@ -169,21 +169,32 @@ Future<List<Song>> scanLocalAudioFiles(String dirPath) async {
           final coverPath = '$dirPath${Platform.pathSeparator}$name.jpg';
           final coverFile = File(coverPath);
           final hasCover = coverFile.existsSync() && coverFile.lengthSync() > 0;
-          // 读元数据（文件名可能被_safeName截断过，尝试精确匹配+截断匹配）
+          // 读元数据（优先从全局映射文件，避开Unicode文件名匹配问题）
           String author = '';
           Duration duration = Duration.zero;
-          var metaFile = File('$dirPath${Platform.pathSeparator}$name.json');
-          if (!metaFile.existsSync()) {
-            // 尝试截断到80字符的文件名
-            final truncatedName = name.length > 80 ? name.substring(0, 80) : name;
-            metaFile = File('$dirPath${Platform.pathSeparator}$truncatedName.json');
-          }
-          if (metaFile.existsSync()) {
+          final mapFile = File('$dirPath${Platform.pathSeparator}metadata_map.json');
+          if (mapFile.existsSync()) {
             try {
-              final meta = jsonDecode(metaFile.readAsStringSync());
-              author = meta['author'] as String? ?? '';
-              duration = Duration(seconds: meta['duration'] as int? ?? 0);
+              final map = jsonDecode(mapFile.readAsStringSync());
+              if (map[f.path] != null) {
+                author = map[f.path]['author'] as String? ?? '';
+                duration = Duration(seconds: map[f.path]['duration'] as int? ?? 0);
+              }
             } catch (_) {}
+          }
+          if (duration == Duration.zero) {
+            // fallback: 文件名匹配 .json
+            var metaFile = File('$dirPath${Platform.pathSeparator}$name.json');
+            if (!metaFile.existsSync() && name.length > 80) {
+              metaFile = File('$dirPath${Platform.pathSeparator}${name.substring(0, 80)}.json');
+            }
+            if (metaFile.existsSync()) {
+              try {
+                final meta = jsonDecode(metaFile.readAsStringSync());
+                author = meta['author'] as String? ?? '';
+                duration = Duration(seconds: meta['duration'] as int? ?? 0);
+              } catch (_) {}
+            }
           }
           songs.add(Song(
             id: f.path,
