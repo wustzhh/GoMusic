@@ -165,7 +165,7 @@ class _SongListPageState extends State<SongListPage> {
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(maxWidth: 32),
                         itemBuilder: (_) => [
-                          const PopupMenuItem(value: 'fav', child: Text(isFav ? '取消收藏' : '添加到我喜欢')),
+                          PopupMenuItem(value: 'fav', child: Text(isFav ? '取消收藏' : '添加到我喜欢')),
                           const PopupMenuItem(value: 'add', child: Text('添加到歌单...')),
                         ],
                         onSelected: (v) {
