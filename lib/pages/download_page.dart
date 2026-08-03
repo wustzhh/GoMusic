@@ -107,7 +107,7 @@ class _DownloadPageState extends State<DownloadPage> {
     final dir = _downloadDir ?? '';
     setState(() {
       _batchItems = videos.map((v) {
-        final name = _safeName(v.title);
+        final name = v.bvid;
         final exists = File('$dir\\$name.m4a').existsSync();
         return _BatchItem(info: v, exists: exists, name: name);
       }).toList();
@@ -117,7 +117,7 @@ class _DownloadPageState extends State<DownloadPage> {
 
   void _checkSingleExists(BilibiliVideoInfo info) {
     final dir = _downloadDir ?? '';
-    final name = _safeName(info.title);
+    final name = info.bvid;
     final hasAudio = File('$dir\\$name.m4a').existsSync();
     final hasCover = File('$dir\\$name.jpg').existsSync();
     _alreadyDownloaded = hasAudio && hasCover;
@@ -156,7 +156,7 @@ class _DownloadPageState extends State<DownloadPage> {
     final info = _singleInfo;
     if (info == null || info.audioUrl == null) { _snack('无下载地址'); return; }
     final dir = _downloadDir ?? '';
-    final name = _safeName(_nameController.text.trim());
+    final name = info.bvid;  // 用BV号做文件名，纯英文
 
     setState(() { _isDownloading = true; _downloadProgress = 0; });
 
