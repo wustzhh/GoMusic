@@ -144,7 +144,12 @@ class _SongListPageState extends State<SongListPage> {
                 return GestureDetector(
                   onLongPress: () {
                     Clipboard.setData(ClipboardData(text: song.title));
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已复制: ${song.title}')));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('已复制: ${song.title}'),
+                      behavior: SnackBarBehavior.floating,
+                      margin: EdgeInsets.only(bottom: MediaQuery.of(context).size.height - 120, left: 20, right: 20),
+                      duration: const Duration(seconds: 1),
+                    ));
                   },
                   child: Container(
                     color: isPlaying ? Colors.deepPurple.withValues(alpha: 0.12) : Colors.transparent,
@@ -161,12 +166,12 @@ class _SongListPageState extends State<SongListPage> {
                       title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                       trailing: PopupMenuButton<String>(
-                        icon: Icon(Icons.more_vert, color: Colors.grey[500], size: 20),
+                        icon: Icon(Icons.more_vert, color: Colors.grey, size: 18),
                         padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(maxWidth: 32),
+                        constraints: const BoxConstraints(maxWidth: 32, maxHeight: 32),
                         itemBuilder: (_) => [
-                          PopupMenuItem(value: 'fav', child: Text(isFav ? '取消收藏' : '添加到我喜欢')),
-                          const PopupMenuItem(value: 'add', child: Text('添加到歌单...')),
+                          PopupMenuItem(value: 'fav', height: 36, child: Text(isFav ? '取消收藏' : '添加到我喜欢', style: const TextStyle(fontSize: 13))),
+                          PopupMenuItem(value: 'add', height: 36, child: const Text('添加到歌单...', style: TextStyle(fontSize: 13))),
                         ],
                         onSelected: (v) {
                           if (v == 'fav') {
