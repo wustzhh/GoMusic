@@ -140,6 +140,7 @@ class _DownloadPageState extends State<DownloadPage> {
     if (info == null || info.audioUrl == null) { _snack('无下载地址'); return; }
     final dir = _downloadDir ?? '';
     final name = info.bvid;  // 用BV号做文件名，纯英文
+    SongManager.init(dir);   // 确保metadata目录已初始化
 
     setState(() { _isDownloading = true; _downloadProgress = 0; });
 
@@ -188,6 +189,7 @@ class _DownloadPageState extends State<DownloadPage> {
 
   Future<void> _startBatch() async {
     setState(() { _isDownloading = true; _batchTotal = 0; _batchDone = 0; });
+    SongManager.init(_downloadDir!);
 
     final toDownload = _batchItems.where((b) => !b.exists).toList();
     _batchTotal = toDownload.length;
@@ -509,6 +511,7 @@ class _DownloadPageState extends State<DownloadPage> {
 
   Future<void> _retryItem(_BatchItem item) async {
     setState(() { item.status = _BatchStatus.downloading; item.exists = false; });
+    SongManager.init(_downloadDir!);
 
     final full = await _api.getVideoInfo(item.info.url);
     if (full?.audioUrl == null) { setState(() => item.status = _BatchStatus.failed); return; }
