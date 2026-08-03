@@ -172,11 +172,13 @@ Future<List<Song>> scanLocalAudioFiles(String dirPath) async {
           // 读元数据（优先从全局映射文件，避开Unicode文件名匹配问题）
           String author = '';
           Duration duration = Duration.zero;
+          String title = name; // 默认用文件名，后续从metadata覆盖
           final mapFile = File('$dirPath${Platform.pathSeparator}metadata_map.json');
           if (mapFile.existsSync()) {
             try {
               final map = jsonDecode(mapFile.readAsStringSync());
               if (map[f.path] != null) {
+                title = map[f.path]['title'] as String? ?? name;
                 author = map[f.path]['author'] as String? ?? '';
                 duration = Duration(seconds: map[f.path]['duration'] as int? ?? 0);
               }
@@ -198,7 +200,7 @@ Future<List<Song>> scanLocalAudioFiles(String dirPath) async {
           }
           songs.add(Song(
             id: f.path,
-            title: name,
+            title: title,
             uploader: author,
             duration: duration,
             filePath: f.path,
