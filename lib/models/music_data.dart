@@ -15,6 +15,7 @@ class Song {
   final String originalUrl;
   final String originalTitle;
   final String originalAuthor;
+  final DateTime? lastPlayed;
 
   const Song({
     required this.id,

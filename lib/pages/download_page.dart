@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/bilibili_api.dart';
 import '../services/settings_service.dart';
+import '../models/music_data.dart';
 
 class DownloadPage extends StatefulWidget {
   const DownloadPage({super.key});
