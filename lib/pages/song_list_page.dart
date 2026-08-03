@@ -154,6 +154,8 @@ class _SongListPageState extends State<SongListPage> {
                   child: Container(
                     color: isPlaying ? Colors.deepPurple.withValues(alpha: 0.12) : Colors.transparent,
                     child: ListTile(
+                      contentPadding: const EdgeInsets.only(left: 0, right: 4),
+                      horizontalTitleGap: 8,
                       leading: Stack(
                         clipBehavior: Clip.none,
                         children: [
@@ -170,8 +172,8 @@ class _SongListPageState extends State<SongListPage> {
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(maxWidth: 32, maxHeight: 32),
                         itemBuilder: (_) => [
-                          PopupMenuItem(value: 'fav', height: 36, child: Text(isFav ? '取消收藏' : '添加到我喜欢', style: const TextStyle(fontSize: 13))),
-                          PopupMenuItem(value: 'add', height: 36, child: const Text('添加到歌单...', style: TextStyle(fontSize: 13))),
+                          PopupMenuItem(value: 'fav', height: 32, padding: const EdgeInsets.symmetric(horizontal: 12), child: Text(isFav ? '取消收藏' : '添加到我喜欢', style: const TextStyle(fontSize: 13))),
+                          PopupMenuItem(value: 'add', height: 32, padding: const EdgeInsets.symmetric(horizontal: 12), child: const Text('添加到歌单...', style: TextStyle(fontSize: 13))),
                         ],
                         onSelected: (v) {
                           if (v == 'fav') {
