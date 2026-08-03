@@ -288,10 +288,7 @@ class _SongListPageState extends State<SongListPage> {
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
       final f = File(song.coverUrl!);
       if (f.existsSync() && f.lengthSync() > 0) {
-        try {
-          
-          return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.file(f, width: 36, height: 36, fit: BoxFit.cover));
-        } catch (_) {}
+        return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.file(f, width: 36, height: 36, fit: BoxFit.cover, errorBuilder: (_, e, s) => _icon()));
       }
     }
     return _icon();
