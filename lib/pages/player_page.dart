@@ -67,6 +67,10 @@ class _PlayerPageState extends State<PlayerPage> {
     _posSub = _service.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
 
     _durSub = _service.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
+    // 如果已有缓存duration，立即使用
+    if (_duration == Duration.zero && _service.currentDuration != Duration.zero) {
+      _duration = _service.currentDuration;
+    }
 
     _service.currentSongNotifier.addListener(() { if (mounted) { setState(() {}); _refresh(); } });
 

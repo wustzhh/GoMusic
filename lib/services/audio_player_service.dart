@@ -15,6 +15,7 @@ class AudioPlayerService {
   AudioPlayerService._() {
     _player.onPlayerComplete.listen((_) => next());
     _player.onDurationChanged.listen((d) {
+      _currentDuration = d;
       if (d.inMilliseconds > 0 && _currentSong != null) {
         _writeMeta(_currentSong!, d);
       }
@@ -33,6 +34,8 @@ class AudioPlayerService {
   PlayMode get playMode => _playMode;
   bool get isPlaying => _player.state == PlayerState.playing;
   int get queueIndex => _queueIndex;
+  Duration _currentDuration = Duration.zero;
+  Duration get currentDuration => _currentDuration;
   Stream<Duration> get onPositionChanged => _player.onPositionChanged;
   Stream<Duration> get onDurationChanged => _player.onDurationChanged;
   Stream<bool> get onPlayingChanged => _player.onPlayerStateChanged.map((s) => s == PlayerState.playing);
