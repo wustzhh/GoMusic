@@ -289,8 +289,8 @@ class _SongListPageState extends State<SongListPage> {
       final f = File(song.coverUrl!);
       if (f.existsSync() && f.lengthSync() > 0) {
         try {
-          final bytes = f.readAsBytesSync();
-          return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.memory(bytes, width: 36, height: 36, fit: BoxFit.cover));
+          
+          return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.file(f, width: 36, height: 36, fit: BoxFit.cover));
         } catch (_) {}
       }
     }
@@ -304,7 +304,7 @@ class _SongListPageState extends State<SongListPage> {
       final f = File(song.coverUrl!);
       if (f.existsSync() && f.lengthSync() > 0) {
         try {
-          return Image.memory(f.readAsBytesSync(), width: 36, height: 36, fit: BoxFit.cover);
+          return Image.file(f, width: 36, height: 36, fit: BoxFit.cover);
         } catch (_) {}
       }
     }
