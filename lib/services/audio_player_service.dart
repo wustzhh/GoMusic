@@ -64,8 +64,10 @@ class AudioPlayerService {
     _currentSong = song;
     currentSongNotifier.value = song;
     await _player.stop();
-    await _player.play(DeviceFileSource(song.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
+    await _player.play(DeviceFileSource(song.filePath));
     _playing = true;
+    // 新歌：清除上次位置，避免残留影响
+    _lastPosition = Duration.zero;
     _saveState();
     RecentlyPlayedService.addIfNotExists(song.filePath, song.title, song.uploader, song.duration.inSeconds, song.filePath, song.coverUrl ?? '').catchError((_) {});
   }
