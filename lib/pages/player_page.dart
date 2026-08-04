@@ -478,24 +478,30 @@ class _QueueSheet extends StatefulWidget {
 class _QueueSheetState extends State<_QueueSheet> {
   final ScrollController _scrollCtrl = ScrollController();
   final GlobalKey _targetKey = GlobalKey();
+  final GlobalKey _firstItemKey = GlobalKey();
+  double _itemH = 0;
 
   @override
   void initState() {
     super.initState();
-    _scrollToTarget();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // 测量第一个可见item的实际高度
+      final ctx = _firstItemKey.currentContext;
+      if (ctx != null) {
+        final box = ctx.findRenderObject() as RenderBox;
+        if (box.hasSize) _itemH = box.size.height;
+      }
+      _scrollToTarget();
+    });
   }
 
   void _scrollToTarget() {
-    // 用实际测量的item高度精确定位
+    final idx = widget.player.queueIndex;
+    final h = _itemH > 0 ? _itemH : 72.0;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final idx = widget.player.queueIndex;
       if (!_scrollCtrl.hasClients || idx < 0) return;
-      final est = (idx * 72.0 - _scrollCtrl.position.viewportDimension / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
-      _scrollCtrl.jumpTo(est);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx1 = _targetKey.currentContext;
-        if (ctx1 != null) Scrollable.ensureVisible(ctx1, alignment: 0.25, duration: Duration.zero);
-      });
+      final target = (idx * h - _scrollCtrl.position.viewportDimension / 2 + h / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
+      _scrollCtrl.jumpTo(target);
     });
   }
 
@@ -547,6 +553,12 @@ class _QueueSheetState extends State<_QueueSheet> {
                 color: Colors.red.withValues(alpha: 0.08),
                 child: tile,
               );
+            }
+            if (i == 0) {
+              return Container(key: _firstItemKey, child: InkWell(
+                onTap: () { p.playSong(s); Navigator.pop(context); },
+                child: tile,
+              ));
             }
             return InkWell(
               onTap: () { p.playSong(s); Navigator.pop(context); },

@@ -21,10 +21,13 @@ class AudioPlayerService {
       }
     });
     // 进度轮询
+    int _saveCounter = 0;
     Timer.periodic(const Duration(milliseconds: 500), (_) async {
       if (_currentSong != null && _playing) {
         final p = await _player.getCurrentPosition();
         if (p != null) { _lastPosition = p; _positionController.add(p); }
+        _saveCounter++;
+        if (_saveCounter % 4 == 0) _saveState(); // 每2秒保存
       }
     });
   }
@@ -164,7 +167,7 @@ class AudioPlayerService {
         }
         _queueIndex = qIdx.clamp(0, _queue.length - 1);
       }
-      return Song(
+      final song = Song(
         id: data['bvid'] as String? ?? '',
         title: data['title'] as String? ?? '',
         uploader: data['uploader'] as String? ?? '',
@@ -173,6 +176,9 @@ class AudioPlayerService {
         bvid: data['bvid'] as String? ?? '',
         coverUrl: (data['cover'] as String? ?? '').isNotEmpty ? data['cover'] as String? : null,
       );
+      _currentSong = song;
+      currentSongNotifier.value = song;
+      return song;
     } catch (_) {
       return null;
     }
