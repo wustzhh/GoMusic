@@ -80,6 +80,8 @@ class _PlayerPageState extends State<PlayerPage> {
 
     _isPlaying = _service.isPlaying;
 
+    _position = _service.currentPosition;
+
     if (_song != null) {
 
       AudioPlayerService.isFavorite(_song!.filePath).then((f) { if (mounted) setState(() => _isFav = f); });
@@ -388,13 +390,20 @@ class _PlayerPageState extends State<PlayerPage> {
 
           IconButton(icon: const Icon(Icons.queue_music, size: 28, color: Colors.grey), onPressed: _showQueue),
 
-          GestureDetector(onTap: _showModeMenu, child: Row(mainAxisSize: MainAxisSize.min, children: [
-
-            Text(_service.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
-
-            const Icon(Icons.arrow_drop_down, color: Colors.grey),
-
-          ])),
+          PopupMenuButton<PlayMode>(
+            onSelected: (m) { _service.setPlayMode(m); setState(() {}); },
+            itemBuilder: (_) => PlayMode.values.map((m) => PopupMenuItem(
+              value: m,
+              child: Text(_label(m), style: TextStyle(
+                color: _service.playMode == m ? Colors.deepPurple : null,
+                fontWeight: _service.playMode == m ? FontWeight.bold : null,
+              )),
+            )).toList(),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(_service.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+              const Icon(Icons.arrow_drop_down, color: Colors.grey, size: 20),
+            ]),
+          ),
 
         ]),
 
@@ -463,9 +472,31 @@ class _QueueSheet extends StatefulWidget {
 }
 
 class _QueueSheetState extends State<_QueueSheet> {
+  final ScrollController _scrollCtrl = ScrollController();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCurrent());
+  }
 
+  void _scrollToCurrent() {
+    final idx = widget.player.queueIndex;
+    if (idx >= 0 && idx < widget.player.queue.length) {
+      final offset = idx * 56.0;
+      final maxScroll = _scrollCtrl.position.maxScrollExtent;
+      _scrollCtrl.animateTo(
+        offset.clamp(0.0, maxScroll),
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  @override
+  void dispose() { _scrollCtrl.dispose(); super.dispose(); }
+
+  @override
   Widget build(BuildContext context) {
 
     final p = widget.player;
@@ -494,18 +525,24 @@ class _QueueSheetState extends State<_QueueSheet> {
 
         ? const Center(child: Text('队列为空'))
 
-        : ListView.builder(itemCount: queue.length, itemBuilder: (_, i) {
+        : ListView.builder(controller: _scrollCtrl, itemCount: queue.length, itemBuilder: (_, i) {
 
             final s = queue[i]; final isCur = i == p.queueIndex;
-
+            final tile = ListTile(
+              leading: Icon(isCur ? Icons.play_arrow : Icons.music_note, color: isCur ? Colors.red : Colors.grey, size: 22),
+              title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isCur ? Colors.red : null)),
+              subtitle: Text(s.uploader, style: TextStyle(fontSize: 12, color: isCur ? Colors.red.withValues(alpha: 0.7) : Colors.grey)),
+              trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { p.removeFromQueue(i); setState(() {}); }),
+            );
+            if (isCur) {
+              return Container(
+                color: Colors.red.withValues(alpha: 0.08),
+                child: tile,
+              );
+            }
             return InkWell(
               onTap: () { p.playSong(s); Navigator.pop(context); },
-              child: ListTile(
-                leading: Icon(isCur ? Icons.play_arrow : Icons.music_note, color: isCur ? Colors.deepPurple : Colors.grey, size: 22),
-                title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: isCur ? FontWeight.bold : FontWeight.normal)),
-                subtitle: Text(s.uploader, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { p.removeFromQueue(i); setState(() {}); }),
-              ),
+              child: tile,
             );
 
           })),

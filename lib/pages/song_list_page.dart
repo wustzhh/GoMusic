@@ -298,6 +298,19 @@ class _SongListPageState extends State<SongListPage> {
   }
 
   void _showQueueSheet() {
+    final scrollCtrl = ScrollController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final idx = _service.queueIndex;
+      if (idx >= 0 && idx < _service.queue.length && scrollCtrl.hasClients) {
+        final offset = idx * 56.0;
+        final maxScroll = scrollCtrl.position.maxScrollExtent;
+        scrollCtrl.animateTo(
+          offset.clamp(0.0, maxScroll),
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
     showModalBottomSheet(
       context: context,
       isDismissible: true,
@@ -316,25 +329,34 @@ class _SongListPageState extends State<SongListPage> {
               const Spacer(),
               Text(_service.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
               const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () {
-                  Navigator.pop(context);
-                  _showModePicker();
-                },
-                child: const Icon(Icons.swap_horiz, color: Colors.grey, size: 20),
+              PopupMenuButton<PlayMode>(
+                icon: const Icon(Icons.swap_horiz, color: Colors.grey, size: 20),
+                onSelected: (m) { _service.setPlayMode(m); setState(() {}); },
+                itemBuilder: (_) => PlayMode.values.map((m) => PopupMenuItem(
+                  value: m,
+                  child: Text(_modeLabel(m), style: TextStyle(
+                    color: _service.playMode == m ? Colors.deepPurple : null,
+                    fontWeight: _service.playMode == m ? FontWeight.bold : null,
+                  )),
+                )).toList(),
               ),
             ])),
             Expanded(child: ListView.builder(
+              controller: scrollCtrl,
               itemCount: _service.queue.length,
               itemBuilder: (_, i) {
                 final s = _service.queue[i]; final cur = i == _service.queueIndex;
+                final tile = ListTile(
+                  leading: Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.red : Colors.grey, size: 20),
+                  title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cur ? Colors.red : null), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { _service.removeFromQueue(i); setState(() {}); }),
+                );
+                if (cur) {
+                  return Container(color: Colors.red.withValues(alpha: 0.08), child: tile);
+                }
                 return InkWell(
                   onTap: () { _service.playSong(s); Navigator.pop(context); },
-                  child: ListTile(
-                    leading: Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.deepPurple : Colors.grey, size: 20),
-                    title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: cur ? FontWeight.bold : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { _service.removeFromQueue(i); setState(() {}); }),
-                  ),
+                  child: tile,
                 );
               },
             )),

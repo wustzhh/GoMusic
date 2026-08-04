@@ -23,13 +23,14 @@ class AudioPlayerService {
     Timer.periodic(const Duration(milliseconds: 500), (_) async {
       if (_currentSong != null && _playing) {
         final p = await _player.getCurrentPosition();
-        if (p != null) _positionController.add(p);
+        if (p != null) { _lastPosition = p; _positionController.add(p); }
       }
     });
   }
 
   final AudioPlayer _player = AudioPlayer();
   final StreamController<Duration> _positionController = StreamController<Duration>.broadcast();
+  Duration _lastPosition = Duration.zero;
   bool _playing = false;
   Song? _currentSong;
   final List<Song> _queue = [];
@@ -41,6 +42,7 @@ class AudioPlayerService {
   List<Song> get queue => List.unmodifiable(_queue);
   PlayMode get playMode => _playMode;
   bool get isPlaying => _playing;
+  Duration get currentPosition => _lastPosition;
   int get queueIndex => _queueIndex;
   Stream<Duration> get onPositionChanged => _positionController.stream;
   Stream<Duration> get onDurationChanged => _player.onDurationChanged;
@@ -64,8 +66,13 @@ class AudioPlayerService {
     RecentlyPlayedService.addIfNotExists(song.filePath, song.title, song.uploader, song.duration.inSeconds, song.filePath, song.coverUrl ?? '').catchError((_) {});
   }
 
-  void togglePause() {
-    if (_playing) { _player.pause(); _playing = false; } else { _player.resume(); _playing = true; }
+  void togglePause() async {
+    if (_playing) {
+      final p = await _player.getCurrentPosition();
+      if (p != null) _lastPosition = p;
+      _player.pause();
+      _playing = false;
+    } else { _player.resume(); _playing = true; }
     currentSongNotifier.notifyListeners(); // 强制刷新UI
   }
 
