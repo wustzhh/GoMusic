@@ -344,7 +344,11 @@ class _PlayerPageState extends State<PlayerPage> {
 
           SliderTheme(data: SliderTheme.of(context).copyWith(trackHeight: 3, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6)),
 
-            child: Slider(value: progress, onChanged: (v) => _service.seek(dur * v))),
+            child: Slider(value: progress, onChanged: (v) {
+              _service.seek(dur * v);
+              _service.resume();
+              setState(() => _isPlaying = true);
+            })),
 
           Padding(padding: const EdgeInsets.symmetric(horizontal: 8),
 
@@ -473,24 +477,28 @@ class _QueueSheet extends StatefulWidget {
 
 class _QueueSheetState extends State<_QueueSheet> {
   final ScrollController _scrollCtrl = ScrollController();
+  final GlobalKey _targetKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToCurrent());
+    _scrollToTarget();
   }
 
-  void _scrollToCurrent() {
+  void _scrollToTarget() {
+    // 先估计滚动让 target item 被渲染，再用 ensureVisible 精确定位
     final idx = widget.player.queueIndex;
-    if (idx >= 0 && idx < widget.player.queue.length) {
-      final offset = idx * 56.0;
-      final maxScroll = _scrollCtrl.position.maxScrollExtent;
-      _scrollCtrl.animateTo(
-        offset.clamp(0.0, maxScroll),
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollCtrl.hasClients || idx < 0) return;
+      final estOffset = idx * 62.0;
+      _scrollCtrl.jumpTo(estOffset.clamp(0.0, _scrollCtrl.position.maxScrollExtent));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx1 = _targetKey.currentContext;
+        if (ctx1 != null) {
+          Scrollable.ensureVisible(ctx1, alignment: 0.25, duration: Duration.zero);
+        }
+      });
+    });
   }
 
   @override
@@ -536,6 +544,7 @@ class _QueueSheetState extends State<_QueueSheet> {
             );
             if (isCur) {
               return Container(
+                key: _targetKey,
                 color: Colors.red.withValues(alpha: 0.08),
                 child: tile,
               );

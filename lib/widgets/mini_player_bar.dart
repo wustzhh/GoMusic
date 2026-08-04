@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import '../models/music_data.dart';
@@ -52,7 +54,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
       return Container(
         height: 52,
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.85),
           border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.12))),
         ),
         child: const Center(child: Text('未在播放', style: TextStyle(color: Colors.grey, fontSize: 13))),
@@ -69,31 +71,131 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
       child: Container(
         height: 52,
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.85),
           border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.12))),
         ),
         child: Column(
           children: [
             LinearProgressIndicator(value: progress, minHeight: 1.5, backgroundColor: Colors.transparent, color: Colors.deepPurple),
             Expanded(
-              child: Row(children: [
-                const SizedBox(width: 12),
-                Icon(Icons.music_note, color: Colors.deepPurple, size: 24),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text('${song.title} · ${song.uploader}',
-                      style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
-                ),
-                IconButton(
-                  icon: Icon(_service.isPlaying ? Icons.pause : Icons.play_arrow, size: 26, color: Colors.deepPurple),
-                  onPressed: () { _service.togglePause(); setState(() {}); },
-                ),
-                const SizedBox(width: 4),
-              ]),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(children: [
+                  ClipRRect(borderRadius: BorderRadius.circular(4), child: _buildCover(song)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                      Text(song.title, style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      if (song.uploader.isNotEmpty)
+                        Text(song.uploader, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                    ]),
+                  ),
+                  const SizedBox(width: 4),
+                  SizedBox(
+                    width: 36, height: 36,
+                    child: Stack(alignment: Alignment.center, children: [
+                      CircularProgressIndicator(
+                        value: _duration.inMilliseconds > 0 ? _position.inMilliseconds / _duration.inMilliseconds : 0,
+                        strokeWidth: 2.5, color: Colors.deepPurple, backgroundColor: Colors.grey.withValues(alpha: 0.2),
+                      ),
+                      IconButton(
+                        icon: Icon(_service.isPlaying ? Icons.pause : Icons.play_arrow, size: 20, color: Colors.deepPurple),
+                        onPressed: () { _service.togglePause(); setState(() {}); },
+                        padding: EdgeInsets.zero,
+                      ),
+                    ]),
+                  ),
+                  IconButton(icon: const Icon(Icons.queue_music, size: 20, color: Colors.grey), onPressed: _showQueue, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
+                  const SizedBox(width: 2),
+                ]),
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildCover(Song song) {
+    if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
+      final f = File(song.coverUrl!);
+      if (f.existsSync() && f.lengthSync() > 0) {
+        return Image.file(f, width: 28, height: 28, fit: BoxFit.cover);
+      }
+    }
+    return Icon(Icons.music_note, color: Colors.deepPurple, size: 22);
+  }
+
+  void _showQueue() {
+    showModalBottomSheet(
+      context: context,
+      isDismissible: true,
+      barrierColor: Colors.black54,
+      builder: (_) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5),
+        child: _MiniQueueSheet(player: _service),
+      ),
+    );
+  }
+}
+
+
+class _MiniQueueSheet extends StatefulWidget {
+  final AudioPlayerService player;
+  const _MiniQueueSheet({required this.player});
+  @override
+  State<_MiniQueueSheet> createState() => _MiniQueueSheetState();
+}
+
+class _MiniQueueSheetState extends State<_MiniQueueSheet> {
+  final ScrollController _scrollCtrl = ScrollController();
+  final GlobalKey _targetKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final idx = widget.player.queueIndex;
+      if (!_scrollCtrl.hasClients || idx < 0) return;
+      final estOffset = idx * 62.0;
+      _scrollCtrl.jumpTo(estOffset.clamp(0.0, _scrollCtrl.position.maxScrollExtent));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _targetKey.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(ctx, alignment: 0.25, duration: Duration.zero);
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() { _scrollCtrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.player;
+    var queue = p.queue;
+    return SizedBox(height: MediaQuery.of(context).size.height * 0.5, child: Column(children: [
+      Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+        Text('播放列表 (${queue.length}首)', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const Spacer(), Text(p.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+      ])),
+      Expanded(child: queue.isEmpty
+        ? const Center(child: Text('队列为空'))
+        : ListView.builder(controller: _scrollCtrl, itemCount: queue.length, itemBuilder: (_, i) {
+            final s = queue[i]; final cur = i == p.queueIndex;
+            final tile = ListTile(
+              leading: Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.red : Colors.grey, size: 20),
+              title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cur ? Colors.red : null)),
+              subtitle: Text(s.uploader, style: TextStyle(fontSize: 12, color: cur ? Colors.red.withValues(alpha: 0.7) : Colors.grey)),
+              trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { p.removeFromQueue(i); setState(() {}); }),
+              onTap: () { p.playSong(s); Navigator.pop(context); },
+            );
+            if (cur) {
+              return Container(key: _targetKey, color: Colors.red.withValues(alpha: 0.08), child: tile);
+            }
+            return tile;
+          })),
+    ]));
   }
 }
