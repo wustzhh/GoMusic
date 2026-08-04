@@ -149,7 +149,7 @@ class _MiniQueueSheet extends StatefulWidget {
 
 class _MiniQueueSheetState extends State<_MiniQueueSheet> {
   final ScrollController _scrollCtrl = ScrollController();
-  final GlobalKey _targetKey = GlobalKey();
+
 
   @override
   void initState() {
@@ -157,14 +157,8 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final idx = widget.player.queueIndex;
       if (!_scrollCtrl.hasClients || idx < 0) return;
-      final estOffset = idx * 62.0;
-      _scrollCtrl.jumpTo(estOffset.clamp(0.0, _scrollCtrl.position.maxScrollExtent));
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx = _targetKey.currentContext;
-        if (ctx != null) {
-          Scrollable.ensureVisible(ctx, alignment: 0.25, duration: Duration.zero);
-        }
-      });
+      final target = (idx * 64.0 - _scrollCtrl.position.viewportDimension / 2 + 32).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
+      _scrollCtrl.jumpTo(target);
     });
   }
 
@@ -182,7 +176,7 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
       ])),
       Expanded(child: queue.isEmpty
         ? const Center(child: Text('队列为空'))
-        : ListView.builder(controller: _scrollCtrl, itemCount: queue.length, itemBuilder: (_, i) {
+        : ListView.builder(controller: _scrollCtrl, itemExtent: 64, itemCount: queue.length, itemBuilder: (_, i) {
             final s = queue[i]; final cur = i == p.queueIndex;
             final tile = ListTile(
               leading: Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.red : Colors.grey, size: 20),
@@ -192,7 +186,7 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
               onTap: () { p.playSong(s); Navigator.pop(context); },
             );
             if (cur) {
-              return Container(key: _targetKey, color: Colors.red.withValues(alpha: 0.08), child: tile);
+              return Container(color: Colors.red.withValues(alpha: 0.08), child: tile);
             }
             return tile;
           })),

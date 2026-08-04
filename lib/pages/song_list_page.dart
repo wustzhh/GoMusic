@@ -299,18 +299,11 @@ class _SongListPageState extends State<SongListPage> {
 
   void _showQueueSheet() {
     final scrollCtrl = ScrollController();
-    final targetKey = GlobalKey();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final idx = _service.queueIndex;
       if (!scrollCtrl.hasClients || idx < 0) return;
-      final estOffset = idx * 62.0;
-      scrollCtrl.jumpTo(estOffset.clamp(0.0, scrollCtrl.position.maxScrollExtent));
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx = targetKey.currentContext;
-        if (ctx != null) {
-          Scrollable.ensureVisible(ctx, alignment: 0.25, duration: Duration.zero);
-        }
-      });
+      final target = (idx * 64.0 - scrollCtrl.position.viewportDimension / 2 + 32).clamp(0.0, scrollCtrl.position.maxScrollExtent);
+      scrollCtrl.jumpTo(target);
     });
     showModalBottomSheet(
       context: context,
@@ -353,7 +346,7 @@ class _SongListPageState extends State<SongListPage> {
                   trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { _service.removeFromQueue(i); setState(() {}); }),
                 );
                 if (cur) {
-                  return Container(key: targetKey, color: Colors.red.withValues(alpha: 0.08), child: tile);
+                  return Container(color: Colors.red.withValues(alpha: 0.08), child: tile);
                 }
                 return InkWell(
                   onTap: () { _service.playSong(s); Navigator.pop(context); },

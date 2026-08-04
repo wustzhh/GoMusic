@@ -14,9 +14,7 @@ class AudioPlayerService {
   factory AudioPlayerService() => _instance;
   AudioPlayerService._() {
     _player.onPlayerComplete.listen((_) => next());
-    WidgetsBinding.instance.addObserver(_LifecycleObserver(
-      onPause: () => _saveState(),
-    ));
+    WidgetsBinding.instance.addObserver(_AppObserver(_saveState));
     _player.onDurationChanged.listen((d) {
       if (d.inMilliseconds > 0 && _currentSong != null) {
         _writeMeta(_currentSong!, d);
@@ -128,39 +126,54 @@ class AudioPlayerService {
   static Future<bool> isFavorite(String fp) async { final f = await getFavorites(); return f.contains(fp); }
 
   // ==================== 持久化 ====================
-  Future<void> _saveState() async {
+  void _saveState() {
     if (_currentSong == null) return;
-    final p = await SharedPreferences.getInstance();
-    await p.setString('last_song', '${_currentSong!.filePath}|${_currentSong!.title}|${_currentSong!.uploader}|${_currentSong!.duration.inSeconds}|${_currentSong!.bvid}|${_currentSong!.coverUrl ?? ""}');
-    await p.setInt('last_position', _lastPosition.inMilliseconds);
-    await p.setInt('last_mode', _playMode.index);
-    final qPaths = _queue.map((s) => s.filePath).toList();
-    await p.setStringList('last_queue', qPaths);
-    await p.setInt('last_queue_index', _queueIndex);
+    try {
+      final state = <String, dynamic>{
+        'song': _currentSong!.filePath,
+        'title': _currentSong!.title,
+        'uploader': _currentSong!.uploader,
+        'duration': _currentSong!.duration.inSeconds,
+        'bvid': _currentSong!.bvid,
+        'cover': _currentSong!.coverUrl ?? '',
+        'position': _lastPosition.inMilliseconds,
+        'mode': _playMode.index,
+        'queue': _queue.map((s) => s.filePath).toList(),
+        'queue_index': _queueIndex,
+      };
+      File('save_state.json').writeAsStringSync(jsonEncode(state));
+    } catch (_) {}
   }
   Future<void> _saveMode() async { final p = await SharedPreferences.getInstance(); await p.setInt('play_mode', _playMode.index); }
   Future<Song?> restoreLastSong() async {
-    final p = await SharedPreferences.getInstance();
-    final last = p.getString('last_song');
-    if (last == null) return null;
-    final parts = last.split('|');
-    if (parts.length < 5) return null;
-    final sm = p.getInt('last_mode');
-    if (sm != null && sm < PlayMode.values.length) _playMode = PlayMode.values[sm];
-    final pos = p.getInt('last_position') ?? 0;
-    _lastPosition = Duration(milliseconds: pos);
-    // 恢复队列
-    final qPaths = p.getStringList('last_queue') ?? [];
-    final qIdx = p.getInt('last_queue_index') ?? 0;
-    if (qPaths.isNotEmpty) {
-      // 队列恢复为占位Song对象（title/uploader 后续由scanLocalAudioFiles补全）
-      _queue.clear();
-      for (final fp in qPaths) {
-        _queue.add(Song(id: 'restored', title: '', uploader: '', duration: Duration.zero, filePath: fp, bvid: ''));
+    try {
+      final f = File('save_state.json');
+      if (!f.existsSync()) return null;
+      final data = jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;
+      final sm = data['mode'] as int?;
+      if (sm != null && sm < PlayMode.values.length) _playMode = PlayMode.values[sm];
+      _lastPosition = Duration(milliseconds: data['position'] as int? ?? 0);
+      final qPaths = List<String>.from(data['queue'] as List? ?? []);
+      final qIdx = data['queue_index'] as int? ?? 0;
+      if (qPaths.isNotEmpty) {
+        _queue.clear();
+        for (final fp in qPaths) {
+          _queue.add(Song(id: 'restored', title: '', uploader: '', duration: Duration.zero, filePath: fp, bvid: ''));
+        }
+        _queueIndex = qIdx.clamp(0, _queue.length - 1);
       }
-      _queueIndex = qIdx.clamp(0, _queue.length - 1);
+      return Song(
+        id: data['bvid'] as String? ?? '',
+        title: data['title'] as String? ?? '',
+        uploader: data['uploader'] as String? ?? '',
+        duration: Duration(seconds: data['duration'] as int? ?? 0),
+        filePath: data['song'] as String? ?? '',
+        bvid: data['bvid'] as String? ?? '',
+        coverUrl: (data['cover'] as String? ?? '').isNotEmpty ? data['cover'] as String? : null,
+      );
+    } catch (_) {
+      return null;
     }
-    return Song(id: parts[4], title: parts[1], uploader: parts.length > 2 ? parts[2] : '', duration: Duration(seconds: int.tryParse(parts[3]) ?? 0), filePath: parts[0], bvid: parts[4], coverUrl: parts.length > 5 && parts[5].isNotEmpty ? parts[5] : null);
   }
 
   void _writeMeta(Song song, Duration d) {
@@ -172,12 +185,12 @@ class AudioPlayerService {
 }
 
 
-class _LifecycleObserver extends WidgetsBindingObserver {
-  final VoidCallback onPause;
-  _LifecycleObserver({required this.onPause});
+class _AppObserver extends WidgetsBindingObserver {
+  final void Function() onPause;
+  _AppObserver(this.onPause);
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       onPause();
     }
   }
