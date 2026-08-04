@@ -142,7 +142,7 @@ class AudioPlayerService {
         'bvid': _currentSong!.bvid,
         'cover': _currentSong!.coverUrl ?? '',
         'position': _lastPosition.inMilliseconds,
-        'queue': _queue.map((s) => s.filePath).toList(),
+        'queue': _queue.map((s) => {'p': s.filePath, 't': s.title, 'u': s.uploader}).toList(),
         'queue_index': _queueIndex,
       };
       File('save_state.json').writeAsStringSync(jsonEncode(state));
@@ -157,13 +157,15 @@ class AudioPlayerService {
       final sm = data['mode'] as int?;
       if (sm != null && sm < PlayMode.values.length) _playMode = PlayMode.values[sm];
       _lastPosition = Duration(milliseconds: data['position'] as int? ?? 0);
-      final qPaths = List<String>.from(data['queue'] as List? ?? []);
+      final qPaths = List<dynamic>.from(data['queue'] as List? ?? []);
       final qIdx = data['queue_index'] as int? ?? 0;
       if (qPaths.isNotEmpty) {
         _queue.clear();
-        for (final fp in qPaths) {
-          final name = fp.split('\\').last.split('/').last.replaceAll('.m4a','').replaceAll('.mp3','');
-          _queue.add(Song(id: 'restored', title: name, uploader: '', duration: Duration.zero, filePath: fp, bvid: ''));
+        for (final q in qPaths) {
+          final fp = q is Map ? q['p'] as String? ?? '' : q.toString();
+          final t = q is Map ? q['t'] as String? ?? '' : '';
+          final u = q is Map ? q['u'] as String? ?? '' : '';
+          _queue.add(Song(id: 'restored', title: t.isNotEmpty ? t : fp.split('\\').last.split('/').last, uploader: u, duration: Duration.zero, filePath: fp, bvid: ''));
         }
         _queueIndex = qIdx.clamp(0, _queue.length - 1);
       }
