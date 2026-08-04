@@ -141,9 +141,40 @@ class _SongListPageState extends State<SongListPage> {
             onTap: () { Navigator.pop(ctx); AudioPlayerService.toggleFavorite(song.filePath); _loadFavs(); }),
           ListTile(leading: const Icon(Icons.playlist_add), title: const Text('添加到歌单...'),
             onTap: () { Navigator.pop(ctx); _showAddToList(song); }),
+          ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('删除歌曲', style: TextStyle(color: Colors.red)),
+            onTap: () {
+              Navigator.pop(ctx);
+              _confirmDelete(song);
+            }),
         ]),
       ),
     );
+  }
+
+  void _confirmDelete(Song song) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除歌曲'),
+        content: Text('确定要删除「${song.title}」吗？\n本地文件也将被删除。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () {
+            Navigator.pop(ctx);
+            _deleteSong(song);
+          }, child: const Text('删除', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+  }
+
+  void _deleteSong(Song song) {
+    try {
+      File(song.filePath).deleteSync();
+      if (song.coverUrl != null) File(song.coverUrl!).deleteSync();
+      SongManager.unregisterSong(song.filePath);
+    } catch (_) {}
+    _refresh();
   }
 
   @override
@@ -265,7 +296,8 @@ class _SongListPageState extends State<SongListPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      barrierDismissible: true,
+      backgroundColor: Colors.black54,
       builder: (_) => DraggableScrollableSheet(
         initialChildSize: 0.65, minChildSize: 0.4, maxChildSize: 0.9,
         builder: (ctx, scrollCtrl) => Container(
