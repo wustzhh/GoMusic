@@ -64,8 +64,9 @@ class AudioPlayerService {
     RecentlyPlayedService.addIfNotExists(song.filePath, song.title, song.uploader, song.duration.inSeconds, song.filePath, song.coverUrl ?? '').catchError((_) {});
   }
 
-  Future<void> togglePause() async {
+  void togglePause() {
     if (_playing) { _player.pause(); _playing = false; } else { _player.resume(); _playing = true; }
+    currentSongNotifier.notifyListeners(); // 强制刷新UI
   }
 
   Future<void> seek(Duration p) => _player.seek(p);
