@@ -64,6 +64,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
         : 0.0;
 
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage())),
       child: Container(
         height: 52,

@@ -210,32 +210,34 @@ class _SongListPageState extends State<SongListPage> {
                   },
                   child: Container(
                     color: isPlaying ? Colors.deepPurple.withValues(alpha: 0.12) : Colors.transparent,
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.only(left: 0, right: 4),
-                      horizontalTitleGap: 8,
-                      leading: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          _buildCover(song),
-                          if (isFav)
-                            Positioned(right: -4, bottom: -4,
-                              child: Icon(Icons.favorite, color: Colors.red, size: 14)),
-                        ],
-                      ),
-                      title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                      trailing: SizedBox(
-                        width: 32, height: 32,
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(4),
-                            onTap: () => _showSongMenu(song, isFav),
-                            child: const Icon(Icons.more_vert, color: Colors.grey, size: 20),
+                    child: InkWell(
+                      onTap: () => _playSong(song),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.only(left: 0, right: 4),
+                        horizontalTitleGap: 8,
+                        leading: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            _buildCover(song),
+                            if (isFav)
+                              Positioned(right: -4, bottom: -4,
+                                child: Icon(Icons.favorite, color: Colors.red, size: 14)),
+                          ],
+                        ),
+                        title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        trailing: SizedBox(
+                          width: 32, height: 32,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(4),
+                              onTap: () => _showSongMenu(song, isFav),
+                              child: const Icon(Icons.more_vert, color: Colors.grey, size: 20),
+                            ),
                           ),
                         ),
                       ),
-                      onTap: () => _playSong(song),
                     ),
                   ),
                 );
@@ -250,27 +252,27 @@ class _SongListPageState extends State<SongListPage> {
     final displaySong = currentSong ?? (_getFiltered().isNotEmpty ? _getFiltered().first : null);
     if (displaySong == null) return const SizedBox.shrink();
 
-    return Padding(
-      padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.85),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(children: [
-          ClipRRect(borderRadius: BorderRadius.circular(6), child: _buildCoverSmall(displaySong)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage())),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage())),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 12, right: 12, bottom: 8),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.85),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(children: [
+            ClipRRect(borderRadius: BorderRadius.circular(6), child: _buildCoverSmall(displaySong)),
+            const SizedBox(width: 10),
+            Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
                 Text(displaySong.title, style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
                 if (displaySong.uploader.isNotEmpty)
                   Text(displaySong.uploader, style: const TextStyle(fontSize: 11, color: Colors.grey)),
               ]),
             ),
-          ),
           const SizedBox(width: 8),
           // 圆形进度播放按钮
           SizedBox(
@@ -290,7 +292,9 @@ class _SongListPageState extends State<SongListPage> {
           IconButton(icon: const Icon(Icons.queue_music, size: 22, color: Colors.grey), onPressed: _showQueueSheet),
         ]),
       ),
+    ),
     );
+
   }
 
   void _showQueueSheet() {
