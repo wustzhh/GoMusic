@@ -56,8 +56,7 @@ class AudioPlayerService {
     if (idx >= 0) _queueIndex = idx;
     if (_currentSong?.filePath == song.filePath) {
       if (_playing) { _player.pause(); _playing = false; } else {
-        await _player.play(DeviceFileSource(song.filePath));
-        if (_lastPosition > Duration.zero) await _player.seek(_lastPosition);
+        await _player.play(DeviceFileSource(song.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
         _playing = true;
       }
       return;
@@ -65,7 +64,7 @@ class AudioPlayerService {
     _currentSong = song;
     currentSongNotifier.value = song;
     await _player.stop();
-    await _player.play(DeviceFileSource(song.filePath));
+    await _player.play(DeviceFileSource(song.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
     _playing = true;
     _saveState();
     RecentlyPlayedService.addIfNotExists(song.filePath, song.title, song.uploader, song.duration.inSeconds, song.filePath, song.coverUrl ?? '').catchError((_) {});

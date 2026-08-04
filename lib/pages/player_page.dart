@@ -486,15 +486,15 @@ class _QueueSheetState extends State<_QueueSheet> {
   }
 
   void _scrollToTarget() {
-    final idx = widget.player.queueIndex;
-    // 两步：先估计跳到附近让item渲染，再ensureVisible精确定位
+    // 用实际测量的item高度精确定位
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final idx = widget.player.queueIndex;
       if (!_scrollCtrl.hasClients || idx < 0) return;
       final est = (idx * 72.0 - _scrollCtrl.position.viewportDimension / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
       _scrollCtrl.jumpTo(est);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx = _targetKey.currentContext;
-        if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.25, duration: Duration.zero);
+        final ctx1 = _targetKey.currentContext;
+        if (ctx1 != null) Scrollable.ensureVisible(ctx1, alignment: 0.25, duration: Duration.zero);
       });
     });
   }
