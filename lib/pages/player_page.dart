@@ -488,7 +488,7 @@ class _QueueSheetState extends State<_QueueSheet> {
     final idx = widget.player.queueIndex;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollCtrl.hasClients || idx < 0) return;
-      final target = (idx * 64.0 - _scrollCtrl.position.viewportDimension / 2 + 32).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
+      final target = (idx * 72.0 - _scrollCtrl.position.viewportDimension / 2 + 36).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
       _scrollCtrl.jumpTo(target);
     });
   }
@@ -525,7 +525,7 @@ class _QueueSheetState extends State<_QueueSheet> {
 
         ? const Center(child: Text('队列为空'))
 
-        : ListView.builder(controller: _scrollCtrl, itemExtent: 64,
+        : ListView.builder(controller: _scrollCtrl, itemExtent: 72,
               itemCount: queue.length, itemBuilder: (_, i) {
 
             final s = queue[i]; final isCur = i == p.queueIndex;

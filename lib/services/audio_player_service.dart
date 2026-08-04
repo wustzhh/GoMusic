@@ -56,8 +56,9 @@ class AudioPlayerService {
     if (idx >= 0) _queueIndex = idx;
     if (_currentSong?.filePath == song.filePath) {
       if (_playing) { _player.pause(); _playing = false; } else {
+        await _player.play(DeviceFileSource(song.filePath));
         if (_lastPosition > Duration.zero) await _player.seek(_lastPosition);
-        _player.resume(); _playing = true;
+        _playing = true;
       }
       return;
     }

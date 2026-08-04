@@ -157,7 +157,7 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final idx = widget.player.queueIndex;
       if (!_scrollCtrl.hasClients || idx < 0) return;
-      final target = (idx * 64.0 - _scrollCtrl.position.viewportDimension / 2 + 32).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
+      final target = (idx * 72.0 - _scrollCtrl.position.viewportDimension / 2 + 36).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
       _scrollCtrl.jumpTo(target);
     });
   }
@@ -176,7 +176,7 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
       ])),
       Expanded(child: queue.isEmpty
         ? const Center(child: Text('队列为空'))
-        : ListView.builder(controller: _scrollCtrl, itemExtent: 64, itemCount: queue.length, itemBuilder: (_, i) {
+        : ListView.builder(controller: _scrollCtrl, itemExtent: 72, itemCount: queue.length, itemBuilder: (_, i) {
             final s = queue[i]; final cur = i == p.queueIndex;
             final tile = ListTile(
               leading: Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.red : Colors.grey, size: 20),

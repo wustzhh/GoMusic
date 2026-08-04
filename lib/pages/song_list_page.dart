@@ -302,7 +302,7 @@ class _SongListPageState extends State<SongListPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final idx = _service.queueIndex;
       if (!scrollCtrl.hasClients || idx < 0) return;
-      final target = (idx * 64.0 - scrollCtrl.position.viewportDimension / 2 + 32).clamp(0.0, scrollCtrl.position.maxScrollExtent);
+      final target = (idx * 72.0 - scrollCtrl.position.viewportDimension / 2 + 36).clamp(0.0, scrollCtrl.position.maxScrollExtent);
       scrollCtrl.jumpTo(target);
     });
     showModalBottomSheet(
