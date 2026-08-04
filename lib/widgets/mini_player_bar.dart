@@ -47,7 +47,17 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
 
   @override
   Widget build(BuildContext context) {
-    if (_song == null) return const SizedBox.shrink();
+    final song = _song;
+    if (song == null) {
+      return Container(
+        height: 52,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.12))),
+        ),
+        child: const Center(child: Text('未在播放', style: TextStyle(color: Colors.grey, fontSize: 13))),
+      );
+    }
 
     final progress = _duration.inMilliseconds > 0
         ? _position.inMilliseconds / _duration.inMilliseconds
@@ -70,7 +80,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                 Icon(Icons.music_note, color: Colors.deepPurple, size: 24),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text('${_song!.title} · ${_song!.uploader}',
+                  child: Text('${song.title} · ${song.uploader}',
                       style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
                 ),
                 IconButton(
