@@ -21,7 +21,7 @@ class AudioPlayerService {
     });
     // 进度轮询
     Timer.periodic(const Duration(milliseconds: 500), (_) async {
-      if (_currentSong != null && _player.state == PlayerState.playing) {
+      if (_currentSong != null && _playing) {
         final p = await _player.getCurrentPosition();
         if (p != null) _positionController.add(p);
       }
@@ -30,6 +30,7 @@ class AudioPlayerService {
 
   final AudioPlayer _player = AudioPlayer();
   final StreamController<Duration> _positionController = StreamController<Duration>.broadcast();
+  bool _playing = false;
   Song? _currentSong;
   final List<Song> _queue = [];
   PlayMode _playMode = PlayMode.loopList;
@@ -39,7 +40,7 @@ class AudioPlayerService {
   Song? get currentSong => _currentSong;
   List<Song> get queue => List.unmodifiable(_queue);
   PlayMode get playMode => _playMode;
-  bool get isPlaying => _player.state == PlayerState.playing;
+  bool get isPlaying => _playing;
   int get queueIndex => _queueIndex;
   Stream<Duration> get onPositionChanged => _positionController.stream;
   Stream<Duration> get onDurationChanged => _player.onDurationChanged;
@@ -51,7 +52,7 @@ class AudioPlayerService {
     final idx = _queue.indexWhere((s) => s.filePath == song.filePath);
     if (idx >= 0) _queueIndex = idx;
     if (_currentSong?.filePath == song.filePath) {
-      if (_player.state == PlayerState.playing) { _player.pause(); } else { _player.resume(); }
+      if (_playing) { _player.pause(); } else { _player.resume(); }
       return;
     }
     _currentSong = song;
@@ -63,7 +64,7 @@ class AudioPlayerService {
   }
 
   Future<void> togglePause() async {
-    if (_player.state == PlayerState.playing) { _player.pause(); } else { _player.resume(); }
+    if (_playing) { _player.pause(); } else { _player.resume(); }
   }
 
   Future<void> seek(Duration p) => _player.seek(p);
