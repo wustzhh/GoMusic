@@ -247,18 +247,26 @@ class _PlayerPageState extends State<PlayerPage> {
 
 
   void _showQueue() {
-
     showModalBottomSheet(
-
-      context: context, isScrollControlled: true,
-
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-
-      builder: (_) => _QueueSheet(player: _service),
-
+      context: context,
+      isScrollControlled: true,
+      barrierColor: Colors.transparent,
+      builder: (_) => Stack(
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.pop(context),
+            child: Container(color: Colors.black54),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: _QueueSheet(player: _service),
+          ),
+        ],
+      ),
     );
-
   }
+
 
 
 
