@@ -74,8 +74,8 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                       style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
                 ),
                 IconButton(
-                  icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 26, color: Colors.deepPurple),
-                  onPressed: () { _service.togglePause(); setState(() => _isPlaying = !_isPlaying); },
+                  icon: Icon(_service.isPlaying ? Icons.pause : Icons.play_arrow, size: 26, color: Colors.deepPurple),
+                  onPressed: () { _service.togglePause(); setState(() {}); },
                 ),
                 const SizedBox(width: 4),
               ]),
