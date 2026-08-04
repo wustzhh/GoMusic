@@ -296,11 +296,11 @@ class _SongListPageState extends State<SongListPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      barrierDismissible: true,
+      isDismissible: true,
       backgroundColor: Colors.black54,
-      builder: (_) => DraggableScrollableSheet(
+      builder: (_) => GestureDetector(onTap: () => Navigator.pop(context), behavior: HitTestBehavior.translucent, child: DraggableScrollableSheet(
         initialChildSize: 0.65, minChildSize: 0.4, maxChildSize: 0.9,
-        builder: (ctx, scrollCtrl) => Container(
+        builder: (ctx, scrollCtrl) => GestureDetector(onTap: () {}, child: Container(
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surface,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -335,8 +335,10 @@ class _SongListPageState extends State<SongListPage> {
           ]),
         ),
       ),
-    );
+          ),
+        ),
   }
+    ),
 
   void _showModePicker() {
     showModalBottomSheet(
