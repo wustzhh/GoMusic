@@ -67,10 +67,6 @@ class _PlayerPageState extends State<PlayerPage> {
     _posSub = _service.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
 
     _durSub = _service.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
-    // 如果已有缓存duration，立即使用
-    if (_duration == Duration.zero && _service.currentDuration != Duration.zero) {
-      _duration = _service.currentDuration;
-    }
 
     _service.currentSongNotifier.addListener(() { if (mounted) { setState(() {}); _refresh(); } });
 
@@ -306,7 +302,8 @@ class _PlayerPageState extends State<PlayerPage> {
 
     if (_song == null) return Scaffold(appBar: AppBar(title: const Text('')), body: const Center(child: Text('未在播放')));
 
-    final progress = _duration.inMilliseconds > 0 ? _position.inMilliseconds / _duration.inMilliseconds : 0.0;
+    final dur = _duration.inMilliseconds > 0 ? _duration : (_song?.duration ?? Duration.zero);
+    final progress = dur.inMilliseconds > 0 ? _position.inMilliseconds / dur.inMilliseconds : 0.0;
 
 
 
@@ -344,7 +341,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
           SliderTheme(data: SliderTheme.of(context).copyWith(trackHeight: 3, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6)),
 
-            child: Slider(value: progress, onChanged: (v) => _service.seek(_duration * v))),
+            child: Slider(value: progress, onChanged: (v) => _service.seek(dur * v))),
 
           Padding(padding: const EdgeInsets.symmetric(horizontal: 8),
 
@@ -352,7 +349,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
               Text(_fmt(_position), style: const TextStyle(fontSize: 12, color: Colors.grey)),
 
-              Text(_duration.inMilliseconds > 0 ? _fmt(_duration) : _song!.durationText.isNotEmpty ? _song!.durationText : '--:--', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(_fmt(dur)), style: const TextStyle(fontSize: 12, color: Colors.grey)),
 
             ])),
 

@@ -15,18 +15,21 @@ class AudioPlayerService {
   AudioPlayerService._() {
     _player.onPlayerComplete.listen((_) => next());
     _player.onDurationChanged.listen((d) {
-      _currentDuration = d;
       if (d.inMilliseconds > 0 && _currentSong != null) {
         _writeMeta(_currentSong!, d);
       }
     });
-    // 定期保存进度（每5秒）
-    _player.onPositionChanged.listen((p) {
-      _lastPosition = p;
+    // 进度轮询
+    Timer.periodic(const Duration(milliseconds: 500), (_) async {
+      if (_currentSong != null && _player.state == PlayerState.playing) {
+        final p = await _player.getCurrentPosition();
+        if (p != null) _positionController.add(p);
+      }
     });
   }
 
   final AudioPlayer _player = AudioPlayer();
+  final StreamController<Duration> _positionController = StreamController<Duration>.broadcast();
   Song? _currentSong;
   final List<Song> _queue = [];
   PlayMode _playMode = PlayMode.loopList;
@@ -38,10 +41,7 @@ class AudioPlayerService {
   PlayMode get playMode => _playMode;
   bool get isPlaying => _player.state == PlayerState.playing;
   int get queueIndex => _queueIndex;
-  Duration _currentDuration = Duration.zero;
-  Duration get currentDuration => _currentDuration;
-  Duration _lastPosition = Duration.zero;
-  Stream<Duration> get onPositionChanged => _player.onPositionChanged;
+  Stream<Duration> get onPositionChanged => _positionController.stream;
   Stream<Duration> get onDurationChanged => _player.onDurationChanged;
   Stream<bool> get onPlayingChanged => _player.onPlayerStateChanged.map((s) => s == PlayerState.playing);
 
@@ -98,44 +98,9 @@ class AudioPlayerService {
   static Future<bool> isFavorite(String fp) async { final f = await getFavorites(); return f.contains(fp); }
 
   // ==================== 持久化 ====================
-  Future<void> _saveState() async {
-    if (_currentSong == null) return;
-    final p = await SharedPreferences.getInstance();
-    await p.setString('last_song',
-        '${_currentSong!.filePath}|${_currentSong!.title}|${_currentSong!.uploader}|${_currentSong!.duration.inSeconds}|${_currentSong!.bvid}|${_currentSong!.coverUrl ?? ''}|${_lastPosition.inMilliseconds}');
-  }
-
-  Future<void> saveProgress() async {
-    if (_currentSong == null) return;
-    final p = await SharedPreferences.getInstance();
-    final prev = p.getString('last_song') ?? '';
-    final parts = prev.split('|');
-    if (parts.length >= 7) parts[6] = _lastPosition.inMilliseconds.toString();
-    await p.setString('last_song', parts.join('|'));
-  }
-
-  Future<Song?> restoreLastSong() async {
-    final p = await SharedPreferences.getInstance();
-    final last = p.getString('last_song');
-    if (last == null) return null;
-    final parts = last.split('|');
-    if (parts.length < 6) return null;
-    final sm = p.getInt('play_mode');
-    if (sm != null && sm < PlayMode.values.length) _playMode = PlayMode.values[sm];
-    _lastPosition = Duration(milliseconds: int.tryParse(parts.length > 6 ? parts[6] : '0') ?? 0);
-    return Song(id: parts[4], title: parts[1], uploader: parts.length > 2 ? parts[2] : '',
-        duration: Duration(seconds: int.tryParse(parts[3]) ?? 0),
-        filePath: parts[0], bvid: parts[4],
-        coverUrl: parts.length > 5 && parts[5].isNotEmpty ? parts[5] : null);
-  }
-
-  Future<void> restorePosition() async {
-    if (_lastPosition.inMilliseconds > 0) {
-      await _player.seek(_lastPosition);
-    }
-  }
-
+  Future<void> _saveState() async { if (_currentSong == null) return; final p = await SharedPreferences.getInstance(); await p.setString('last_song', '${_currentSong!.filePath}|${_currentSong!.title}|${_currentSong!.uploader}|${_currentSong!.duration.inSeconds}|${_currentSong!.bvid}|${_currentSong!.coverUrl ?? ''}'); }
   Future<void> _saveMode() async { final p = await SharedPreferences.getInstance(); await p.setInt('play_mode', _playMode.index); }
+  Future<Song?> restoreLastSong() async { final p = await SharedPreferences.getInstance(); final last = p.getString('last_song'); if (last == null) return null; final parts = last.split('|'); if (parts.length < 5) return null; final sm = p.getInt('play_mode'); if (sm != null && sm < PlayMode.values.length) _playMode = PlayMode.values[sm]; return Song(id: parts[4], title: parts[1], uploader: parts.length > 2 ? parts[2] : '', duration: Duration(seconds: int.tryParse(parts[3]) ?? 0), filePath: parts[0], bvid: parts[4], coverUrl: parts.length > 5 && parts[5].isNotEmpty ? parts[5] : null); }
 
   void _writeMeta(Song song, Duration d) {
     try {

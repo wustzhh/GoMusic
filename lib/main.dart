@@ -66,7 +66,7 @@ class _MainScreenState extends State<MainScreen> {
               // 切换到播放页时刷新
               if (index == 1) _playlistKey.currentState?.refresh();
             },
-            selectedItemColor: Colors.green,  // 绿色测试
+            selectedItemColor: Colors.deepPurple,
             items: const [
               BottomNavigationBarItem(icon: Icon(Icons.download), label: '下载'),
               BottomNavigationBarItem(icon: Icon(Icons.play_circle_outline), label: '播放'),

@@ -199,7 +199,7 @@ class _SongListPageState extends State<SongListPage> {
                           child: InkWell(
                             borderRadius: BorderRadius.circular(4),
                             onTap: () => _showSongMenu(song, isFav),
-                            child: const Icon(Icons.more_horiz, color: Colors.grey, size: 20),
+                            child: const Icon(Icons.more_vert, color: Colors.grey, size: 20),
                           ),
                         ),
                       ),
@@ -265,58 +265,43 @@ class _SongListPageState extends State<SongListPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: true,
-      enableDrag: true,
       backgroundColor: Colors.transparent,
       builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.65, minChildSize: 0.3, maxChildSize: 0.9,
-        snap: true,
-        builder: (ctx, scrollCtrl) {
-          // 定位到当前播放
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (_service.queueIndex >= 0 && _service.queueIndex < _service.queue.length) {
-              final offset = (_service.queueIndex * 56.0).clamp(0.0, scrollCtrl.position.maxScrollExtent);
-              scrollCtrl.jumpTo(offset);
-            }
-          });
-          return Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            ),
-            child: Column(children: [
-              Padding(padding: const EdgeInsets.all(12), child: Row(children: [
-                const Icon(Icons.drag_handle, color: Colors.grey, size: 24),
-                const Spacer(),
-                // 模式下拉
-                DropdownButton<PlayMode>(
-                  value: _service.playMode,
-                  underline: const SizedBox(),
-                  dropdownColor: Theme.of(context).colorScheme.surface,
-                  style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                  items: PlayMode.values.map((m) => DropdownMenuItem(value: m, child: Text(_modeLabel(m), style: const TextStyle(fontSize: 13)))).toList(),
-                  onChanged: (m) { if (m != null) { _service.setPlayMode(m); setState(() {}); } },
-                ),
-              ])),
-              Expanded(child: ListView.builder(
-                controller: scrollCtrl,
-                itemCount: _service.queue.length,
-                itemBuilder: (_, i) {
-                  final s = _service.queue[i]; final cur = i == _service.queueIndex;
-                  return Container(
-                    color: cur ? Colors.deepPurple.withValues(alpha: 0.18) : Colors.transparent,
-                    child: ListTile(
-                      leading: Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.red : Colors.grey, size: 20),
-                      title: Text(s.title, style: TextStyle(fontSize: 14, color: cur ? Colors.red : null, fontWeight: cur ? FontWeight.bold : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { _service.removeFromQueue(i); setState(() {}); }),
-                      onTap: () { _service.playSong(s); Navigator.pop(context); },
-                    ),
-                  );
+        initialChildSize: 0.65, minChildSize: 0.4, maxChildSize: 0.9,
+        builder: (ctx, scrollCtrl) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(children: [
+            Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+              const Icon(Icons.drag_handle, color: Colors.grey, size: 24),
+              const Spacer(),
+              Text(_service.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  Navigator.pop(context);
+                  _showModePicker();
                 },
-              )),
-            ]),
-          );
-        },
+                child: const Icon(Icons.swap_horiz, color: Colors.grey, size: 20),
+              ),
+            ])),
+            Expanded(child: ListView.builder(
+              controller: scrollCtrl,
+              itemCount: _service.queue.length,
+              itemBuilder: (_, i) {
+                final s = _service.queue[i]; final cur = i == _service.queueIndex;
+                return ListTile(
+                  leading: Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.deepPurple : Colors.grey, size: 20),
+                  title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: cur ? FontWeight.bold : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { _service.removeFromQueue(i); setState(() {}); }),
+                  onTap: () { _service.playSong(s); Navigator.pop(context); },
+                );
+              },
+            )),
+          ]),
+        ),
       ),
     );
   }
