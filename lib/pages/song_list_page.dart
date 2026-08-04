@@ -27,6 +27,7 @@ class _SongListPageState extends State<SongListPage> {
     super.initState();
     _songs = List.from(widget.playlist.songs);
     _loadFavs();
+    _position = _service.currentPosition;
     _service.currentSongNotifier.addListener(_onSongChanged);
     _service.onPositionChanged.listen((p) => setState(() => _position = p));
     _service.onDurationChanged.listen((d) => setState(() => _duration = d));
@@ -300,15 +301,16 @@ class _SongListPageState extends State<SongListPage> {
   void _showQueueSheet() {
     final scrollCtrl = ScrollController();
     final targetKey = GlobalKey();
+    final firstKey = GlobalKey();
+    double itemH = 0;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final c = firstKey.currentContext;
+      if (c != null) { final b = c.findRenderObject() as RenderBox; if (b.hasSize) itemH = b.size.height; }
+      final h = itemH > 0 ? itemH : 72.0;
       final idx = _service.queueIndex;
-      if (!scrollCtrl.hasClients || idx < 0) return;
-      final est = (idx * 72.0 - scrollCtrl.position.viewportDimension / 2).clamp(0.0, scrollCtrl.position.maxScrollExtent);
-      scrollCtrl.jumpTo(est);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx = targetKey.currentContext;
-        if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.25, duration: Duration.zero);
-      });
+      if (scrollCtrl.hasClients && idx >= 0) {
+        scrollCtrl.jumpTo((idx * h - scrollCtrl.position.viewportDimension / 2 + h / 2).clamp(0.0, scrollCtrl.position.maxScrollExtent));
+      }
     });
     showModalBottomSheet(
       context: context,
@@ -352,6 +354,12 @@ class _SongListPageState extends State<SongListPage> {
                 );
                 if (cur) {
                   return Container(key: targetKey, color: Colors.red.withValues(alpha: 0.08), child: tile);
+                }
+                if (i == 0) {
+                  return Container(key: firstKey, child: InkWell(
+                    onTap: () { _service.playSong(s); Navigator.pop(context); },
+                    child: tile,
+                  ));
                 }
                 return InkWell(
                   onTap: () { _service.playSong(s); Navigator.pop(context); },

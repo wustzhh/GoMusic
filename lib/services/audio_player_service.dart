@@ -142,9 +142,6 @@ class AudioPlayerService {
         'bvid': _currentSong!.bvid,
         'cover': _currentSong!.coverUrl ?? '',
         'position': _lastPosition.inMilliseconds,
-        'mode': _playMode.index,
-        'queue': _queue.map((s) => s.filePath).toList(),
-        'queue_index': _queueIndex,
       };
       File('save_state.json').writeAsStringSync(jsonEncode(state));
     } catch (_) {}
@@ -158,15 +155,6 @@ class AudioPlayerService {
       final sm = data['mode'] as int?;
       if (sm != null && sm < PlayMode.values.length) _playMode = PlayMode.values[sm];
       _lastPosition = Duration(milliseconds: data['position'] as int? ?? 0);
-      final qPaths = List<String>.from(data['queue'] as List? ?? []);
-      final qIdx = data['queue_index'] as int? ?? 0;
-      if (qPaths.isNotEmpty) {
-        _queue.clear();
-        for (final fp in qPaths) {
-          _queue.add(Song(id: 'restored', title: '', uploader: '', duration: Duration.zero, filePath: fp, bvid: ''));
-        }
-        _queueIndex = qIdx.clamp(0, _queue.length - 1);
-      }
       final song = Song(
         id: data['bvid'] as String? ?? '',
         title: data['title'] as String? ?? '',

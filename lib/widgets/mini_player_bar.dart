@@ -24,8 +24,10 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
     super.initState();
     _song = _service.currentSong;
     _isPlaying = _service.isPlaying;
+    _position = _service.currentPosition;
 
     _service.currentSongNotifier.addListener(_onSongChanged);
+    if (_song != null) _duration = _song!.duration;
     _service.onPlayingChanged.listen((playing) {
       if (mounted) setState(() => _isPlaying = playing);
     });
@@ -150,20 +152,20 @@ class _MiniQueueSheet extends StatefulWidget {
 class _MiniQueueSheetState extends State<_MiniQueueSheet> {
   final ScrollController _scrollCtrl = ScrollController();
   final GlobalKey _targetKey = GlobalKey();
-
+  final GlobalKey _firstKey = GlobalKey();
+  double _itemH = 0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final c = _firstKey.currentContext;
+      if (c != null) { final b = c.findRenderObject() as RenderBox; if (b.hasSize) _itemH = b.size.height; }
+      final h = _itemH > 0 ? _itemH : 72.0;
       final idx = widget.player.queueIndex;
-      if (!_scrollCtrl.hasClients || idx < 0) return;
-      final est = (idx * 72.0 - _scrollCtrl.position.viewportDimension / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
-      _scrollCtrl.jumpTo(est);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx = _targetKey.currentContext;
-        if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.25, duration: Duration.zero);
-      });
+      if (_scrollCtrl.hasClients && idx >= 0) {
+        _scrollCtrl.jumpTo((idx * h - _scrollCtrl.position.viewportDimension / 2 + h / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent));
+      }
     });
   }
 
@@ -192,6 +194,12 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
             );
             if (cur) {
               return Container(key: _targetKey, color: Colors.red.withValues(alpha: 0.08), child: tile);
+            }
+            if (i == 0) {
+              return Container(key: _firstKey, child: InkWell(
+                onTap: () { p.playSong(s); Navigator.pop(context); },
+                child: tile,
+              ));
             }
             return tile;
           })),
