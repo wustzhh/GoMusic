@@ -349,7 +349,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
               Text(_fmt(_position), style: const TextStyle(fontSize: 12, color: Colors.grey)),
 
-              Text(_fmt(dur)), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(_fmt(dur), style: const TextStyle(fontSize: 12, color: Colors.grey)),
 
             ])),
 
