@@ -477,6 +477,7 @@ class _QueueSheet extends StatefulWidget {
 
 class _QueueSheetState extends State<_QueueSheet> {
   final ScrollController _scrollCtrl = ScrollController();
+  final GlobalKey _targetKey = GlobalKey();
 
   @override
   void initState() {
@@ -486,10 +487,15 @@ class _QueueSheetState extends State<_QueueSheet> {
 
   void _scrollToTarget() {
     final idx = widget.player.queueIndex;
+    // 两步：先估计跳到附近让item渲染，再ensureVisible精确定位
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollCtrl.hasClients || idx < 0) return;
-      final target = (idx * 76.0 - _scrollCtrl.position.viewportDimension / 2 + 38).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
-      _scrollCtrl.jumpTo(target);
+      final est = (idx * 72.0 - _scrollCtrl.position.viewportDimension / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
+      _scrollCtrl.jumpTo(est);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _targetKey.currentContext;
+        if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.25, duration: Duration.zero);
+      });
     });
   }
 
@@ -525,7 +531,7 @@ class _QueueSheetState extends State<_QueueSheet> {
 
         ? const Center(child: Text('队列为空'))
 
-        : ListView.builder(controller: _scrollCtrl, itemExtent: 76,
+        : ListView.builder(controller: _scrollCtrl,
               itemCount: queue.length, itemBuilder: (_, i) {
 
             final s = queue[i]; final isCur = i == p.queueIndex;
@@ -537,6 +543,7 @@ class _QueueSheetState extends State<_QueueSheet> {
             );
             if (isCur) {
               return Container(
+                key: _targetKey,
                 color: Colors.red.withValues(alpha: 0.08),
                 child: tile,
               );
