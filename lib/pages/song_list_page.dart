@@ -296,56 +296,46 @@ class _SongListPageState extends State<SongListPage> {
   void _showQueueSheet() {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
-      barrierColor: Colors.transparent,
-      builder: (_) => Stack(
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.pop(context),
-            child: Container(color: Colors.black54),
+      isDismissible: true,
+      barrierColor: Colors.black54,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.65),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: DraggableScrollableSheet(
-              initialChildSize: 0.65, minChildSize: 0.4, maxChildSize: 0.9,
-              builder: (ctx, scrollCtrl) => Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                ),
-                child: Column(children: [
-                  Padding(padding: const EdgeInsets.all(12), child: Row(children: [
-                    const Icon(Icons.drag_handle, color: Colors.grey, size: 24),
-                    const Spacer(),
-                    Text(_service.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
-                    const SizedBox(width: 8),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.pop(context);
-                        _showModePicker();
-                      },
-                      child: const Icon(Icons.swap_horiz, color: Colors.grey, size: 20),
-                    ),
-                  ])),
-                  Expanded(child: ListView.builder(
-                    controller: scrollCtrl,
-                    itemCount: _service.queue.length,
-                    itemBuilder: (_, i) {
-                      final s = _service.queue[i]; final cur = i == _service.queueIndex;
-                      return ListTile(
-                        leading: Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.deepPurple : Colors.grey, size: 20),
-                        title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: cur ? FontWeight.bold : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { _service.removeFromQueue(i); setState(() {}); }),
-                        onTap: () { _service.playSong(s); Navigator.pop(context); },
-                      );
-                    },
-                  )),
-                ]),
+          child: Column(children: [
+            Padding(padding: const EdgeInsets.all(12), child: Row(children: [
+              const Icon(Icons.drag_handle, color: Colors.grey, size: 24),
+              const Spacer(),
+              Text(_service.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  Navigator.pop(context);
+                  _showModePicker();
+                },
+                child: const Icon(Icons.swap_horiz, color: Colors.grey, size: 20),
               ),
-            ),
-          ),
-        ],
+            ])),
+            Expanded(child: ListView.builder(
+              itemCount: _service.queue.length,
+              itemBuilder: (_, i) {
+                final s = _service.queue[i]; final cur = i == _service.queueIndex;
+                return InkWell(
+                  onTap: () { _service.playSong(s); Navigator.pop(context); },
+                  child: ListTile(
+                    leading: Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.deepPurple : Colors.grey, size: 20),
+                    title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: cur ? FontWeight.bold : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
+                    trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { _service.removeFromQueue(i); setState(() {}); }),
+                  ),
+                );
+              },
+            )),
+          ]),
+        ),
       ),
     );
   }

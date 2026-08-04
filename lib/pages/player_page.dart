@@ -249,20 +249,13 @@ class _PlayerPageState extends State<PlayerPage> {
   void _showQueue() {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
-      barrierColor: Colors.transparent,
-      builder: (_) => Stack(
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.pop(context),
-            child: Container(color: Colors.black54),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: _QueueSheet(player: _service),
-          ),
-        ],
+      isScrollControlled: false,
+      isDismissible: true,
+      barrierColor: Colors.black54,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.55),
+        child: _QueueSheet(player: _service),
       ),
     );
   }
@@ -505,18 +498,14 @@ class _QueueSheetState extends State<_QueueSheet> {
 
             final s = queue[i]; final isCur = i == p.queueIndex;
 
-            return ListTile(
-
-              leading: Icon(isCur ? Icons.play_arrow : Icons.music_note, color: isCur ? Colors.deepPurple : Colors.grey, size: 22),
-
-              title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: isCur ? FontWeight.bold : FontWeight.normal)),
-
-              subtitle: Text(s.uploader, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-
-              trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { p.removeFromQueue(i); setState(() {}); }),
-
+            return InkWell(
               onTap: () { p.playSong(s); Navigator.pop(context); },
-
+              child: ListTile(
+                leading: Icon(isCur ? Icons.play_arrow : Icons.music_note, color: isCur ? Colors.deepPurple : Colors.grey, size: 22),
+                title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: isCur ? FontWeight.bold : FontWeight.normal)),
+                subtitle: Text(s.uploader, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { p.removeFromQueue(i); setState(() {}); }),
+              ),
             );
 
           })),
