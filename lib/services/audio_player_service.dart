@@ -52,19 +52,20 @@ class AudioPlayerService {
     final idx = _queue.indexWhere((s) => s.filePath == song.filePath);
     if (idx >= 0) _queueIndex = idx;
     if (_currentSong?.filePath == song.filePath) {
-      if (_playing) { _player.pause(); } else { _player.resume(); }
+      if (_playing) { _player.pause(); _playing = false; } else { _player.resume(); _playing = true; }
       return;
     }
     _currentSong = song;
     currentSongNotifier.value = song;
     await _player.stop();
     await _player.play(DeviceFileSource(song.filePath));
+    _playing = true;
     _saveState();
     RecentlyPlayedService.addIfNotExists(song.filePath, song.title, song.uploader, song.duration.inSeconds, song.filePath, song.coverUrl ?? '').catchError((_) {});
   }
 
   Future<void> togglePause() async {
-    if (_playing) { _player.pause(); } else { _player.resume(); }
+    if (_playing) { _player.pause(); _playing = false; } else { _player.resume(); _playing = true; }
   }
 
   Future<void> seek(Duration p) => _player.seek(p);
