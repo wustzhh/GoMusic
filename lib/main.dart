@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 import 'pages/download_page.dart';
 import 'pages/playlist_page.dart';
 import 'pages/settings_page.dart';
+import 'pages/video_page.dart';
 import 'services/settings_service.dart';
 import 'services/bilibili_api.dart';
 import 'services/audio_player_service.dart';
@@ -9,6 +11,7 @@ import 'widgets/mini_player_bar.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  MediaKit.ensureInitialized();
   final service = await SettingsService.getInstance();
   BilibiliApi.cookie = await service.getBilibiliCookie();
 
@@ -48,6 +51,7 @@ class _MainScreenState extends State<MainScreen> {
   late final List<Widget> _pages = [
     const DownloadPage(),
     PlaylistPage(key: _playlistKey),
+    const VideoPage(),
     const SettingsPage(),
   ];
 
@@ -70,6 +74,7 @@ class _MainScreenState extends State<MainScreen> {
             items: const [
               BottomNavigationBarItem(icon: Icon(Icons.download), label: '下载'),
               BottomNavigationBarItem(icon: Icon(Icons.play_circle_outline), label: '播放'),
+              BottomNavigationBarItem(icon: Icon(Icons.video_library_outlined), label: '视频'),
               BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: '设置'),
             ],
           ),

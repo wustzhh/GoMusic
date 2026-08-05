@@ -40,6 +40,9 @@ dependencies:
   crypto: ^3.0.7
   flutter_inappwebview: ^6.1.5
   audioplayers: ^6.8.1
+  media_kit: ^1.2.2
+  media_kit_video: ^1.2.7
+  media_kit_libs_video: ^1.0.7
 dev_dependencies:
   flutter_test:
     sdk: flutter
