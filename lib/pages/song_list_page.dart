@@ -225,17 +225,17 @@ class _SongListPageState extends State<SongListPage> {
               });
             }),
             const Spacer(),
-            if (_batchMode)
-              Row(children: [
-                TextButton.icon(onPressed: () {
-                  final selected = _getFiltered().where((s) => _selectedIndices.contains(_getFiltered().indexOf(s)));
-                  for (final s in selected) { AudioPlayerService.toggleFavorite(s.filePath); }
-                  _loadFavs(); _selectedIndices.clear(); _batchMode = false;
-                }, icon: const Icon(Icons.favorite, size: 16, color: Colors.red), label: const Text('收藏', style: TextStyle(fontSize: 11))),
-                TextButton.icon(onPressed: () {
-                  setState(() { _batchMode = false; _selectedIndices.clear(); });
-                }, icon: const Icon(Icons.close, size: 16), label: const Text('取消', style: TextStyle(fontSize: 11))),
-              ]),
+            if (_batchMode) ...[
+              TextButton.icon(onPressed: _batchAddTo, icon: const Icon(Icons.playlist_add, size: 16), label: const Text('添加到', style: TextStyle(fontSize: 11))),
+              if (widget.playlist.id != 'local')
+                TextButton.icon(onPressed: _batchRemove, icon: const Icon(Icons.playlist_remove, size: 16), label: const Text('移出', style: TextStyle(fontSize: 11))),
+              TextButton.icon(onPressed: _batchGroup, icon: const Icon(Icons.group_add, size: 16), label: const Text('组队', style: TextStyle(fontSize: 11))),
+              if (widget.playlist.id == 'local')
+                TextButton.icon(onPressed: _batchDelete, icon: const Icon(Icons.delete, size: 16, color: Colors.red), label: const Text('删除', style: TextStyle(fontSize: 11, color: Colors.red))),
+              TextButton.icon(onPressed: () {
+                setState(() { _batchMode = false; _selectedIndices.clear(); });
+              }, icon: const Icon(Icons.close, size: 16), label: const Text('取消', style: TextStyle(fontSize: 11))),
+            ],
             TextButton.icon(
               onPressed: () => setState(() { _batchMode = !_batchMode; _selectedIndices.clear(); }),
               icon: Icon(_batchMode ? Icons.check_box : Icons.check_box_outline_blank, size: 16),
@@ -246,66 +246,132 @@ class _SongListPageState extends State<SongListPage> {
         const Divider(height: 1),
         Expanded(child: filtered.isEmpty
           ? const Center(child: Text('没有歌曲', style: TextStyle(color: Colors.grey)))
-          : ListView.separated(
-              controller: _mainScrollCtrl,
-              padding: const EdgeInsets.symmetric(horizontal: 12), itemCount: filtered.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
-              itemBuilder: (_, i) {
-                final song = filtered[i]; final isFav = _favs.contains(song.filePath);
-                final isPlaying = _service.currentSong?.filePath == song.filePath;
-                final checkbox = _batchMode ? Checkbox(
-                    value: _selectedIndices.contains(i),
-                    onChanged: (v) => setState(() { if (v == true) _selectedIndices.add(i); else _selectedIndices.remove(i); }),
-                    visualDensity: VisualDensity.compact,
-                  ) : null;
-                return GestureDetector(
-                  onTap: _batchMode ? () => setState(() { if (_selectedIndices.contains(i)) _selectedIndices.remove(i); else _selectedIndices.add(i); }) : null,
-                  onLongPress: () {
-                    Clipboard.setData(ClipboardData(text: song.title));
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                      content: Text('已复制: ${song.title}'),
-                      behavior: SnackBarBehavior.floating,
-                      margin: EdgeInsets.only(bottom: MediaQuery.of(context).size.height - 120, left: 20, right: 20),
-                      duration: const Duration(seconds: 1),
-                    ));
-                  },
-                  child: Container(
-                    key: isPlaying ? _playingRowKey : null,
-                    color: isPlaying ? Colors.lightBlue.withValues(alpha: 0.3) : Colors.transparent,
-                    child: InkWell(
-                      onTap: () => _playSong(song),
+          : _batchMode
+            ? ListView.separated(
+                controller: _mainScrollCtrl,
+                padding: const EdgeInsets.symmetric(horizontal: 12), itemCount: filtered.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final song = filtered[i];
+                  return GestureDetector(
+                    onTap: () => setState(() { if (_selectedIndices.contains(i)) _selectedIndices.remove(i); else _selectedIndices.add(i); }),
+                    child: Container(
+                      color: _selectedIndices.contains(i) ? Colors.deepPurple.withValues(alpha: 0.1) : Colors.transparent,
                       child: ListTile(
                         contentPadding: const EdgeInsets.only(left: 0, right: 4),
                         horizontalTitleGap: 8,
-                        leading: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            _buildCover(song),
-                            if (isFav)
-                              Positioned(right: -4, bottom: -4,
-                                child: Icon(Icons.favorite, color: Colors.red, size: 14)),
-                          ],
+                        leading: Checkbox(
+                          value: _selectedIndices.contains(i),
+                          onChanged: (v) => setState(() { if (v == true) _selectedIndices.add(i); else _selectedIndices.remove(i); }),
+                          visualDensity: VisualDensity.compact,
                         ),
-                        title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isPlaying ? Colors.red : null), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                        trailing: SizedBox(
-                          width: 32, height: 32,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(4),
-                              onTap: () => _showSongMenu(song, isFav),
-                              child: const Icon(Icons.more_vert, color: Colors.grey, size: 20),
-                            ),
-                          ),
-                        ),
+                        title: Text(song.title, style: const TextStyle(fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        subtitle: Text(song.uploader, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                       ),
                     ),
-                  ),
+                  );
+                })
+            : LayoutBuilder(builder: (ctx, cons) {
+                final items = _buildGroupedItems(filtered);
+                return ListView.builder(
+                  controller: _mainScrollCtrl,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  itemCount: items.length,
+                  itemBuilder: (_, i) => items[i],
                 );
               })),
         _buildBottomBar(),
       ]),
+    );
+  }
+
+
+  /// 非批量模式：组优先 + 单曲在后
+  List<Widget> _buildGroupedItems(List<Song> filtered) {
+    final items = <Widget>[];
+    final used = <String>{};
+    final groups = SongGroupService.getGroups();
+    for (final g in groups) {
+      final members = filtered.where((s) => g.songPaths.contains(s.filePath)).toList();
+      if (members.isEmpty) continue;
+      items.add(Container(
+        margin: const EdgeInsets.only(top: 6, bottom: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(children: [
+          const Icon(Icons.group, size: 16, color: Colors.deepPurple),
+          const SizedBox(width: 6),
+          Expanded(child: Text(g.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          Text('${members.length}首', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          IconButton(
+            icon: Icon(g.shuffle ? Icons.shuffle : Icons.swap_horiz, size: 14, color: Colors.grey),
+            tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            onPressed: () { SongGroupService.setGroupShuffle(g.id, !g.shuffle); setState(() {}); },
+          ),
+          IconButton(
+            icon: const Icon(Icons.undo, size: 14, color: Colors.grey),
+            tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            onPressed: () { SongGroupService.ungroup(g.id); setState(() {}); },
+          ),
+        ]),
+      ));
+      for (final s in members) { used.add(s.filePath); items.add(_buildSongItem(s)); }
+    }
+    for (final s in filtered) {
+      if (!used.contains(s.filePath)) items.add(_buildSongItem(s));
+    }
+    return items;
+  }
+
+  Widget _buildSongItem(Song song) {
+    final isFav = _favs.contains(song.filePath);
+    final isPlaying = _service.currentSong?.filePath == song.filePath;
+    return GestureDetector(
+      onLongPress: () {
+        Clipboard.setData(ClipboardData(text: song.title));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('已复制: ${song.title}'),
+          behavior: SnackBarBehavior.floating,
+          margin: EdgeInsets.only(bottom: MediaQuery.of(context).size.height - 120, left: 20, right: 20),
+          duration: const Duration(seconds: 1),
+        ));
+      },
+      child: Container(
+        key: isPlaying ? _playingRowKey : null,
+        color: isPlaying ? Colors.lightBlue.withValues(alpha: 0.3) : Colors.transparent,
+        child: InkWell(
+          onTap: () => _playSong(song),
+          child: ListTile(
+            contentPadding: const EdgeInsets.only(left: 0, right: 4),
+            horizontalTitleGap: 8,
+            leading: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                _buildCover(song),
+                if (isFav)
+                  Positioned(right: -4, bottom: -4,
+                    child: Icon(Icons.favorite, color: Colors.red, size: 14)),
+              ],
+            ),
+            title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isPlaying ? Colors.red : null), maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            trailing: SizedBox(
+              width: 32, height: 32,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(4),
+                  onTap: () => _showSongMenu(song, isFav),
+                  child: const Icon(Icons.more_vert, color: Colors.grey, size: 20),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -513,5 +579,103 @@ class _SongListPageState extends State<SongListPage> {
         ]),
       ),
     );
+  }
+
+  List<Song> _selectedSongs() {
+    final f = _getFiltered();
+    return _selectedIndices.map((i) => f[i]).toList();
+  }
+
+  // 批量：添加到歌单
+  void _batchAddTo() async {
+    final sel = _selectedSongs();
+    if (sel.isEmpty) return;
+    final pls = await PlaylistService.getPlaylists();
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Padding(padding: EdgeInsets.all(12), child: Text('添加到歌单', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
+        ...pls.map((pl) => ListTile(
+          leading: Text(pl.icon, style: const TextStyle(fontSize: 20)),
+          title: Text(pl.name, style: const TextStyle(fontSize: 14)),
+          onTap: () async {
+            for (final s in sel) await PlaylistService.addSongToPlaylist(pl.id, s.filePath);
+            Navigator.pop(ctx);
+            if (mounted) { setState(() { _batchMode = false; _selectedIndices.clear(); }); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}'))); }
+          },
+        )),
+      ])),
+    );
+  }
+
+  // 批量：从当前歌单移出
+  void _batchRemove() {
+    final sel = _selectedSongs();
+    if (sel.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('移出歌单'),
+        content: Text('确定将选中的 ${sel.length} 首歌曲从「${widget.playlist.name}」移出吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(onPressed: () async {
+            for (final s in sel) {
+              await PlaylistService.removeSongFromPlaylist(widget.playlist.id, s.filePath);
+            }
+            Navigator.pop(ctx);
+            _refresh();
+            if (mounted) setState(() { _batchMode = false; _selectedIndices.clear(); });
+          }, child: const Text('移出')),
+        ],
+      ),
+    );
+  }
+
+  // 批量：删除本地歌曲文件（仅本地歌单，二次确认）
+  void _batchDelete() {
+    final sel = _selectedSongs();
+    if (sel.isEmpty) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除歌曲'),
+        content: Text('确定删除选中的 ${sel.length} 首歌曲吗？\n本地文件将被永久删除！'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              for (final s in sel) {
+                try {
+                  File(s.filePath).deleteSync();
+                  if (s.coverUrl != null) File(s.coverUrl!).deleteSync();
+                  SongManager.unregisterSong(s.filePath);
+                } catch (_) {}
+              }
+              Navigator.pop(ctx);
+              _refresh();
+              if (mounted) setState(() { _batchMode = false; _selectedIndices.clear(); });
+            },
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 批量：组队（生成组，后续组逻辑由组系统处理）
+  void _batchGroup() {
+    final sel = _selectedSongs();
+    if (sel.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请至少选择2首歌组队')));
+      return;
+    }
+    SongGroupService.groupSongs(sel.map((s) => s.filePath).toList());
+    if (mounted) {
+      setState(() { _batchMode = false; _selectedIndices.clear(); });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已创建小组（${sel.length}首）')));
+    }
   }
 }

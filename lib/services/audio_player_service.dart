@@ -121,6 +121,16 @@ class AudioPlayerService {
   Future<void> next() async {
     if (_queue.isEmpty) return;
     if (_playMode == PlayMode.loopOne) { await seek(Duration.zero); return; }
+    if (_playMode == PlayMode.shuffle) {
+      final curFp = _currentSong?.filePath;
+      if (curFp != null) {
+        final ns = SongGroupService.nextInGroup(curFp, _queue);
+        if (ns != null) { await playSong(ns); return; }
+      }
+      _queueIndex = Random().nextInt(_queue.length);
+      await playSong(_queue[_queueIndex]);
+      return;
+    }
     _queueIndex = (_queueIndex + 1) % _queue.length;
     await playSong(_queue[_queueIndex]);
   }
@@ -141,7 +151,9 @@ class AudioPlayerService {
     if (_playMode == PlayMode.shuffle) {
       final curFp = _queue.isNotEmpty ? _queue[_queueIndex].filePath : null;
       _orderedQueue = List<Song>.from(_queue);
-      _queue.shuffle(Random());
+      final grouped = _groupedQueue(_orderedQueue!);
+      _queue.clear();
+      _queue.addAll(grouped);
       _queueIndex = curFp != null ? _queue.indexWhere((x) => x.filePath == curFp) : 0;
       if (_queueIndex < 0) _queueIndex = 0;
     }
@@ -153,7 +165,8 @@ class AudioPlayerService {
     if (m == PlayMode.shuffle && _playMode != PlayMode.shuffle) {
       _orderedQueue = List<Song>.from(_queue);
       final curFp = _currentSong?.filePath;
-      _queue.shuffle(Random());
+      _queue.clear();
+      _queue.addAll(_groupedQueue(_orderedQueue!));
       _queueIndex = _queue.indexWhere((s) => s.filePath == curFp);
       if (_queueIndex < 0) _queueIndex = 0;
     } else if (_playMode == PlayMode.shuffle && m != PlayMode.shuffle && _orderedQueue != null) {
@@ -168,6 +181,25 @@ class AudioPlayerService {
     _saveMode();
     _saveState();
     currentSongNotifier.notifyListeners();
+  }
+
+  /// 按组重排：多歌组优先（组内按组配置顺序/随机），单曲在后
+  List<Song> _groupedQueue(List<Song> q) {
+    final groups = SongGroupService.getGroups();
+    final result = <Song>[];
+    final used = <String>{};
+    for (final g in groups) {
+      var paths = g.songPaths;
+      if (g.shuffle && paths.length > 1) {
+        paths = List.from(paths)..shuffle(Random());
+      }
+      for (final p in paths) {
+        final s = q.where((x) => x.filePath == p).firstOrNull;
+        if (s != null && used.add(s.filePath)) result.add(s);
+      }
+    }
+    for (final s in q) { if (used.add(s.filePath)) result.add(s); }
+    return result;
   }
   String get playModeLabel { switch (_playMode) { case PlayMode.sequential: return '顺序播放'; case PlayMode.loopList: return '列表循环'; case PlayMode.loopOne: return '单曲循环'; case PlayMode.shuffle: return '随机播放'; }}
 

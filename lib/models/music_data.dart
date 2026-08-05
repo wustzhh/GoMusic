@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 歌曲数据模型
@@ -259,6 +260,188 @@ class PlaylistService {
       }
     }
     return false;
+  }
+
+  /// 移动歌单在列表中的位置（调整顺序）
+  static Future<void> movePlaylist(int from, int to) async {
+    final p = await SharedPreferences.getInstance();
+    final list = p.getStringList(_key) ?? [];
+    if (from < 0 || from >= list.length || to < 0 || to >= list.length) return;
+    final item = list.removeAt(from);
+    list.insert(to, item);
+    await p.setStringList(_key, list);
+  }
+
+  /// 设置歌单图标（封面）
+  static Future<void> setPlaylistIcon(String pid, String icon) async {
+    final p = await SharedPreferences.getInstance();
+    final list = p.getStringList(_key) ?? [];
+    for (var i = 0; i < list.length; i++) {
+      var parts = list[i].split('|||');
+      while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
+      while (parts.length < 4) parts.add('');
+      if (parts[0] == pid) {
+        parts[2] = icon;
+        while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
+        list[i] = parts.join('|||');
+        await p.setStringList(_key, list);
+        return;
+      }
+    }
+  }
+
+  /// 从歌单移除歌曲
+  static Future<void> removeSongFromPlaylist(String pid, String filePath) async {
+    final p = await SharedPreferences.getInstance();
+    final list = p.getStringList(_key) ?? [];
+    for (var i = 0; i < list.length; i++) {
+      var parts = list[i].split('|||');
+      while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
+      while (parts.length < 4) parts.add('');
+      if (parts[0] == pid) {
+        List<dynamic> paths = [];
+        try { paths = jsonDecode(parts[3]); } catch (_) { paths = parts[3].split(','); }
+        paths.removeWhere((x) => x.toString() == filePath);
+        parts[3] = jsonEncode(paths.map((x) => x.toString()).where((x) => x.isNotEmpty).toList());
+        while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
+        list[i] = parts.join('|||');
+        await p.setStringList(_key, list);
+        return;
+      }
+    }
+  }
+}
+
+// ============================================================
+// 歌曲组（组队系统）
+// 每首歌默认是独立组；组队 = 多组合并；组可设组内顺序/随机
+// ============================================================
+class SongGroup {
+  final String id;
+  String name;
+  final List<String> songPaths;
+  bool shuffle; // 组内随机
+  SongGroup({required this.id, required this.name, required this.songPaths, this.shuffle = false});
+}
+
+class SongGroupService {
+  static const _key = 'song_groups';
+  static List<SongGroup> _cache = [];
+  static bool _loaded = false;
+
+  static void _ensureLoaded() {
+    if (_loaded) return;
+    try {
+      final f = File('song_groups.json');
+      if (f.existsSync()) {
+        final data = jsonDecode(f.readAsStringSync()) as List;
+        _cache = data.map((e) {
+          final m = e as Map<String, dynamic>;
+          return SongGroup(
+            id: m['id'] as String? ?? '',
+            name: m['name'] as String? ?? '组',
+            songPaths: List<String>.from(m['paths'] ?? []),
+            shuffle: m['shuffle'] as bool? ?? false,
+          );
+        }).toList();
+      }
+      _loaded = true;
+    } catch (_) {
+      _loaded = true;
+    }
+  }
+
+  static void _save() {
+    try {
+      File('song_groups.json').writeAsStringSync(jsonEncode(_cache.map((g) => {
+        'id': g.id, 'name': g.name, 'paths': g.songPaths, 'shuffle': g.shuffle,
+      }).toList()));
+    } catch (_) {}
+  }
+
+  /// 获取所有组（只包含 >=2 首的组；单曲默认隐式独立组）
+  static List<SongGroup> getGroups() {
+    _ensureLoaded();
+    return List.unmodifiable(_cache.where((g) => g.songPaths.length >= 2));
+  }
+
+  /// 获取某首歌所在组（无组返回 null，即单曲独立组）
+  static SongGroup? groupOf(String filePath) {
+    _ensureLoaded();
+    for (final g in _cache) {
+      if (g.songPaths.contains(filePath)) return g;
+    }
+    return null;
+  }
+
+  /// 组队：把选中歌曲合并为一个组（各自原有组合并后生成新组）
+  static void groupSongs(List<String> paths) {
+    _ensureLoaded();
+    if (paths.length < 2) return;
+    final involved = <String>{}; // 所有受影响歌曲
+    final toRemove = <String>[];
+    for (final g in _cache) {
+      if (g.songPaths.any((p) => paths.contains(p))) {
+        involved.addAll(g.songPaths);
+        toRemove.add(g.id);
+      }
+    }
+    involved.addAll(paths);
+    _cache.removeWhere((g) => toRemove.contains(g.id));
+    final first = paths.first;
+    final title = first.split('\\').last.split('/').last.split('.').first;
+    _cache.add(SongGroup(
+      id: 'g${DateTime.now().millisecondsSinceEpoch}',
+      name: title,
+      songPaths: involved.toList(),
+    ));
+    _save();
+  }
+
+  /// 解散组（回到单曲独立组）
+  static void ungroup(String groupId) {
+    _ensureLoaded();
+    _cache.removeWhere((g) => g.id == groupId);
+    _save();
+  }
+
+  /// 设置组内顺序/随机
+  static void setGroupShuffle(String groupId, bool shuffle) {
+    _ensureLoaded();
+    for (final g in _cache) {
+      if (g.id == groupId) { g.shuffle = shuffle; break; }
+    }
+    _save();
+  }
+
+  /// 随机模式下一首：组内没播完先播组内，否则随机跳组
+  static Song? nextInGroup(String currentFp, List<Song> queue) {
+    _ensureLoaded();
+    final group = groupOf(currentFp);
+    if (group != null) {
+      final curIdx = group.songPaths.indexOf(currentFp);
+      if (group.shuffle) {
+        // 组内随机挑一首没在当前位次的
+        if (group.songPaths.length > 1) {
+          var n = curIdx;
+          while (n == curIdx) n = Random().nextInt(group.songPaths.length);
+          return queue.where((s) => s.filePath == group.songPaths[n]).firstOrNull;
+        }
+      } else if (curIdx < group.songPaths.length - 1) {
+        return queue.where((s) => s.filePath == group.songPaths[curIdx + 1]).firstOrNull;
+      }
+      // 组播完：随机选另一组
+      final groups = getGroups();
+      if (groups.isNotEmpty) {
+        var g = groups[Random().nextInt(groups.length)];
+        if (g.id == group.id && groups.length > 1) {
+          g = groups[(groups.indexOf(g) + 1) % groups.length];
+        }
+        final first = g.songPaths.first;
+        return queue.where((s) => s.filePath == first).firstOrNull;
+      }
+    }
+    return null;
   }
 }
 

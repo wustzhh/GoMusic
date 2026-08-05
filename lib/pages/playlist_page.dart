@@ -39,13 +39,65 @@ class PlaylistPageState extends State<PlaylistPage> {
     if (!mounted) return;
     setState(() {
       _playlists = [
-        Playlist(id: 'local', name: '本地歌单', icon: '📁', songs: List.from(localSongs)..sort((a,b) => a.title.compareTo(b.title))),
         Playlist(id: 'fav', name: '我喜欢', icon: '❤️', songs: favSongs),
-        Playlist(id: 'recent', name: '最近播放', icon: '🕐', songs: recentSongs),
         ...customPls,
+        Playlist(id: 'local', name: '本地歌单', icon: '📁', songs: List.from(localSongs)..sort((a,b) => a.title.compareTo(b.title))),
+        Playlist(id: 'recent', name: '最近播放', icon: '🕐', songs: recentSongs),
       ];
       _loaded = true;
     });
+  }
+
+  void _showSettings() async {
+    final custom = await PlaylistService.getPlaylists();
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: const Text('歌单设置', style: TextStyle(fontSize: 16)),
+          content: SizedBox(
+            width: 320,
+            child: custom.isEmpty
+              ? const Text('暂无自定义歌单', style: TextStyle(color: Colors.grey))
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: custom.length,
+                  itemBuilder: (_, i) {
+                    final pl = custom[i];
+                    return ListTile(
+                      dense: true,
+                      leading: Text(pl.icon, style: const TextStyle(fontSize: 22)),
+                      title: Text(pl.name, style: const TextStyle(fontSize: 14)),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        IconButton(icon: const Icon(Icons.arrow_upward, size: 16), tooltip: '', onPressed: i == 0 ? null : () async {
+                          await PlaylistService.movePlaylist(i, i - 1);
+                          setDlg(() {});
+                          refresh();
+                        }),
+                        IconButton(icon: const Icon(Icons.arrow_downward, size: 16), tooltip: '', onPressed: i == custom.length - 1 ? null : () async {
+                          await PlaylistService.movePlaylist(i, i + 1);
+                          setDlg(() {});
+                          refresh();
+                        }),
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.emoji_emotions_outlined, size: 16),
+                          onSelected: (icon) async {
+                            await PlaylistService.setPlaylistIcon(pl.id, icon);
+                            setDlg(() {});
+                            refresh();
+                          },
+                          itemBuilder: (_) => ['📋','🎵','🎧','⭐','🔥','💿','📀','🎤','🎸','🎹','🎻','🥁','🪕','🎺','🎷','🫧','💜','💙','💚','💛','🧡','🖤','🤍'].map((e) => PopupMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 20)))).toList(),
+                        ),
+                      ]),
+                    );
+                  },
+                ),
+          ),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
+        ),
+      ),
+    );
   }
 
   @override
@@ -58,7 +110,9 @@ class PlaylistPageState extends State<PlaylistPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('播放列表'), centerTitle: true),
+      appBar: AppBar(title: const Text('播放列表'), centerTitle: true, actions: [
+        IconButton(icon: const Icon(Icons.tune, size: 20), tooltip: '', onPressed: _showSettings),
+      ]),
       body: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _playlists.length + 1,
