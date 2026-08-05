@@ -153,7 +153,7 @@ class AudioPlayerService {
         ? (s[startIndex].bvid.isNotEmpty ? s[startIndex].bvid : s[startIndex].filePath)
         : null;
     _queue.clear();
-    _queue.addAll(_groupedQueue(s));
+    _queue.addAll(_playMode == PlayMode.shuffle ? _shuffleGroups(s) : _groupedQueue(s));
     _queueIndex = _queue.isEmpty
         ? 0
         : (curKey != null
@@ -165,10 +165,53 @@ class AudioPlayerService {
   void addToQueue(Song s) { _queue.add(s); currentSongNotifier.notifyListeners(); }
   void removeFromQueue(int i) { if (i >= _queue.length) return; _queue.removeAt(i); if (i < _queueIndex) _queueIndex--; if (_queueIndex >= _queue.length) _queueIndex = (_queue.length - 1).clamp(0, 999); currentSongNotifier.notifyListeners(); }
   void setPlayMode(PlayMode m) {
+    if (m == PlayMode.shuffle && _playMode != PlayMode.shuffle) {
+      _orderedQueue = List<Song>.from(_queue);
+      final curKey = _currentSong != null ? (_currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _currentSong!.filePath) : null;
+      final grouped = _shuffleGroups(_orderedQueue!);
+      _queue.clear();
+      _queue.addAll(grouped);
+      _queueIndex = curKey != null ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : x.filePath) == curKey) : 0;
+      if (_queueIndex < 0) _queueIndex = 0;
+    } else if (_playMode == PlayMode.shuffle && m != PlayMode.shuffle && _orderedQueue != null) {
+      final curKey = _currentSong != null ? (_currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _currentSong!.filePath) : null;
+      final restored = List<Song>.from(_orderedQueue!);
+      _queue.clear();
+      _queue.addAll(restored);
+      _orderedQueue = null;
+      _queueIndex = curKey != null ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : x.filePath) == curKey) : 0;
+      if (_queueIndex < 0) _queueIndex = 0;
+    }
     _playMode = m;
     _saveMode();
     _saveState();
     currentSongNotifier.notifyListeners();
+  }
+
+  /// 组单元随机：组和单曲作为整体打乱，组内保持组队顺序（组内随机由组设置控制）
+  List<Song> _shuffleGroups(List<Song> q) {
+    final groups = SongGroupService.getGroups(playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId);
+    final units = <List<Song>>[];
+    final used = <String>{};
+    for (final g in groups) {
+      final members = g.songPaths
+          .map((p) => q.where((s) => s.bvid == p || s.filePath == p).firstOrNull)
+          .whereType<Song>()
+          .toList();
+      if (members.isEmpty) continue;
+      if (g.shuffle && members.length > 1) {
+        members.shuffle(Random());
+      }
+      units.add(members);
+      for (final s in members) used.add(s.filePath);
+    }
+    for (final s in q) {
+      if (!used.contains(s.filePath)) units.add([s]);
+    }
+    units.shuffle(Random());
+    final result = <Song>[];
+    for (final u in units) result.addAll(u);
+    return result;
   }
 
   /// 按组重排：多歌组优先（组内按组配置顺序/随机），单曲在后
