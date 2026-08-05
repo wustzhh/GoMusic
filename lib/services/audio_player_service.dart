@@ -150,7 +150,7 @@ class AudioPlayerService {
     if (playlistId != null) _currentPlaylistId = playlistId;
     _queue.clear();
     _queue.addAll(s);
-    _queueIndex = startIndex.clamp(0, _queue.length - 1);
+    _queueIndex = _queue.isEmpty ? 0 : startIndex.clamp(0, _queue.length - 1);
     if (_playMode == PlayMode.shuffle) {
       final curFp = _queue.isNotEmpty ? _queue[_queueIndex].filePath : null;
       _orderedQueue = List<Song>.from(_queue);

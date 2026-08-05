@@ -32,7 +32,8 @@ class _SongListPageState extends State<SongListPage> {
     _songs = List.from(widget.playlist.songs);
     // 进入歌单：队列同步为歌单顺序（非随机模式），保证播放顺序和歌单一致
     if (_service.playMode != PlayMode.shuffle) {
-      _service.setQueue(_songs, startIndex: _songs.indexWhere((s) => s.filePath == _service.currentSong?.filePath).clamp(0, _songs.length - 1), playlistId: widget.playlist.id);
+      final curIdx = _songs.indexWhere((s) => s.filePath == _service.currentSong?.filePath);
+      _service.setQueue(_songs, startIndex: _songs.isEmpty ? 0 : curIdx.clamp(0, _songs.length - 1), playlistId: widget.playlist.id);
     }
     _loadFavs();
     _position = _service.currentPosition;

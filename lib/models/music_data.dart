@@ -169,10 +169,19 @@ class RecentlyPlayedService {
     await prefs.setStringList(_key, list);
   }
 
-  /// 返回 BV号列表（按最近播放时间倒序）
+  /// 返回 BV号列表（按最近播放时间倒序；自动迁移旧格式数据）
   static Future<List<String>> getRecentBvids() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getStringList(_key) ?? [];
+    final list = prefs.getStringList(_key) ?? [];
+    final valid = <String>[];
+    for (final e in list) {
+      if (!e.contains('|')) { valid.add(e); continue; }
+      // 旧格式：BV号|title|uploader|... 取第一个字段（BV号）
+      final parts = e.split('|');
+      if (parts.isNotEmpty && parts[0].isNotEmpty) valid.add(parts[0]);
+    }
+    await prefs.setStringList(_key, valid);
+    return valid;
   }
 }
 
