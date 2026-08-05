@@ -344,15 +344,15 @@ class _SongListPageState extends State<SongListPage> {
   void _showQueueSheet() {
     final scrollCtrl = ScrollController();
     final targetKey = GlobalKey();
-    final firstKey = GlobalKey();
-    double itemH = 0;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final c = firstKey.currentContext;
-      if (c != null) { final b = c.findRenderObject() as RenderBox; if (b.hasSize) itemH = b.size.height; }
-      final h = itemH > 0 ? itemH : 72.0;
       final idx = _service.queueIndex;
       if (scrollCtrl.hasClients && idx >= 0) {
-        scrollCtrl.jumpTo((idx * h - scrollCtrl.position.viewportDimension / 2 + h / 2).clamp(0.0, scrollCtrl.position.maxScrollExtent));
+        final est = (idx * 64.0 - scrollCtrl.position.viewportDimension / 2).clamp(0.0, scrollCtrl.position.maxScrollExtent);
+        scrollCtrl.jumpTo(est);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final ctx = targetKey.currentContext;
+          if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
+        });
       }
     });
     showModalBottomSheet(
@@ -390,18 +390,12 @@ class _SongListPageState extends State<SongListPage> {
               itemBuilder: (_, i) {
                 final s = _service.queue[i]; final cur = i == _service.queueIndex;
                 final tile = ListTile(
-                  leading: Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.red : Colors.grey, size: 20),
+                  leading: _queueCover(s, cur),
                   title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cur ? Colors.red : null), maxLines: 1, overflow: TextOverflow.ellipsis),
                   trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { _service.removeFromQueue(i); setState(() {}); }),
                 );
                 if (cur) {
                   return Container(key: targetKey, color: Colors.red.withValues(alpha: 0.08), child: tile);
-                }
-                if (i == 0) {
-                  return Container(key: firstKey, child: InkWell(
-                    onTap: () { _service.playSong(s); Navigator.pop(context); },
-                    child: tile,
-                  ));
                 }
                 return InkWell(
                   onTap: () { _service.playSong(s); Navigator.pop(context); },
@@ -462,6 +456,16 @@ class _SongListPageState extends State<SongListPage> {
       }
     }
     return Icon(Icons.music_note, color: Colors.deepPurple, size: 24);
+  }
+
+  Widget _queueCover(Song s, bool cur) {
+    if (s.coverUrl != null && s.coverUrl!.isNotEmpty) {
+      final f = File(s.coverUrl!);
+      if (f.existsSync() && f.lengthSync() > 0) {
+        return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.file(f, width: 34, height: 34, fit: BoxFit.cover));
+      }
+    }
+    return Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.red : Colors.grey, size: 20);
   }
 
   Widget _actionBtn(IconData icon, String label, VoidCallback onTap) {

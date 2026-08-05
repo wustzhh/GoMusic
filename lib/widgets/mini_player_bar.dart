@@ -152,22 +152,32 @@ class _MiniQueueSheet extends StatefulWidget {
 class _MiniQueueSheetState extends State<_MiniQueueSheet> {
   final ScrollController _scrollCtrl = ScrollController();
   final GlobalKey _targetKey = GlobalKey();
-  final GlobalKey _firstKey = GlobalKey();
-  double _itemH = 0;
 
   @override
   void initState() {
     super.initState();
     widget.player.currentSongNotifier.addListener(() { if (mounted) setState(() {}); });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final c = _firstKey.currentContext;
-      if (c != null) { final b = c.findRenderObject() as RenderBox; if (b.hasSize) _itemH = b.size.height; }
-      final h = _itemH > 0 ? _itemH : 72.0;
       final idx = widget.player.queueIndex;
       if (_scrollCtrl.hasClients && idx >= 0) {
-        _scrollCtrl.jumpTo((idx * h - _scrollCtrl.position.viewportDimension / 2 + h / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent));
+        final est = (idx * 64.0 - _scrollCtrl.position.viewportDimension / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
+        _scrollCtrl.jumpTo(est);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final ctx = _targetKey.currentContext;
+          if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
+        });
       }
     });
+  }
+
+  Widget _queueCover(Song s, bool cur) {
+    if (s.coverUrl != null && s.coverUrl!.isNotEmpty) {
+      final f = File(s.coverUrl!);
+      if (f.existsSync() && f.lengthSync() > 0) {
+        return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.file(f, width: 34, height: 34, fit: BoxFit.cover));
+      }
+    }
+    return Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.red : Colors.grey, size: 20);
   }
 
   @override
@@ -187,7 +197,7 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
         : ListView.builder(controller: _scrollCtrl, itemCount: queue.length, itemBuilder: (_, i) {
             final s = queue[i]; final cur = i == p.queueIndex;
             final tile = ListTile(
-              leading: Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.red : Colors.grey, size: 20),
+              leading: _queueCover(s, cur),
               title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cur ? Colors.red : null)),
               subtitle: Text(s.uploader, style: TextStyle(fontSize: 12, color: cur ? Colors.red.withValues(alpha: 0.7) : Colors.grey)),
               trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { p.removeFromQueue(i); setState(() {}); }),
@@ -195,12 +205,6 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
             );
             if (cur) {
               return Container(key: _targetKey, color: Colors.red.withValues(alpha: 0.08), child: tile);
-            }
-            if (i == 0) {
-              return Container(key: _firstKey, child: InkWell(
-                onTap: () { p.playSong(s); Navigator.pop(context); },
-                child: tile,
-              ));
             }
             return tile;
           })),

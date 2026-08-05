@@ -478,32 +478,36 @@ class _QueueSheet extends StatefulWidget {
 class _QueueSheetState extends State<_QueueSheet> {
   final ScrollController _scrollCtrl = ScrollController();
   final GlobalKey _targetKey = GlobalKey();
-  final GlobalKey _firstItemKey = GlobalKey();
-  double _itemH = 0;
 
   @override
   void initState() {
     super.initState();
     widget.player.currentSongNotifier.addListener(() { if (mounted) setState(() {}); });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // 测量第一个可见item的实际高度
-      final ctx = _firstItemKey.currentContext;
-      if (ctx != null) {
-        final box = ctx.findRenderObject() as RenderBox;
-        if (box.hasSize) _itemH = box.size.height;
-      }
-      _scrollToTarget();
-    });
+    _scrollToTarget();
   }
 
   void _scrollToTarget() {
     final idx = widget.player.queueIndex;
-    final h = _itemH > 0 ? _itemH : 72.0;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollCtrl.hasClients || idx < 0) return;
-      final target = (idx * h - _scrollCtrl.position.viewportDimension / 2 + h / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
-      _scrollCtrl.jumpTo(target);
+      // 两步：先跳到估计位置让目标item渲染，再ensureVisible精确定位
+      final est = (idx * 64.0 - _scrollCtrl.position.viewportDimension / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
+      _scrollCtrl.jumpTo(est);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _targetKey.currentContext;
+        if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
+      });
     });
+  }
+
+  Widget _queueCover(Song s, bool isCur) {
+    if (s.coverUrl != null && s.coverUrl!.isNotEmpty) {
+      final f = File(s.coverUrl!);
+      if (f.existsSync() && f.lengthSync() > 0) {
+        return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.file(f, width: 34, height: 34, fit: BoxFit.cover));
+      }
+    }
+    return Icon(isCur ? Icons.play_arrow : Icons.music_note, color: isCur ? Colors.red : Colors.grey, size: 22);
   }
 
   @override
@@ -514,15 +518,7 @@ class _QueueSheetState extends State<_QueueSheet> {
 
     final p = widget.player;
 
-    var queue = p.queue;
-
-    // 随机模式重新洗牌显示
-
-    if (p.playMode == PlayMode.shuffle && queue.isNotEmpty) {
-
-      queue = List.from(queue)..shuffle(Random(p.queueIndex));
-
-    }
+    final queue = p.queue;
 
     return SizedBox(height: MediaQuery.of(context).size.height * 0.55, child: Column(children: [
 
@@ -543,7 +539,7 @@ class _QueueSheetState extends State<_QueueSheet> {
 
             final s = queue[i]; final isCur = i == p.queueIndex;
             final tile = ListTile(
-              leading: Icon(isCur ? Icons.play_arrow : Icons.music_note, color: isCur ? Colors.red : Colors.grey, size: 22),
+              leading: _queueCover(s, isCur),
               title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isCur ? Colors.red : null)),
               subtitle: Text(s.uploader, style: TextStyle(fontSize: 12, color: isCur ? Colors.red.withValues(alpha: 0.7) : Colors.grey)),
               trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { p.removeFromQueue(i); setState(() {}); }),
@@ -554,12 +550,6 @@ class _QueueSheetState extends State<_QueueSheet> {
                 color: Colors.red.withValues(alpha: 0.08),
                 child: tile,
               );
-            }
-            if (i == 0) {
-              return Container(key: _firstItemKey, child: InkWell(
-                onTap: () { p.playSong(s); Navigator.pop(context); },
-                child: tile,
-              ));
             }
             return InkWell(
               onTap: () { p.playSong(s); Navigator.pop(context); },
