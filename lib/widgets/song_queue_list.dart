@@ -41,6 +41,17 @@ class _SongQueueListState extends State<SongQueueList> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _locate());
   }
 
+  @override
+  void didUpdateWidget(SongQueueList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 队列或当前歌曲变化时重新定位
+    if (oldWidget.currentIndex != widget.currentIndex ||
+        oldWidget.queue.length != widget.queue.length ||
+        !identical(oldWidget.queue, widget.queue)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _locate());
+    }
+  }
+
   void _locate() {
     if (!_scrollCtrl.hasClients || widget.queue.isEmpty) return;
     final cur = widget.queue[widget.currentIndex.clamp(0, widget.queue.length - 1)];
