@@ -183,7 +183,11 @@ class _DownloadPageState extends State<DownloadPage> {
       );
     }
 
-    setState(() { _isDownloading = false; _alreadyDownloaded = audioOk; });
+    if (!mounted) return;
+    setState(() {
+      _isDownloading = false;
+      _checkSingleExists(info);
+    });
     _snack('${audioOk && videoOk ? "下载完成" : "下载失败"} $sizeText${coverFailed ? " ⚠封面下载失败" : ""}');
   }
 
@@ -320,25 +324,7 @@ class _DownloadPageState extends State<DownloadPage> {
         _buildAlreadyBadge(),
       if (_coverMissing)
         _buildCoverMissingBadge(),
-      if (_videoMissing) ...[
-        _buildVideoMissingBadge(),
-        const SizedBox(height: 8),
-        Row(children: [
-          const Icon(Icons.video_file_outlined, color: Colors.grey, size: 18),
-          const SizedBox(width: 4),
-          const Text('补下载视频', style: TextStyle(fontSize: 14)),
-          const Spacer(),
-          Switch(value: _downloadVideo, onChanged: _isDownloading ? null : (v) => setState(() => _downloadVideo = v)),
-        ]),
-        const SizedBox(height: 8),
-        FilledButton.icon(
-          onPressed: _isDownloading ? null : _startSingle,
-          icon: const Icon(Icons.download, size: 18),
-          label: const Text('下载视频'),
-        ),
-        const SizedBox(height: 12),
-      ],
-      if (!_alreadyDownloaded && !_coverMissing && !_videoMissing) ...[
+      if (!_alreadyDownloaded && !_coverMissing) ...[
         if (info.videoStreams.length > 1) _buildQualityPicker(),
         const SizedBox(height: 12),
         _buildEditableFields(),
@@ -346,7 +332,7 @@ class _DownloadPageState extends State<DownloadPage> {
         Row(children: [
           const Icon(Icons.video_file_outlined, color: Colors.grey, size: 18),
           const SizedBox(width: 4),
-          const Text('同时下载视频', style: TextStyle(fontSize: 14)),
+          Text(_videoMissing ? '下载视频' : '同时下载视频', style: const TextStyle(fontSize: 14)),
           const Spacer(),
           Switch(value: _downloadVideo, onChanged: _isDownloading ? null : (v) => setState(() => _downloadVideo = v)),
         ]),
