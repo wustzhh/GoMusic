@@ -238,9 +238,6 @@ class _SongListPageState extends State<SongListPage> {
               TextButton.icon(onPressed: _batchGroup, icon: const Icon(Icons.group_add, size: 16), label: const Text('组队', style: TextStyle(fontSize: 11))),
               if (widget.playlist.id == 'local')
                 TextButton.icon(onPressed: _batchDelete, icon: const Icon(Icons.delete, size: 16, color: Colors.red), label: const Text('删除', style: TextStyle(fontSize: 11, color: Colors.red))),
-              TextButton.icon(onPressed: () {
-                setState(() { _batchMode = false; _selectedPaths.clear(); });
-              }, icon: const Icon(Icons.close, size: 16), label: const Text('取消', style: TextStyle(fontSize: 11))),
             ],
             TextButton.icon(
               onPressed: () => setState(() { _batchMode = !_batchMode; _selectedPaths.clear(); }),
