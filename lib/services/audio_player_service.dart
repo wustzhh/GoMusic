@@ -149,38 +149,22 @@ class AudioPlayerService {
   // ==================== 队列 ====================
   void setQueue(List<Song> s, {int startIndex = 0, String? playlistId}) {
     if (playlistId != null) _currentPlaylistId = playlistId;
+    final curKey = s.isNotEmpty && startIndex >= 0 && startIndex < s.length
+        ? (s[startIndex].bvid.isNotEmpty ? s[startIndex].bvid : s[startIndex].filePath)
+        : null;
     _queue.clear();
-    _queue.addAll(s);
-    _queueIndex = _queue.isEmpty ? 0 : startIndex.clamp(0, _queue.length - 1);
-    if (_playMode == PlayMode.shuffle) {
-      final curFp = _queue.isNotEmpty ? _queue[_queueIndex].filePath : null;
-      _orderedQueue = List<Song>.from(_queue);
-      final grouped = _groupedQueue(_orderedQueue!);
-      _queue.clear();
-      _queue.addAll(grouped);
-      _queueIndex = curFp != null ? _queue.indexWhere((x) => x.filePath == curFp) : 0;
-      if (_queueIndex < 0) _queueIndex = 0;
-    }
+    _queue.addAll(_groupedQueue(s));
+    _queueIndex = _queue.isEmpty
+        ? 0
+        : (curKey != null
+            ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : x.filePath) == curKey)
+            : startIndex.clamp(0, _queue.length - 1));
+    if (_queueIndex < 0) _queueIndex = 0;
     currentSongNotifier.notifyListeners();
   }
   void addToQueue(Song s) { _queue.add(s); currentSongNotifier.notifyListeners(); }
   void removeFromQueue(int i) { if (i >= _queue.length) return; _queue.removeAt(i); if (i < _queueIndex) _queueIndex--; if (_queueIndex >= _queue.length) _queueIndex = (_queue.length - 1).clamp(0, 999); currentSongNotifier.notifyListeners(); }
   void setPlayMode(PlayMode m) {
-    if (m == PlayMode.shuffle && _playMode != PlayMode.shuffle) {
-      _orderedQueue = List<Song>.from(_queue);
-      final curFp = _currentSong?.filePath;
-      _queue.clear();
-      _queue.addAll(_groupedQueue(_orderedQueue!));
-      _queueIndex = _queue.indexWhere((s) => s.filePath == curFp);
-      if (_queueIndex < 0) _queueIndex = 0;
-    } else if (_playMode == PlayMode.shuffle && m != PlayMode.shuffle && _orderedQueue != null) {
-      final curFp = _currentSong?.filePath;
-      _queue.clear();
-      _queue.addAll(_orderedQueue!);
-      _orderedQueue = null;
-      _queueIndex = _queue.indexWhere((s) => s.filePath == curFp);
-      if (_queueIndex < 0) _queueIndex = 0;
-    }
     _playMode = m;
     _saveMode();
     _saveState();
