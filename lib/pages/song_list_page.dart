@@ -22,7 +22,7 @@ class _SongListPageState extends State<SongListPage> {
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _batchMode = false;
-  final Set<int> _selectedIndices = {};
+  final Set<String> _selectedPaths = {};
   final ScrollController _mainScrollCtrl = ScrollController();
   final GlobalKey _playingRowKey = GlobalKey();
 
@@ -233,11 +233,11 @@ class _SongListPageState extends State<SongListPage> {
               if (widget.playlist.id == 'local')
                 TextButton.icon(onPressed: _batchDelete, icon: const Icon(Icons.delete, size: 16, color: Colors.red), label: const Text('删除', style: TextStyle(fontSize: 11, color: Colors.red))),
               TextButton.icon(onPressed: () {
-                setState(() { _batchMode = false; _selectedIndices.clear(); });
+                setState(() { _batchMode = false; _selectedPaths.clear(); });
               }, icon: const Icon(Icons.close, size: 16), label: const Text('取消', style: TextStyle(fontSize: 11))),
             ],
             TextButton.icon(
-              onPressed: () => setState(() { _batchMode = !_batchMode; _selectedIndices.clear(); }),
+              onPressed: () => setState(() { _batchMode = !_batchMode; _selectedPaths.clear(); }),
               icon: Icon(_batchMode ? Icons.check_box : Icons.check_box_outline_blank, size: 16),
               label: Text(_batchMode ? '取消选择' : '批量', style: const TextStyle(fontSize: 11)),
             ),
@@ -246,35 +246,7 @@ class _SongListPageState extends State<SongListPage> {
         const Divider(height: 1),
         Expanded(child: filtered.isEmpty
           ? const Center(child: Text('没有歌曲', style: TextStyle(color: Colors.grey)))
-          : _batchMode
-            ? ListView.separated(
-                controller: _mainScrollCtrl,
-                padding: const EdgeInsets.symmetric(horizontal: 12), itemCount: filtered.length,
-                separatorBuilder: (_, _) => const Divider(height: 1),
-                itemBuilder: (_, i) {
-                  final song = filtered[i];
-                  return GestureDetector(
-                    onTap: () => setState(() { if (_selectedIndices.contains(i)) _selectedIndices.remove(i); else _selectedIndices.add(i); }),
-                    child: Container(
-                      color: _selectedIndices.contains(i) ? Colors.deepPurple.withValues(alpha: 0.1) : Colors.transparent,
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.only(left: 0, right: 4),
-                        horizontalTitleGap: 8,
-                        leading: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Checkbox(
-                            value: _selectedIndices.contains(i),
-                            onChanged: (v) => setState(() { if (v == true) _selectedIndices.add(i); else _selectedIndices.remove(i); }),
-                            visualDensity: VisualDensity.compact,
-                          ),
-                          _buildCover(song),
-                        ]),
-                        title: Text(song.title, style: const TextStyle(fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(song.uploader.isNotEmpty ? song.uploader : '', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                      ),
-                    ),
-                  );
-                })
-            : LayoutBuilder(builder: (ctx, cons) {
+          : LayoutBuilder(builder: (ctx, cons) {
                 final items = _buildGroupedItems(filtered);
                 return ListView.builder(
                   controller: _mainScrollCtrl,
@@ -289,35 +261,44 @@ class _SongListPageState extends State<SongListPage> {
   }
 
 
-  /// 非批量模式：组优先 + 单曲在后
+  /// 组优先 + 单曲在后；批量模式下行首为复选框+封面
+  static const _groupColors = [
+    Colors.amber, Colors.cyan, Colors.limeAccent, Colors.orangeAccent,
+    Colors.pinkAccent, Colors.lightGreenAccent, Colors.tealAccent, Colors.redAccent,
+    Colors.lightBlueAccent, Colors.purpleAccent,
+  ];
+
   List<Widget> _buildGroupedItems(List<Song> filtered) {
     final items = <Widget>[];
     final used = <String>{};
     final groups = SongGroupService.getGroups();
+    var gi = 0;
     for (final g in groups) {
       final members = g.songPaths
           .map((p) => filtered.where((s) => s.filePath == p).firstOrNull)
           .whereType<Song>()
           .toList();
       if (members.isEmpty) continue;
+      final color = _groupColors[gi % _groupColors.length];
+      gi++;
       items.add(Container(
         margin: const EdgeInsets.symmetric(vertical: 4),
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.4)),
+          border: Border.all(color: color, width: 2),
           borderRadius: BorderRadius.circular(8),
-          color: Colors.deepPurple.withValues(alpha: 0.05),
+          color: color.withValues(alpha: 0.08),
         ),
         child: Column(children: [
           // 组头：组名 + 数量 + 组内顺序/随机 + 解散
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(children: [
-              const Icon(Icons.group, size: 15, color: Colors.deepPurple),
+              Icon(Icons.group, size: 15, color: color),
               const SizedBox(width: 6),
               Expanded(child: Text(g.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
               Text('${members.length}首', style: const TextStyle(fontSize: 10, color: Colors.grey)),
               IconButton(
-                icon: Icon(g.shuffle ? Icons.shuffle : Icons.swap_horiz, size: 14, color: Colors.grey),
+                icon: Icon(g.shuffle ? Icons.shuffle : Icons.swap_horiz, size: 14, color: color),
                 tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                 onPressed: () { SongGroupService.setGroupShuffle(g.id, !g.shuffle); setState(() {}); },
               ),
@@ -328,7 +309,7 @@ class _SongListPageState extends State<SongListPage> {
               ),
             ]),
           ),
-          const Divider(height: 1),
+          const Divider(height: 1, color: Colors.white12),
           ...members.map((s) { used.add(s.filePath); return _buildSongItem(s); }),
         ]),
       ));
@@ -596,7 +577,7 @@ class _SongListPageState extends State<SongListPage> {
 
   List<Song> _selectedSongs() {
     final f = _getFiltered();
-    return _selectedIndices.map((i) => f[i]).toList();
+    return f.where((s) => _selectedPaths.contains(s.filePath)).toList();
   }
 
   // 批量：添加到歌单
@@ -615,7 +596,7 @@ class _SongListPageState extends State<SongListPage> {
           onTap: () async {
             for (final s in sel) await PlaylistService.addSongToPlaylist(pl.id, s.filePath);
             Navigator.pop(ctx);
-            if (mounted) { setState(() { _batchMode = false; _selectedIndices.clear(); }); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}'))); }
+            if (mounted) { setState(() { _batchMode = false; _selectedPaths.clear(); }); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}'))); }
           },
         )),
       ])),
@@ -639,7 +620,7 @@ class _SongListPageState extends State<SongListPage> {
             }
             Navigator.pop(ctx);
             _refresh();
-            if (mounted) setState(() { _batchMode = false; _selectedIndices.clear(); });
+            if (mounted) setState(() { _batchMode = false; _selectedPaths.clear(); });
           }, child: const Text('移出')),
         ],
       ),
@@ -669,7 +650,7 @@ class _SongListPageState extends State<SongListPage> {
               }
               Navigator.pop(ctx);
               _refresh();
-              if (mounted) setState(() { _batchMode = false; _selectedIndices.clear(); });
+              if (mounted) setState(() { _batchMode = false; _selectedPaths.clear(); });
             },
             child: const Text('删除'),
           ),
@@ -687,7 +668,7 @@ class _SongListPageState extends State<SongListPage> {
     }
     SongGroupService.groupSongs(sel.map((s) => s.filePath).toList());
     if (mounted) {
-      setState(() { _batchMode = false; _selectedIndices.clear(); });
+      setState(() { _batchMode = false; _selectedPaths.clear(); });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已创建小组（${sel.length}首）')));
     }
   }
