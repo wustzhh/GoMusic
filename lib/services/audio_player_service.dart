@@ -6,6 +6,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/music_data.dart';
+import 'settings_service.dart';
 
 enum PlayMode { sequential, loopList, loopOne, shuffle }
 
@@ -233,6 +234,22 @@ class AudioPlayerService {
       );
       _currentSong = song;
       currentSongNotifier.value = song;
+      // 从对照表补全封面/标题/上传者（有BV号即可查全）
+      try {
+        final svc = await SettingsService.getInstance();
+        final dir = await svc.getDownloadPath();
+        final local = await scanLocalAudioFiles(dir);
+        final byPath = {for (final s in local) s.filePath: s};
+        for (var i = 0; i < _queue.length; i++) {
+          final full = byPath[_queue[i].filePath];
+          if (full != null) _queue[i] = full;
+        }
+        final curFull = byPath[_currentSong?.filePath];
+        if (curFull != null) {
+          _currentSong = curFull;
+          currentSongNotifier.value = curFull;
+        }
+      } catch (_) {}
       return song;
     } catch (_) {
       return null;
