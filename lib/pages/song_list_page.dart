@@ -357,9 +357,9 @@ class _SongListPageState extends State<SongListPage> {
     final scrollCtrl = ScrollController();
     final targetKey = GlobalKey();
     void locate() {
-      final curFp = _service.currentSong?.filePath;
-      if (curFp == null || !scrollCtrl.hasClients) return;
-      final idx = _service.queue.indexWhere((s) => s.filePath == curFp);
+      final curSong = _service.currentSong;
+      if (curSong == null || !scrollCtrl.hasClients) return;
+      final idx = _service.queue.indexWhere((s) => s.title == curSong.title);
       if (idx < 0) return;
       final est = (idx * 64.0 - scrollCtrl.position.viewportDimension / 2).clamp(0.0, scrollCtrl.position.maxScrollExtent);
       scrollCtrl.jumpTo(est);

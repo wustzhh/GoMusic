@@ -482,14 +482,15 @@ class _QueueSheetState extends State<_QueueSheet> {
   @override
   void initState() {
     super.initState();
-    widget.player.currentSongNotifier.addListener(() { if (mounted) setState(() {}); });
+    widget.player.currentSongNotifier.addListener(() { if (mounted) setState(() {}); WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTarget()); });
     _scrollToTarget();
   }
 
   void _scrollToTarget() {
-    final curFp = widget.player.currentSong?.filePath;
-    if (curFp == null) return;
-    final idx = widget.player.queue.indexWhere((s) => s.filePath == curFp);
+    // 歌名定位：找 title 与当前播放歌曲一致的 item
+    final curSong = widget.player.currentSong;
+    if (curSong == null) return;
+    final idx = widget.player.queue.indexWhere((s) => s.title == curSong.title);
     if (idx < 0) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scrollCtrl.hasClients) return;

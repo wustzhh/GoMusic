@@ -156,14 +156,14 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
   @override
   void initState() {
     super.initState();
-    widget.player.currentSongNotifier.addListener(() { if (mounted) setState(() {}); });
+    widget.player.currentSongNotifier.addListener(() { if (mounted) setState(() {}); WidgetsBinding.instance.addPostFrameCallback((_) => _locate()); });
     WidgetsBinding.instance.addPostFrameCallback((_) => _locate());
   }
 
   void _locate() {
-    final curFp = widget.player.currentSong?.filePath;
-    if (curFp == null || !_scrollCtrl.hasClients) return;
-    final idx = widget.player.queue.indexWhere((s) => s.filePath == curFp);
+    final curSong = widget.player.currentSong;
+    if (curSong == null || !_scrollCtrl.hasClients) return;
+    final idx = widget.player.queue.indexWhere((s) => s.title == curSong.title);
     if (idx < 0) return;
     final est = (idx * 64.0 - _scrollCtrl.position.viewportDimension / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
     _scrollCtrl.jumpTo(est);
