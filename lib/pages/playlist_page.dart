@@ -31,7 +31,9 @@ class PlaylistPageState extends State<PlaylistPage> {
     final service = await SettingsService.getInstance();
     final dir = await service.getDownloadPath();
     final localSongs = await scanLocalAudioFiles(dir);
-    final recentSongs = await RecentlyPlayedService.getRecentSongs();
+    final recentSongs = (await RecentlyPlayedService.getRecentSongs())
+        .map((s) => localSongs.where((x) => x.bvid.isNotEmpty && x.bvid == s.bvid).firstOrNull ?? s)
+        .toList();
     final favPaths = await AudioPlayerService.getFavorites();
     final favSongs = favPaths.map((fp) => localSongs.where((s) => s.filePath == fp).firstOrNull).where((s) => s != null).cast<Song>().toList();
     final customPls = await PlaylistService.getPlaylists();

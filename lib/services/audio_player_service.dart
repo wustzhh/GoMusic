@@ -253,17 +253,21 @@ class AudioPlayerService {
           final fp = q is Map ? q['p'] as String? ?? '' : q.toString();
           final t = q is Map ? q['t'] as String? ?? '' : '';
           final u = q is Map ? q['u'] as String? ?? '' : '';
-          _queue.add(Song(id: 'restored', title: t.isNotEmpty ? t : fp.split('\\').last.split('/').last, uploader: u, duration: Duration.zero, filePath: fp, bvid: ''));
+          _queue.add(Song(id: 'restored', title: t.isNotEmpty ? t : fp.split('\\').last.split('/').last.split('.').first, uploader: u, duration: Duration.zero, filePath: fp, bvid: fp.split('\\').last.split('/').last.split('.').first));
         }
         _queueIndex = qIdx.clamp(0, _queue.length - 1);
       }
+      final fp0 = data['song'] as String? ?? '';
+      final bv0 = (data['bvid'] as String? ?? '').isNotEmpty
+          ? data['bvid'] as String
+          : fp0.split('\\').last.split('/').last.split('.').first;
       final song = Song(
-        id: data['bvid'] as String? ?? '',
+        id: bv0,
         title: data['title'] as String? ?? '',
         uploader: data['uploader'] as String? ?? '',
         duration: Duration(seconds: data['duration'] as int? ?? 0),
-        filePath: data['song'] as String? ?? '',
-        bvid: data['bvid'] as String? ?? '',
+        filePath: fp0,
+        bvid: bv0,
         coverUrl: (data['cover'] as String? ?? '').isNotEmpty ? data['cover'] as String? : null,
       );
       _currentSong = song;
@@ -273,12 +277,12 @@ class AudioPlayerService {
         final svc = await SettingsService.getInstance();
         final dir = await svc.getDownloadPath();
         final local = await scanLocalAudioFiles(dir);
-        final byPath = {for (final s in local) s.filePath: s};
+        final byBvid = {for (final s in local) if (s.bvid.isNotEmpty) s.bvid: s};
         for (var i = 0; i < _queue.length; i++) {
-          final full = byPath[_queue[i].filePath];
+          final full = byBvid[_queue[i].bvid];
           if (full != null) _queue[i] = full;
         }
-        final curFull = byPath[_currentSong?.filePath];
+        final curFull = byBvid[_currentSong?.bvid];
         if (curFull != null) {
           _currentSong = curFull;
           currentSongNotifier.value = curFull;
