@@ -80,7 +80,8 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   bool _isCollectionUrl(String url) =>
-      url.contains('/list/ml') || url.contains('medialist') || url.contains('favlist') ||
+      url.contains('/list/ml') || url.contains('medialist') ||
+      (url.contains('list.bilibili.com') && (url.contains('ml') || url.contains('fid'))) ||
       (url.contains('fid=') && url.contains('space.bilibili.com'));
 
   Future<void> _parseCollection(String url) async {
