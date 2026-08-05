@@ -39,6 +39,7 @@ class AudioPlayerService {
   bool _playing = false;
   Song? _currentSong;
   final List<Song> _queue = [];
+  List<Song>? _orderedQueue;
   PlayMode _playMode = PlayMode.loopList;
   int _queueIndex = 0;
   final currentSongNotifier = ValueNotifier<Song?>(null);
@@ -136,7 +137,29 @@ class AudioPlayerService {
   void setQueue(List<Song> s, {int startIndex = 0}) { _queue.clear(); _queue.addAll(s); _queueIndex = startIndex.clamp(0, _queue.length - 1); currentSongNotifier.notifyListeners(); }
   void addToQueue(Song s) { _queue.add(s); currentSongNotifier.notifyListeners(); }
   void removeFromQueue(int i) { if (i >= _queue.length) return; _queue.removeAt(i); if (i < _queueIndex) _queueIndex--; if (_queueIndex >= _queue.length) _queueIndex = (_queue.length - 1).clamp(0, 999); currentSongNotifier.notifyListeners(); }
-  void setPlayMode(PlayMode m) { _playMode = m; _saveMode(); currentSongNotifier.notifyListeners(); }
+  void setPlayMode(PlayMode m) {
+    if (m == PlayMode.shuffle && _playMode != PlayMode.shuffle) {
+      // 进入随机：保存原顺序，打乱队列
+      _orderedQueue = List.from(_queue);
+      final cur = _currentSong;
+      _queue.shuffle(Random());
+      _queueIndex = _queue.indexWhere((s) => s.filePath == cur?.filePath);
+      if (_queueIndex < 0) _queueIndex = 0;
+    } else if (_playMode == PlayMode.shuffle && m != PlayMode.shuffle && _orderedQueue != null) {
+      // 退出随机：恢复原顺序
+      final cur = _currentSong;
+      final ordered = List<Song>.from(_orderedQueue!);
+      _queue.clear();
+      _queue.addAll(ordered);
+      _orderedQueue = null;
+      _queueIndex = _queue.indexWhere((s) => s.filePath == cur?.filePath);
+      if (_queueIndex < 0) _queueIndex = 0;
+    }
+    _playMode = m;
+    _saveMode();
+    _saveState();
+    currentSongNotifier.notifyListeners();
+  }
   String get playModeLabel { switch (_playMode) { case PlayMode.sequential: return '顺序播放'; case PlayMode.loopList: return '列表循环'; case PlayMode.loopOne: return '单曲循环'; case PlayMode.shuffle: return '随机播放'; }}
 
   // ==================== 收藏 ====================
