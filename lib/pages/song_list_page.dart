@@ -102,8 +102,8 @@ class _SongListPageState extends State<SongListPage> {
         const Text('添加到收藏夹', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
         ListTile(leading: const Icon(Icons.favorite, color: Colors.red, size: 24), title: const Text('我喜欢'),
-          trailing: _favs.contains(song.filePath) ? const Icon(Icons.check, color: Colors.green) : null,
-          onTap: () async { Navigator.pop(ctx); await AudioPlayerService.toggleFavorite(song.filePath); _loadFavs(); },
+          trailing: _favs.contains(song.bvid.isNotEmpty ? song.bvid : song.filePath) ? const Icon(Icons.check, color: Colors.green) : null,
+          onTap: () async { Navigator.pop(ctx); await AudioPlayerService.toggleFavorite(song); _loadFavs(); },
         ),
         ...existing.map((pl) => FutureBuilder<bool>(
           future: PlaylistService.isSongInPlaylist(pl.id, song.filePath),
@@ -154,7 +154,7 @@ class _SongListPageState extends State<SongListPage> {
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(leading: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? Colors.red : Colors.grey),
             title: Text(isFav ? '取消收藏' : '添加到我喜欢'),
-            onTap: () { Navigator.pop(ctx); AudioPlayerService.toggleFavorite(song.filePath); _loadFavs(); }),
+            onTap: () { Navigator.pop(ctx); AudioPlayerService.toggleFavorite(song); _loadFavs(); }),
           ListTile(leading: const Icon(Icons.playlist_add), title: const Text('添加到歌单...'),
             onTap: () { Navigator.pop(ctx); _showAddToList(song); }),
           ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('删除歌曲', style: TextStyle(color: Colors.red)),
@@ -278,7 +278,7 @@ class _SongListPageState extends State<SongListPage> {
     var gi = 0;
     for (final g in groups) {
       final members = g.songPaths
-          .map((p) => filtered.where((s) => s.filePath == p).firstOrNull)
+          .map((p) => filtered.where((s) => s.bvid == p || s.filePath == p).firstOrNull)
           .whereType<Song>()
           .toList();
       if (members.isEmpty) continue;
@@ -324,7 +324,7 @@ class _SongListPageState extends State<SongListPage> {
   }
 
   Widget _buildSongItem(Song song) {
-    final isFav = _favs.contains(song.filePath);
+    final isFav = _favs.contains(song.bvid.isNotEmpty ? song.bvid : song.filePath);
     final isPlaying = _service.currentSong?.filePath == song.filePath;
     final selected = _selectedPaths.contains(song.filePath);
     return GestureDetector(
@@ -680,7 +680,7 @@ class _SongListPageState extends State<SongListPage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请至少选择2首歌组队')));
       return;
     }
-    SongGroupService.groupSongs(sel.map((s) => s.filePath).toList(), playlistId: widget.playlist.id);
+    SongGroupService.groupSongs(sel, playlistId: widget.playlist.id);
     if (mounted) {
       setState(() { _batchMode = false; _selectedPaths.clear(); });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已创建小组（${sel.length}首）')));

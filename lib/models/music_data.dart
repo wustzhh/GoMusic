@@ -159,38 +159,20 @@ class SongManager {
 class RecentlyPlayedService {
   static const _key = 'recently_played';
 
-  static Future<void> addIfNotExists(String key, String title, String uploader, int durationSec, String filePath, String coverUrl) async {
+  /// 只记录 BV号（其他信息从对照表查）
+  static Future<void> addIfNotExists(String key) async {
     final prefs = await SharedPreferences.getInstance();
     final list = prefs.getStringList(_key) ?? [];
-    list.removeWhere((e) => e.startsWith('$key|'));
-    final now = DateTime.now();
-    final entry = '$key|$title|$uploader|$durationSec|$filePath|$coverUrl|${now.millisecondsSinceEpoch}';
-    list.insert(0, entry);
+    list.remove(key);
+    list.insert(0, key);
     if (list.length > 1000) list.removeRange(1000, list.length);
     await prefs.setStringList(_key, list);
   }
 
-  static Future<List<Song>> getRecentSongs() async {
+  /// 返回 BV号列表（按最近播放时间倒序）
+  static Future<List<String>> getRecentBvids() async {
     final prefs = await SharedPreferences.getInstance();
-    final list = prefs.getStringList(_key) ?? [];
-    final songs = <Song>[];
-    for (final entry in list) {
-      final parts = entry.split('|');
-      if (parts.length >= 7 && File(parts[4]).existsSync()) {
-        songs.add(Song(
-          id: parts[0], title: parts[1], uploader: parts[2],
-          duration: Duration(seconds: int.tryParse(parts[3]) ?? 0),
-          filePath: parts[4], coverUrl: parts[5].isEmpty ? null : parts[5],
-          bvid: parts[0], lastPlayed: DateTime.fromMillisecondsSinceEpoch(int.tryParse(parts[6]) ?? 0),
-        ));
-      }
-    }
-    // 清理无效记录
-    if (songs.length != list.length) {
-      final valid = list.where((e) => File(e.split('|')[4]).existsSync()).toList();
-      await prefs.setStringList(_key, valid);
-    }
-    return songs;
+    return prefs.getStringList(_key) ?? [];
   }
 }
 
@@ -368,18 +350,20 @@ class SongGroupService {
   }
 
   /// 获取某首歌所在组（无组返回 null，即单曲独立组）
-  static SongGroup? groupOf(String filePath, {String? playlistId}) {
+  static SongGroup? groupOf(Song song, {String? playlistId}) {
     _ensureLoaded();
+    final key = song.bvid.isNotEmpty ? song.bvid : song.filePath;
     for (final g in _cache) {
-      if (g.songPaths.contains(filePath) && (playlistId == null || g.playlistId == playlistId)) return g;
+      if (g.songPaths.contains(key) && (playlistId == null || g.playlistId == playlistId)) return g;
     }
     return null;
   }
 
   /// 组队：把选中歌曲合并为一个组（各自原有组合并后生成新组）
-  static void groupSongs(List<String> paths, {required String playlistId}) {
+  static void groupSongs(List<Song> songs, {required String playlistId}) {
     _ensureLoaded();
-    if (paths.length < 2) return;
+    if (songs.length < 2) return;
+    final paths = songs.map((s) => s.bvid.isNotEmpty ? s.bvid : s.filePath).toList();
     final involved = <String>{};
     final toRemove = <String>[];
     for (final g in _cache) {
@@ -390,12 +374,11 @@ class SongGroupService {
     }
     involved.addAll(paths);
     _cache.removeWhere((g) => toRemove.contains(g.id));
-    final first = paths.first;
-    final title = first.split('\\').last.split('/').last.split('.').first;
+    final first = songs.first;
     _cache.add(SongGroup(
       id: 'g${DateTime.now().millisecondsSinceEpoch}',
       playlistId: playlistId,
-      name: title,
+      name: first.title.isNotEmpty ? first.title : first.filePath.split('\\').last.split('/').last.split('.').first,
       songPaths: involved.toList(),
     ));
     _save();
@@ -418,19 +401,21 @@ class SongGroupService {
   }
 
   /// 随机模式下一首：组内没播完先播组内，否则随机跳组（限定当前歌单的组）
-  static Song? nextInGroup(String currentFp, List<Song> queue, {String? playlistId}) {
+  static Song? nextInGroup(Song currentSong, List<Song> queue, {String? playlistId}) {
     _ensureLoaded();
-    final group = groupOf(currentFp, playlistId: playlistId);
+    final group = groupOf(currentSong, playlistId: playlistId);
+    final currentFp = currentSong.filePath;
+    final curKey = currentSong.bvid.isNotEmpty ? currentSong.bvid : currentSong.filePath;
     if (group != null) {
       final curIdx = group.songPaths.indexOf(currentFp);
       if (group.shuffle) {
         if (group.songPaths.length > 1) {
           var n = curIdx;
           while (n == curIdx) n = Random().nextInt(group.songPaths.length);
-          return queue.where((s) => s.filePath == group.songPaths[n]).firstOrNull;
+          return queue.where((s) => (s.bvid.isNotEmpty ? s.bvid : s.filePath) == group.songPaths[n]).firstOrNull;
         }
       } else if (curIdx < group.songPaths.length - 1) {
-        return queue.where((s) => s.filePath == group.songPaths[curIdx + 1]).firstOrNull;
+        return queue.where((s) => (s.bvid.isNotEmpty ? s.bvid : s.filePath) == group.songPaths[curIdx + 1]).firstOrNull;
       }
       final groups = getGroups(playlistId: playlistId);
       if (groups.isNotEmpty) {
@@ -439,7 +424,7 @@ class SongGroupService {
           g = groups[(groups.indexOf(g) + 1) % groups.length];
         }
         final first = g.songPaths.first;
-        return queue.where((s) => s.filePath == first).firstOrNull;
+        return queue.where((s) => (s.bvid.isNotEmpty ? s.bvid : s.filePath) == first).firstOrNull;
       }
     }
     return null;

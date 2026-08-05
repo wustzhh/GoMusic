@@ -84,7 +84,7 @@ class AudioPlayerService {
     // 新歌：清除上次位置，避免残留影响
     _lastPosition = Duration.zero;
     _saveState();
-    RecentlyPlayedService.addIfNotExists(song.filePath, song.title, song.uploader, song.duration.inSeconds, song.filePath, song.coverUrl ?? '').catchError((_) {});
+    RecentlyPlayedService.addIfNotExists(song.bvid.isNotEmpty ? song.bvid : song.filePath).catchError((_) {});
   }
 
   void togglePause() async {
@@ -125,7 +125,8 @@ class AudioPlayerService {
     if (_playMode == PlayMode.shuffle) {
       final curFp = _currentSong?.filePath;
       if (curFp != null) {
-        final ns = SongGroupService.nextInGroup(curFp, _queue, playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId);
+        final cur = _currentSong;
+        final ns = cur != null ? SongGroupService.nextInGroup(cur, _queue, playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId) : null;
         if (ns != null) { await playSong(ns); return; }
       }
       _queueIndex = Random().nextInt(_queue.length);
@@ -208,11 +209,12 @@ class AudioPlayerService {
   // ==================== 收藏 ====================
   static const _favKey = 'favorites';
   static Future<List<String>> getFavorites() async { final p = await SharedPreferences.getInstance(); return p.getStringList(_favKey) ?? []; }
-  static Future<void> toggleFavorite(String fp) async {
+  static Future<void> toggleFavorite(Song song) async {
+    final key = song.bvid.isNotEmpty ? song.bvid : song.filePath;
     final p = await SharedPreferences.getInstance();
     final list = List<String>.from(p.getStringList(_favKey) ?? []);
-    final idx = list.indexOf(fp);
-    if (idx >= 0) { list.removeAt(idx); } else { list.add(fp); }
+    final idx = list.indexOf(key);
+    if (idx >= 0) { list.removeAt(idx); } else { list.add(key); }
     await p.setStringList(_favKey, list);
     _instance.favoritesChangedNotifier.value++;
   }

@@ -134,7 +134,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
               Navigator.pop(ctx);
 
-              await AudioPlayerService.toggleFavorite(_song!.filePath);
+              await AudioPlayerService.toggleFavorite(_song!);
 
               setState(() => _isFav = !_isFav);
 
@@ -388,7 +388,7 @@ class _PlayerPageState extends State<PlayerPage> {
             icon: Icon(_isFav ? Icons.favorite : Icons.favorite_border, size: 28, color: _isFav ? Colors.red : Colors.grey),
             onPressed: () async {
               if (_song == null) return;
-              await AudioPlayerService.toggleFavorite(_song!.filePath);
+              await AudioPlayerService.toggleFavorite(_song!);
               setState(() => _isFav = !_isFav);
             },
           ),
