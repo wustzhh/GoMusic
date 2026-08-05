@@ -314,7 +314,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
       appBar: AppBar(title: const Text(''), actions: [
 
-        if (_song!.hasVideo) TextButton.icon(onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (_) => VideoDetailPage(song: _song!))); }, icon: const Icon(Icons.ondemand_video, size: 16), label: const Text('源视频')),
+        if (_song!.hasVideo) IconButton(icon: const Icon(Icons.ondemand_video, size: 20, color: Colors.grey), onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (_) => VideoDetailPage(song: _song!))); }, tooltip: ''),
 
       ]),
 
@@ -485,6 +485,7 @@ class _QueueSheetState extends State<_QueueSheet> {
   @override
   void initState() {
     super.initState();
+    widget.player.currentSongNotifier.addListener(() { if (mounted) setState(() {}); });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // 测量第一个可见item的实际高度
       final ctx = _firstItemKey.currentContext;

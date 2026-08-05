@@ -158,6 +158,7 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
   @override
   void initState() {
     super.initState();
+    widget.player.currentSongNotifier.addListener(() { if (mounted) setState(() {}); });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final c = _firstKey.currentContext;
       if (c != null) { final b = c.findRenderObject() as RenderBox; if (b.hasSize) _itemH = b.size.height; }

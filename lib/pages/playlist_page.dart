@@ -20,7 +20,11 @@ class PlaylistPageState extends State<PlaylistPage> {
     _loadPlaylists();
   }
 
-  Future<void> refresh() => _loadPlaylists();
+  Future<void> refresh() {
+    _loaded = false;
+    if (mounted) setState(() {});
+    return _loadPlaylists();
+  }
 
   Future<void> _loadPlaylists() async {
     final service = await SettingsService.getInstance();
@@ -35,7 +39,7 @@ class PlaylistPageState extends State<PlaylistPage> {
     setState(() {
       _playlists = [
         Playlist(id: 'local', name: '本地歌单', icon: '📁', songs: localSongs),
-        Playlist(id: 'fav', name: '我的收藏', icon: '❤️', songs: favSongs),
+        Playlist(id: 'fav', name: '我喜欢', icon: '❤️', songs: favSongs),
         Playlist(id: 'recent', name: '最近播放', icon: '🕐', songs: recentSongs),
         ...customPls,
       ];

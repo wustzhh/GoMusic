@@ -210,7 +210,7 @@ class _SongListPageState extends State<SongListPage> {
                     ));
                   },
                   child: Container(
-                    color: isPlaying ? Colors.deepPurple.withValues(alpha: 0.12) : Colors.transparent,
+                    color: isPlaying ? Colors.red.withValues(alpha: 0.18) : Colors.transparent,
                     child: InkWell(
                       onTap: () => _playSong(song),
                       child: ListTile(
@@ -225,7 +225,7 @@ class _SongListPageState extends State<SongListPage> {
                                 child: Icon(Icons.favorite, color: Colors.red, size: 14)),
                           ],
                         ),
-                        title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: isPlaying ? FontWeight.bold : FontWeight.normal), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isPlaying ? Colors.red : null), maxLines: 1, overflow: TextOverflow.ellipsis),
                         subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                         trailing: SizedBox(
                           width: 32, height: 32,
