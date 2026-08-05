@@ -44,10 +44,9 @@ class _SongQueueListState extends State<SongQueueList> {
   @override
   void didUpdateWidget(SongQueueList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 队列或当前歌曲变化时重新定位
+    // 仅当当前歌曲位置或队列长度真正变化时重新定位
     if (oldWidget.currentIndex != widget.currentIndex ||
-        oldWidget.queue.length != widget.queue.length ||
-        !identical(oldWidget.queue, widget.queue)) {
+        oldWidget.queue.length != widget.queue.length) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _locate());
     }
   }
@@ -118,11 +117,6 @@ class _SongQueueListState extends State<SongQueueList> {
                   icon: Icon(g.shuffle ? Icons.shuffle : Icons.swap_horiz, size: 14, color: color),
                   tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                   onPressed: () { SongGroupService.setGroupShuffle(g.id, !g.shuffle); setState(() {}); },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.undo, size: 14, color: Colors.grey),
-                  tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                  onPressed: () { SongGroupService.ungroup(g.id); setState(() {}); },
                 ),
               ]),
             ),

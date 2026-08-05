@@ -316,7 +316,7 @@ class _SongListPageState extends State<SongListPage> {
                 IconButton(
                   icon: const Icon(Icons.undo, size: 14, color: Colors.grey),
                   tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                  onPressed: () { SongGroupService.ungroup(g.id); setState(() {}); },
+                  onPressed: () => _confirmUngroup(g.id),
                 ),
               ]),
             ),
@@ -330,6 +330,27 @@ class _SongListPageState extends State<SongListPage> {
       }
     }
     return items;
+  }
+
+  void _confirmUngroup(String groupId) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('解散小组'),
+        content: const Text('确定解散该小组吗？组内歌曲将恢复为独立歌曲。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              SongGroupService.ungroup(groupId);
+              Navigator.pop(ctx);
+              setState(() {});
+            },
+            child: const Text('解散'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildSongItem(Song song) {
