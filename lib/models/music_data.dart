@@ -400,14 +400,19 @@ class SongGroupService {
     _save();
   }
 
-  /// 设置组内顺序/随机
+  /// 设置组内顺序/随机（并重排该组在队列中的成员顺序）
   static void setGroupShuffle(String groupId, bool shuffle) {
     _ensureLoaded();
     for (final g in _cache) {
       if (g.id == groupId) { g.shuffle = shuffle; break; }
     }
     _save();
+    _queueRebuildCallback?.call();
   }
+
+  /// 组内设置变化时通知 AudioPlayerService 重排队列
+  static void Function()? _queueRebuildCallback;
+  static void setQueueRebuildCallback(void Function()? cb) { _queueRebuildCallback = cb; }
 
   /// 随机模式下一首：组内没播完先播组内，否则随机跳组（限定当前歌单的组）
   static Song? nextInGroup(Song currentSong, List<Song> queue, {String? playlistId}) {

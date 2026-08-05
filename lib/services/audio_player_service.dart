@@ -14,6 +14,7 @@ class AudioPlayerService {
   static final _instance = AudioPlayerService._();
   factory AudioPlayerService() => _instance;
   AudioPlayerService._() {
+    SongGroupService.setQueueRebuildCallback(_rebuildQueueForGroups);
     _player.onPlayerComplete.listen((_) => next());
     WidgetsBinding.instance.addObserver(_AppObserver(_saveState));
     _player.onDurationChanged.listen((d) {
@@ -212,6 +213,17 @@ class AudioPlayerService {
     final result = <Song>[];
     for (final u in units) result.addAll(u);
     return result;
+  }
+
+  void _rebuildQueueForGroups() {
+    if (_queue.isEmpty) return;
+    final curKey = _currentSong != null ? (_currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _currentSong!.filePath) : null;
+    final rebuilt = _groupedQueue(List<Song>.from(_queue));
+    _queue.clear();
+    _queue.addAll(rebuilt);
+    _queueIndex = curKey != null ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : x.filePath) == curKey) : 0;
+    if (_queueIndex < 0) _queueIndex = 0;
+    currentSongNotifier.notifyListeners();
   }
 
   /// 按组重排：组内歌曲相邻且保持在歌单中的相对位置（不提前），单曲原位

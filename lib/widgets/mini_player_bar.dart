@@ -233,6 +233,7 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
             playlistId: p.currentPlaylistId,
             onPlay: (s) { p.playSong(s); Navigator.pop(context); },
             onRemove: (i) { p.removeFromQueue(i); setState(() {}); },
+            onGroupChanged: () { if (mounted) setState(() {}); },
           )),
     ]));
   }
