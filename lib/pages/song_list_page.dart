@@ -372,8 +372,6 @@ class _SongListPageState extends State<SongListPage> {
             Padding(padding: const EdgeInsets.all(12), child: Row(children: [
               const Icon(Icons.drag_handle, color: Colors.grey, size: 24),
               const Spacer(),
-              Text(_service.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
-              const SizedBox(width: 8),
               GestureDetector(
                 onTap: () {
                   final modes = PlayMode.values;
@@ -381,7 +379,11 @@ class _SongListPageState extends State<SongListPage> {
                   _service.setPlayMode(modes[next]);
                   setSheetState(() {});
                 },
-                child: const Icon(Icons.swap_horiz, color: Colors.grey, size: 20),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(_service.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.swap_horiz, color: Colors.grey, size: 20),
+                ]),
               ),
             ])),
             Expanded(child: ListView.builder(
