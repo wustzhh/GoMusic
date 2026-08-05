@@ -308,17 +308,24 @@ class AudioPlayerService {
       if (qPaths.isNotEmpty) {
         _queue.clear();
         for (final q in qPaths) {
-          final fp = q is Map ? q['p'] as String? ?? '' : q.toString();
-          final t = q is Map ? q['t'] as String? ?? '' : '';
-          final u = q is Map ? q['u'] as String? ?? '' : '';
-          _queue.add(Song(id: 'restored', title: t.isNotEmpty ? t : fp.split('\\').last.split('/').last.split('.').first, uploader: u, duration: Duration.zero, filePath: fp, bvid: fp.split('\\').last.split('/').last.split('.').first));
+          if (q is Map) {
+            // 旧格式：p=filePath
+            final fp = q['p'] as String? ?? '';
+            final bv = fp.split('\\').last.split('/').last.split('.').first;
+            final t = q['t'] as String? ?? '';
+            _queue.add(Song(id: bv, title: t.isNotEmpty ? t : bv, uploader: q['u'] as String? ?? '', duration: Duration.zero, filePath: fp, bvid: bv, coverUrl: (q['c'] as String? ?? '').isNotEmpty ? q['c'] as String : null));
+          } else {
+            // 新格式：纯 bvid，信息由对照表补全
+            final bv = q.toString();
+            _queue.add(Song(id: bv, title: bv, uploader: '', duration: Duration.zero, filePath: '', bvid: bv));
+          }
         }
         _queueIndex = qIdx.clamp(0, _queue.length - 1);
       }
       final fp0 = data['song'] as String? ?? '';
       final bv0 = (data['bvid'] as String? ?? '').isNotEmpty
           ? data['bvid'] as String
-          : fp0.split('\\').last.split('/').last.split('.').first;
+          : (fp0.isNotEmpty ? fp0.split('\\').last.split('/').last.split('.').first : '');
       final song = Song(
         id: bv0,
         title: data['title'] as String? ?? '',

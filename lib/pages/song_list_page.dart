@@ -109,10 +109,10 @@ class _SongListPageState extends State<SongListPage> {
           onTap: () async { Navigator.pop(ctx); await AudioPlayerService.toggleFavorite(song); _loadFavs(); },
         ),
         ...existing.map((pl) => FutureBuilder<bool>(
-          future: PlaylistService.isSongInPlaylist(pl.id, song.filePath),
+          future: PlaylistService.isSongInPlaylist(pl.id, _songKey(song)),
           builder: (_, snap) => ListTile(leading: const Icon(Icons.list, color: Colors.grey, size: 22), title: Text(pl.name),
             trailing: (snap.data == true) ? const Icon(Icons.check, color: Colors.green) : null,
-            onTap: () async { Navigator.pop(ctx); await PlaylistService.addSongToPlaylist(pl.id, song.filePath); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}'))); },
+            onTap: () async { Navigator.pop(ctx); await PlaylistService.addSongToPlaylist(pl.id, _songKey(song)); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}'))); },
           ),
         )),
         const Divider(),
@@ -135,7 +135,7 @@ class _SongListPageState extends State<SongListPage> {
             await PlaylistService.addPlaylist(ctrl.text.trim());
             final pls = await PlaylistService.getPlaylists();
             final created = pls.where((p) => p.name == ctrl.text.trim()).firstOrNull;
-            if (created != null) { await PlaylistService.addSongToPlaylist(created.id, song.filePath); }
+            if (created != null) { await PlaylistService.addSongToPlaylist(created.id, _songKey(song)); }
             Navigator.pop(ctx);
             if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已创建并添加')));
           }
@@ -644,7 +644,7 @@ class _SongListPageState extends State<SongListPage> {
           leading: Text(pl.icon, style: const TextStyle(fontSize: 20)),
           title: Text(pl.name, style: const TextStyle(fontSize: 14)),
           onTap: () async {
-            await PlaylistService.addSongsToPlaylist(pl.id, sel.map((s) => s.filePath).toList());
+            await PlaylistService.addSongsToPlaylist(pl.id, sel.map(_songKey).toList());
             Navigator.pop(ctx);
             if (mounted) { setState(() { _batchMode = false; _selectedPaths.clear(); }); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}'))); }
           },
@@ -666,7 +666,7 @@ class _SongListPageState extends State<SongListPage> {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(onPressed: () async {
             for (final s in sel) {
-              await PlaylistService.removeSongFromPlaylist(widget.playlist.id, s.filePath);
+              await PlaylistService.removeSongFromPlaylist(widget.playlist.id, _songKey(s));
             }
             Navigator.pop(ctx);
             _refresh();

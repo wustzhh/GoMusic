@@ -205,7 +205,7 @@ class PlaylistService {
       try { songPaths = (jsonDecode(parts[3]) as List).map((x) => x.toString()).where((x) => x.isNotEmpty).toList(); }
       catch (_) { songPaths = parts[3].split(',').where((s) => s.isNotEmpty).toList(); }
       result.add(Playlist(id: parts[0], name: parts[1], icon: parts[2],
-        songs: songPaths.map((fp) => Song(id: fp, title: fp.split(Platform.pathSeparator).last.split('.').first, uploader: '', duration: Duration.zero, filePath: fp)).toList(),
+        songs: songPaths.map((bv) => Song(id: bv, title: bv, uploader: '', duration: Duration.zero, filePath: '', bvid: bv)).toList(),
       ));
     }
     return result;
@@ -218,12 +218,12 @@ class PlaylistService {
     await p.setStringList(_key, list);
   }
 
-  static Future<void> addSongToPlaylist(String pid, String filePath) =>
-      addSongsToPlaylist(pid, [filePath]);
+  static Future<void> addSongToPlaylist(String pid, String bvid) =>
+      addSongsToPlaylist(pid, [bvid]);
 
-  /// 批量添加：新歌曲保持传入顺序，整体插到歌单最前面；旧歌曲去重后保持原顺序在后
-  static Future<void> addSongsToPlaylist(String pid, List<String> newPaths) async {
-    if (newPaths.isEmpty) return;
+  /// 批量添加（按 BV号）：新歌曲保持传入顺序，整体插到歌单最前面；旧歌曲去重后保持原顺序在后
+  static Future<void> addSongsToPlaylist(String pid, List<String> newBvids) async {
+    if (newBvids.isEmpty) return;
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
     for (var i = 0; i < list.length; i++) {
@@ -231,12 +231,12 @@ class PlaylistService {
       while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
       while (parts.length < 4) parts.add('');
       if (parts[0] == pid) {
-        List<String> oldPaths = [];
-        try { oldPaths = (jsonDecode(parts[3]) as List).map((x) => x.toString()).where((x) => x.isNotEmpty).toList(); }
-        catch (_) { oldPaths = parts[3].split(',').where((s) => s.isNotEmpty).toList(); }
-        final newSet = newPaths.toSet();
-        final oldFiltered = oldPaths.where((x) => !newSet.contains(x)).toList();
-        parts[3] = jsonEncode([...newPaths, ...oldFiltered]);
+        List<String> oldBvids = [];
+        try { oldBvids = (jsonDecode(parts[3]) as List).map((x) => x.toString()).where((x) => x.isNotEmpty).toList(); }
+        catch (_) { oldBvids = parts[3].split(',').where((s) => s.isNotEmpty).toList(); }
+        final newSet = newBvids.toSet();
+        final oldFiltered = oldBvids.where((x) => !newSet.contains(x)).toList();
+        parts[3] = jsonEncode([...newBvids, ...oldFiltered]);
         while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
         list[i] = parts.join('|||');
         await p.setStringList(_key, list);
@@ -245,14 +245,14 @@ class PlaylistService {
     }
   }
 
-  static Future<bool> isSongInPlaylist(String pid, String filePath) async {
+  static Future<bool> isSongInPlaylist(String pid, String bvid) async {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
     for (final entry in list) {
       final parts = entry.split('|||');
       if (parts[0] == pid) {
         final songsJson = parts.length > 3 ? parts[3] : '[]';
-        try { return (jsonDecode(songsJson) as List).map((x) => x.toString()).contains(filePath); }
+        try { return (jsonDecode(songsJson) as List).map((x) => x.toString()).contains(bvid); }
         catch (_) { return false; }
       }
     }
@@ -288,7 +288,7 @@ class PlaylistService {
   }
 
   /// 从歌单移除歌曲
-  static Future<void> removeSongFromPlaylist(String pid, String filePath) async {
+  static Future<void> removeSongFromPlaylist(String pid, String bvid) async {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
     for (var i = 0; i < list.length; i++) {
@@ -298,7 +298,7 @@ class PlaylistService {
       if (parts[0] == pid) {
         List<dynamic> paths = [];
         try { paths = jsonDecode(parts[3]); } catch (_) { paths = parts[3].split(','); }
-        paths.removeWhere((x) => x.toString() == filePath);
+        paths.removeWhere((x) => x.toString() == bvid);
         parts[3] = jsonEncode(paths.map((x) => x.toString()).where((x) => x.isNotEmpty).toList());
         while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
         list[i] = parts.join('|||');

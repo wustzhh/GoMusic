@@ -146,7 +146,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
           ...existing.map((pl) => FutureBuilder<bool>(
 
-            future: PlaylistService.isSongInPlaylist(pl.id, _song!.filePath),
+            future: PlaylistService.isSongInPlaylist(pl.id, _song!.bvid.isNotEmpty ? _song!.bvid : _song!.filePath.split("\\").last.split("/").last.split(".").first),
 
             builder: (_, snap) => ListTile(
 
@@ -160,7 +160,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
                 Navigator.pop(ctx);
 
-                await PlaylistService.addSongToPlaylist(pl.id, _song!.filePath);
+                await PlaylistService.addSongToPlaylist(pl.id, _song!.bvid.isNotEmpty ? _song!.bvid : _song!.filePath.split("\\").last.split("/").last.split(".").first);
 
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}')));
 
@@ -228,7 +228,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
               if (created != null) {
 
-                await PlaylistService.addSongToPlaylist(created.id, _song!.filePath);
+                await PlaylistService.addSongToPlaylist(created.id, _song!.bvid.isNotEmpty ? _song!.bvid : _song!.filePath.split("\\").last.split("/").last.split(".").first);
 
               }
 
