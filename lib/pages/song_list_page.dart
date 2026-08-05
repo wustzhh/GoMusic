@@ -5,6 +5,7 @@ import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
 import 'player_page.dart';
+import '../widgets/song_queue_list.dart';
 
 class SongListPage extends StatefulWidget {
   final Playlist playlist;
@@ -495,25 +496,15 @@ class _SongListPageState extends State<SongListPage> {
                 ]),
               ),
             ])),
-            Expanded(child: ListView.builder(
-              controller: scrollCtrl,
-              itemCount: _service.queue.length,
-              itemBuilder: (_, i) {
-                final s = _service.queue[i]; final cur = i == _service.queueIndex;
-                final tile = ListTile(
-                  leading: _queueCover(s, cur),
-                  title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cur ? Colors.red : null), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { _service.removeFromQueue(i); setState(() {}); }),
-                );
-                if (cur) {
-                  return Container(key: targetKey, color: Colors.red.withValues(alpha: 0.08), child: tile);
-                }
-                return InkWell(
-                  onTap: () { _service.playSong(s); Navigator.pop(context); },
-                  child: tile,
-                );
-              },
-            )),
+            Expanded(child: _service.queue.isEmpty
+              ? const Center(child: Text('队列为空', style: TextStyle(color: Colors.grey)))
+              : SongQueueList(
+                  queue: _service.queue,
+                  currentIndex: _service.queueIndex,
+                  playlistId: _service.currentPlaylistId,
+                  onPlay: (s) { _service.playSong(s); Navigator.pop(context); },
+                  onRemove: (i) { _service.removeFromQueue(i); setState(() {}); },
+                )),
           ]),
         ),
       ),

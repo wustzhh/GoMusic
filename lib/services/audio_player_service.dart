@@ -42,6 +42,7 @@ class AudioPlayerService {
   final List<Song> _queue = [];
   List<Song>? _orderedQueue;
   String _currentPlaylistId = "";
+  String get currentPlaylistId => _currentPlaylistId;
   PlayMode _playMode = PlayMode.loopList;
   int _queueIndex = 0;
   final currentSongNotifier = ValueNotifier<Song?>(null);

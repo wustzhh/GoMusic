@@ -13,6 +13,8 @@ import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
 
 import 'video_detail_page.dart';
+import '../widgets/song_queue_list.dart';
+import '../widgets/song_queue_list.dart';
 
 
 
@@ -565,29 +567,13 @@ class _QueueSheetState extends State<_QueueSheet> {
 
         ? const Center(child: Text('队列为空'))
 
-        : ListView.builder(controller: _scrollCtrl,
-              itemCount: queue.length, itemBuilder: (_, i) {
-
-            final s = queue[i]; final isCur = i == p.queueIndex;
-            final tile = ListTile(
-              leading: _queueCover(s, isCur),
-              title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isCur ? Colors.red : null)),
-              subtitle: Text(s.uploader, style: TextStyle(fontSize: 12, color: isCur ? Colors.red.withValues(alpha: 0.7) : Colors.grey)),
-              trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { p.removeFromQueue(i); setState(() {}); }),
-            );
-            if (isCur) {
-              return Container(
-                key: _targetKey,
-                color: Colors.red.withValues(alpha: 0.08),
-                child: tile,
-              );
-            }
-            return InkWell(
-              onTap: () { p.playSong(s); Navigator.pop(context); },
-              child: tile,
-            );
-
-          })),
+        : SongQueueList(
+            queue: queue,
+            currentIndex: p.queueIndex,
+            playlistId: p.currentPlaylistId,
+            onPlay: (s) { p.playSong(s); Navigator.pop(context); },
+            onRemove: (i) { p.removeFromQueue(i); setState(() {}); },
+          )),
 
     ]));
 

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
 import '../pages/player_page.dart';
+import 'song_queue_list.dart';
 
 class MiniPlayerBar extends StatefulWidget {
   const MiniPlayerBar({super.key});
@@ -226,20 +227,13 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
       ])),
       Expanded(child: queue.isEmpty
         ? const Center(child: Text('队列为空'))
-        : ListView.builder(controller: _scrollCtrl, itemCount: queue.length, itemBuilder: (_, i) {
-            final s = queue[i]; final cur = i == p.queueIndex;
-            final tile = ListTile(
-              leading: _queueCover(s, cur),
-              title: Text(s.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cur ? Colors.red : null)),
-              subtitle: Text(s.uploader, style: TextStyle(fontSize: 12, color: cur ? Colors.red.withValues(alpha: 0.7) : Colors.grey)),
-              trailing: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () { p.removeFromQueue(i); setState(() {}); }),
-              onTap: () { p.playSong(s); Navigator.pop(context); },
-            );
-            if (cur) {
-              return Container(key: _targetKey, color: Colors.red.withValues(alpha: 0.08), child: tile);
-            }
-            return tile;
-          })),
+        : SongQueueList(
+            queue: queue,
+            currentIndex: p.queueIndex,
+            playlistId: p.currentPlaylistId,
+            onPlay: (s) { p.playSong(s); Navigator.pop(context); },
+            onRemove: (i) { p.removeFromQueue(i); setState(() {}); },
+          )),
     ]));
   }
 }
