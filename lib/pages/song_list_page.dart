@@ -345,15 +345,26 @@ class _SongListPageState extends State<SongListPage> {
     final scrollCtrl = ScrollController();
     final targetKey = GlobalKey();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final idx = _service.queueIndex;
-      if (scrollCtrl.hasClients && idx >= 0) {
-        final est = (idx * 64.0 - scrollCtrl.position.viewportDimension / 2).clamp(0.0, scrollCtrl.position.maxScrollExtent);
-        scrollCtrl.jumpTo(est);
+      final curFp = _service.currentSong?.filePath;
+      if (curFp == null || !scrollCtrl.hasClients) return;
+      final idx = _service.queue.indexWhere((s) => s.filePath == curFp);
+      if (idx < 0) return;
+      final est = (idx * 64.0 - scrollCtrl.position.viewportDimension / 2).clamp(0.0, scrollCtrl.position.maxScrollExtent);
+      scrollCtrl.jumpTo(est);
+      int tries = 0;
+      void locate() {
+        if (tries++ > 10) return;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final ctx = targetKey.currentContext;
-          if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
+          if (ctx != null) {
+            Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
+            return;
+          }
+          scrollCtrl.jumpTo((scrollCtrl.offset + scrollCtrl.position.viewportDimension * 0.7).clamp(0.0, scrollCtrl.position.maxScrollExtent));
+          locate();
         });
       }
+      locate();
     });
     showModalBottomSheet(
       context: context,

@@ -487,16 +487,31 @@ class _QueueSheetState extends State<_QueueSheet> {
   }
 
   void _scrollToTarget() {
-    final idx = widget.player.queueIndex;
+    final curFp = widget.player.currentSong?.filePath;
+    if (curFp == null) return;
+    final idx = widget.player.queue.indexWhere((s) => s.filePath == curFp);
+    if (idx < 0) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollCtrl.hasClients || idx < 0) return;
-      // 两步：先跳到估计位置让目标item渲染，再ensureVisible精确定位
+      if (!_scrollCtrl.hasClients) return;
+      // 先估计跳到目标附近
       final est = (idx * 64.0 - _scrollCtrl.position.viewportDimension / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
       _scrollCtrl.jumpTo(est);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx = _targetKey.currentContext;
-        if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
-      });
+      // 循环逼近直到目标item渲染出来，再ensureVisible
+      int tries = 0;
+      void locate() {
+        if (tries++ > 10) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final ctx = _targetKey.currentContext;
+          if (ctx != null) {
+            Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
+            return;
+          }
+          // 还没渲染：向前翻一页
+          _scrollCtrl.jumpTo((_scrollCtrl.offset + _scrollCtrl.position.viewportDimension * 0.7).clamp(0.0, _scrollCtrl.position.maxScrollExtent));
+          locate();
+        });
+      }
+      locate();
     });
   }
 
@@ -526,7 +541,21 @@ class _QueueSheetState extends State<_QueueSheet> {
 
         Text('播放列表 (${queue.length}首)', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
 
-        const Spacer(), Text(p.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+        const Spacer(),
+
+        GestureDetector(
+          onTap: () {
+            final modes = PlayMode.values;
+            final next = (modes.indexOf(widget.player.playMode) + 1) % modes.length;
+            widget.player.setPlayMode(modes[next]);
+            setState(() {});
+          },
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(widget.player.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+            const SizedBox(width: 6),
+            const Icon(Icons.swap_horiz, color: Colors.grey, size: 18),
+          ]),
+        ),
 
       ])),
 
