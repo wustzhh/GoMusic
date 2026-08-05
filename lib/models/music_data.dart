@@ -204,8 +204,17 @@ class PlaylistService {
       List<String> songPaths;
       try { songPaths = (jsonDecode(parts[3]) as List).map((x) => x.toString()).where((x) => x.isNotEmpty).toList(); }
       catch (_) { songPaths = parts[3].split(',').where((s) => s.isNotEmpty).toList(); }
+      // 迁移旧数据：filePath 条目转为 bvid（文件名）
+      final bvids = songPaths.map((p) {
+        if (p.contains('\\') || p.contains('/')) {
+          final name = p.split('\\').last.split('/').last;
+          final dot = name.lastIndexOf('.');
+          return dot > 0 ? name.substring(0, dot) : name;
+        }
+        return p;
+      }).toList();
       result.add(Playlist(id: parts[0], name: parts[1], icon: parts[2],
-        songs: songPaths.map((bv) => Song(id: bv, title: bv, uploader: '', duration: Duration.zero, filePath: '', bvid: bv)).toList(),
+        songs: bvids.map((bv) => Song(id: bv, title: bv, uploader: '', duration: Duration.zero, filePath: '', bvid: bv)).toList(),
       ));
     }
     return result;
@@ -234,6 +243,15 @@ class PlaylistService {
         List<String> oldBvids = [];
         try { oldBvids = (jsonDecode(parts[3]) as List).map((x) => x.toString()).where((x) => x.isNotEmpty).toList(); }
         catch (_) { oldBvids = parts[3].split(',').where((s) => s.isNotEmpty).toList(); }
+        // 迁移旧格式条目（filePath → bvid）
+        oldBvids = oldBvids.map((p) {
+          if (p.contains('\\') || p.contains('/')) {
+            final name = p.split('\\').last.split('/').last;
+            final dot = name.lastIndexOf('.');
+            return dot > 0 ? name.substring(0, dot) : name;
+          }
+          return p;
+        }).toList();
         final newSet = newBvids.toSet();
         final oldFiltered = oldBvids.where((x) => !newSet.contains(x)).toList();
         parts[3] = jsonEncode([...newBvids, ...oldFiltered]);
