@@ -504,7 +504,6 @@ class _SongListPageState extends State<SongListPage> {
                   playlistId: _service.currentPlaylistId,
                   onPlay: (s) { _service.playSong(s); Navigator.pop(context); },
                   onRemove: (i) { _service.removeFromQueue(i); setState(() {}); },
-                  onGroupChanged: () { setSheetState(() {}); },
                 )),
           ]),
         ),

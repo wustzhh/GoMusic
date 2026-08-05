@@ -12,7 +12,6 @@ class SongQueueList extends StatefulWidget {
   final String playlistId;
   final void Function(Song) onPlay;
   final void Function(int) onRemove;
-  final VoidCallback? onGroupChanged;
   const SongQueueList({
     super.key,
     required this.queue,
@@ -20,7 +19,6 @@ class SongQueueList extends StatefulWidget {
     required this.playlistId,
     required this.onPlay,
     required this.onRemove,
-    this.onGroupChanged,
   });
 
   @override
@@ -110,7 +108,7 @@ class _SongQueueListState extends State<SongQueueList> {
                 IconButton(
                   icon: Icon(g.shuffle ? Icons.shuffle : Icons.swap_horiz, size: 14, color: color),
                   tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                  onPressed: () { SongGroupService.setGroupShuffle(g.id, !g.shuffle); setState(() {}); widget.onGroupChanged?.call(); },
+                  onPressed: () { SongGroupService.setGroupShuffle(g.id, !g.shuffle); setState(() {}); },
                 ),
                 IconButton(
                   icon: const Icon(Icons.undo, size: 14, color: Colors.grey),
