@@ -214,22 +214,29 @@ class AudioPlayerService {
     return result;
   }
 
-  /// 按组重排：多歌组优先（组内按组配置顺序/随机），单曲在后
+  /// 按组重排：组内歌曲相邻且保持在歌单中的相对位置（不提前），单曲原位
   List<Song> _groupedQueue(List<Song> q) {
     final groups = SongGroupService.getGroups(playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId);
     final result = <Song>[];
     final used = <String>{};
-    for (final g in groups) {
-      var paths = g.songPaths;
-      if (g.shuffle && paths.length > 1) {
-        paths = List.from(paths)..shuffle(Random());
-      }
-      for (final p in paths) {
-        final s = q.where((x) => x.filePath == p).firstOrNull;
-        if (s != null && used.add(s.filePath)) result.add(s);
+    for (final s in q) {
+      if (used.contains(s.filePath)) continue;
+      // 若当前歌属于某组，输出整个组（相邻），组内按组配置
+      final g = groups.where((g) => g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : s.filePath)).firstOrNull;
+      if (g != null) {
+        var members = g.songPaths
+            .map((p) => q.where((x) => x.bvid == p || x.filePath == p).firstOrNull)
+            .whereType<Song>()
+            .toList();
+        if (g.shuffle && members.length > 1) members.shuffle(Random());
+        for (final m in members) {
+          if (used.add(m.filePath)) result.add(m);
+        }
+      } else {
+        used.add(s.filePath);
+        result.add(s);
       }
     }
-    for (final s in q) { if (used.add(s.filePath)) result.add(s); }
     return result;
   }
   String get playModeLabel { switch (_playMode) { case PlayMode.sequential: return '顺序播放'; case PlayMode.loopList: return '列表循环'; case PlayMode.loopOne: return '单曲循环'; case PlayMode.shuffle: return '随机播放'; }}

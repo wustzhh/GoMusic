@@ -76,55 +76,58 @@ class _SongQueueListState extends State<SongQueueList> {
     final queue = widget.queue;
     final items = <Widget>[];
     final used = <String>{};
-    // 组优先
     final groups = SongGroupService.getGroups(playlistId: widget.playlistId);
     var gi = 0;
-    for (final g in groups) {
-      final members = g.songPaths
-          .map((p) => queue.where((s) => s.bvid == p || s.filePath == p).firstOrNull)
-          .whereType<Song>()
-          .toList();
-      if (members.isEmpty) continue;
-      final color = _groupColors[gi % _groupColors.length];
-      gi++;
-      items.add(Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        decoration: BoxDecoration(
-          border: Border.all(color: color, width: 2),
-          borderRadius: BorderRadius.circular(8),
-          color: color.withValues(alpha: 0.08),
-        ),
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Row(children: [
-              Icon(Icons.group, size: 15, color: color),
-              const SizedBox(width: 6),
-              Expanded(child: Text(g.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
-              Text('${members.length}首', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-              IconButton(
-                icon: Icon(g.shuffle ? Icons.shuffle : Icons.swap_horiz, size: 14, color: color),
-                tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                onPressed: () { SongGroupService.setGroupShuffle(g.id, !g.shuffle); setState(() {}); },
-              ),
-              IconButton(
-                icon: const Icon(Icons.undo, size: 14, color: Colors.grey),
-                tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                onPressed: () { SongGroupService.ungroup(g.id); setState(() {}); },
-              ),
-            ]),
-          ),
-          const Divider(height: 1, color: Colors.white12),
-          ...members.map((s) {
-            used.add(s.filePath);
-            return _buildRow(s, queue.indexOf(s));
-          }),
-        ]),
-      ));
-    }
-    // 单曲
+    // 按 queue 顺序遍历：组内歌曲相邻输出并框住，单曲原位
     for (final s in queue) {
-      if (!used.contains(s.filePath)) items.add(_buildRow(s, queue.indexOf(s)));
+      if (used.contains(s.filePath)) continue;
+      final g = groups.where((g) => g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : s.filePath)).firstOrNull;
+      if (g != null) {
+        final members = g.songPaths
+            .map((p) => queue.where((x) => x.bvid == p || x.filePath == p).firstOrNull)
+            .whereType<Song>()
+            .toList();
+        if (members.isEmpty) continue;
+        final color = _groupColors[gi % _groupColors.length];
+        gi++;
+        items.add(Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(
+            border: Border.all(color: color, width: 2),
+            borderRadius: BorderRadius.circular(8),
+            color: color.withValues(alpha: 0.08),
+          ),
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(children: [
+                Icon(Icons.group, size: 15, color: color),
+                const SizedBox(width: 6),
+                Expanded(child: Text(g.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                Text('${members.length}首', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                IconButton(
+                  icon: Icon(g.shuffle ? Icons.shuffle : Icons.swap_horiz, size: 14, color: color),
+                  tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  onPressed: () { SongGroupService.setGroupShuffle(g.id, !g.shuffle); setState(() {}); },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.undo, size: 14, color: Colors.grey),
+                  tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                  onPressed: () { SongGroupService.ungroup(g.id); setState(() {}); },
+                ),
+              ]),
+            ),
+            const Divider(height: 1, color: Colors.white12),
+            ...members.map((m) {
+              used.add(m.filePath);
+              return _buildRow(m, queue.indexOf(m));
+            }),
+          ]),
+        ));
+      } else {
+        used.add(s.filePath);
+        items.add(_buildRow(s, queue.indexOf(s)));
+      }
     }
 
     return ListView.builder(
