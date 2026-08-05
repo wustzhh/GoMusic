@@ -40,7 +40,11 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
   }
 
   void _onSongChanged() {
-    if (mounted) setState(() => _song = _service.currentSong);
+    if (mounted) setState(() {
+      _song = _service.currentSong;
+      _position = _service.currentPosition;
+      _duration = _service.currentSong?.duration ?? Duration.zero;
+    });
   }
 
   @override

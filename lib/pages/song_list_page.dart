@@ -36,6 +36,7 @@ class _SongListPageState extends State<SongListPage> {
     }
     _loadFavs();
     _position = _service.currentPosition;
+    _duration = _service.currentSong?.duration ?? Duration.zero;
     _service.currentSongNotifier.addListener(_onSongChanged);
     _service.onPositionChanged.listen((p) => setState(() => _position = p));
     _service.onDurationChanged.listen((d) => setState(() => _duration = d));
@@ -47,7 +48,12 @@ class _SongListPageState extends State<SongListPage> {
     super.dispose();
   }
 
-  void _onSongChanged() { if (mounted) setState(() {}); }
+  void _onSongChanged() {
+    if (mounted) setState(() {
+      _position = _service.currentPosition;
+      _duration = _service.currentSong?.duration ?? Duration.zero;
+    });
+  }
 
   Future<void> _loadFavs() async {
     final f = await AudioPlayerService.getFavorites();
