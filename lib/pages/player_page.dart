@@ -384,13 +384,14 @@ class _PlayerPageState extends State<PlayerPage> {
 
         Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
 
-          Stack(clipBehavior: Clip.none, children: [
-
-            IconButton(icon: const Icon(Icons.playlist_add, size: 28, color: Colors.grey), onPressed: _addToList),
-
-            if (_isFav) const Positioned(right: 2, bottom: 2, child: Icon(Icons.favorite, color: Colors.red, size: 10)),
-
-          ]),
+          IconButton(
+            icon: Icon(_isFav ? Icons.favorite : Icons.favorite_border, size: 28, color: _isFav ? Colors.red : Colors.grey),
+            onPressed: () async {
+              if (_song == null) return;
+              await AudioPlayerService.toggleFavorite(_song!.filePath);
+              setState(() => _isFav = !_isFav);
+            },
+          ),
 
           IconButton(icon: const Icon(Icons.queue_music, size: 28, color: Colors.grey), onPressed: _showQueue),
 
