@@ -41,6 +41,7 @@ class AudioPlayerService {
   PlayMode _playMode = PlayMode.loopList;
   int _queueIndex = 0;
   final currentSongNotifier = ValueNotifier<Song?>(null);
+  final favoritesChangedNotifier = ValueNotifier<int>(0);
 
   Song? get currentSong => _currentSong;
   List<Song> get queue => List.unmodifiable(_queue);
@@ -127,7 +128,7 @@ class AudioPlayerService {
   // ==================== 收藏 ====================
   static const _favKey = 'favorites';
   static Future<Set<String>> getFavorites() async { final p = await SharedPreferences.getInstance(); return (p.getStringList(_favKey) ?? []).toSet(); }
-  static Future<void> toggleFavorite(String fp) async { final p = await SharedPreferences.getInstance(); final s = (p.getStringList(_favKey) ?? []).toSet(); if (s.contains(fp)) { s.remove(fp); } else { s.add(fp); } await p.setStringList(_favKey, s.toList()); }
+  static Future<void> toggleFavorite(String fp) async { final p = await SharedPreferences.getInstance(); final s = (p.getStringList(_favKey) ?? []).toSet(); if (s.contains(fp)) { s.remove(fp); } else { s.add(fp); } await p.setStringList(_favKey, s.toList()); _instance.favoritesChangedNotifier.value++; }
   static Future<bool> isFavorite(String fp) async { final f = await getFavorites(); return f.contains(fp); }
 
   // ==================== 持久化 ====================

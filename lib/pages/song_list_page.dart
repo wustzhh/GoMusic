@@ -210,7 +210,7 @@ class _SongListPageState extends State<SongListPage> {
                     ));
                   },
                   child: Container(
-                    color: isPlaying ? Colors.red.withValues(alpha: 0.18) : Colors.transparent,
+                    color: isPlaying ? Colors.lightBlue.withValues(alpha: 0.3) : Colors.transparent,
                     child: InkWell(
                       onTap: () => _playSong(song),
                       child: ListTile(
@@ -330,16 +330,14 @@ class _SongListPageState extends State<SongListPage> {
               const Spacer(),
               Text(_service.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
               const SizedBox(width: 8),
-              PopupMenuButton<PlayMode>(
-                icon: const Icon(Icons.swap_horiz, color: Colors.grey, size: 20),
-                onSelected: (m) { _service.setPlayMode(m); setState(() {}); },
-                itemBuilder: (_) => PlayMode.values.map((m) => PopupMenuItem(
-                  value: m,
-                  child: Text(_modeLabel(m), style: TextStyle(
-                    color: _service.playMode == m ? Colors.deepPurple : null,
-                    fontWeight: _service.playMode == m ? FontWeight.bold : null,
-                  )),
-                )).toList(),
+              GestureDetector(
+                onTap: () {
+                  final modes = PlayMode.values;
+                  final next = (modes.indexOf(_service.playMode) + 1) % modes.length;
+                  _service.setPlayMode(modes[next]);
+                  setState(() {});
+                },
+                child: const Icon(Icons.swap_horiz, color: Colors.grey, size: 20),
               ),
             ])),
             Expanded(child: ListView.builder(

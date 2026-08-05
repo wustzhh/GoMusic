@@ -17,6 +17,7 @@ class PlaylistPageState extends State<PlaylistPage> {
   @override
   void initState() {
     super.initState();
+    AudioPlayerService().favoritesChangedNotifier.addListener(() => refresh());
     _loadPlaylists();
   }
 
@@ -38,7 +39,7 @@ class PlaylistPageState extends State<PlaylistPage> {
     if (!mounted) return;
     setState(() {
       _playlists = [
-        Playlist(id: 'local', name: '本地歌单', icon: '📁', songs: localSongs),
+        Playlist(id: 'local', name: '本地歌单', icon: '📁', songs: List.from(localSongs)..sort((a,b) => a.title.compareTo(b.title))),
         Playlist(id: 'fav', name: '我喜欢', icon: '❤️', songs: favSongs),
         Playlist(id: 'recent', name: '最近播放', icon: '🕐', songs: recentSongs),
         ...customPls,

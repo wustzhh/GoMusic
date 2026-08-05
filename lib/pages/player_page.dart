@@ -395,18 +395,17 @@ class _PlayerPageState extends State<PlayerPage> {
 
           IconButton(icon: const Icon(Icons.queue_music, size: 28, color: Colors.grey), onPressed: _showQueue),
 
-          PopupMenuButton<PlayMode>(
-            onSelected: (m) { _service.setPlayMode(m); setState(() {}); },
-            itemBuilder: (_) => PlayMode.values.map((m) => PopupMenuItem(
-              value: m,
-              child: Text(_label(m), style: TextStyle(
-                color: _service.playMode == m ? Colors.deepPurple : null,
-                fontWeight: _service.playMode == m ? FontWeight.bold : null,
-              )),
-            )).toList(),
+          GestureDetector(
+            onTap: () {
+              final modes = PlayMode.values;
+              final next = (modes.indexOf(_service.playMode) + 1) % modes.length;
+              _service.setPlayMode(modes[next]);
+              setState(() {});
+            },
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Text(_service.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
-              const Icon(Icons.arrow_drop_down, color: Colors.grey, size: 20),
+              const SizedBox(width: 4),
+              const Icon(Icons.swap_horiz, color: Colors.grey, size: 16),
             ]),
           ),
 
