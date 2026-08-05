@@ -84,7 +84,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
     if (_song != null) {
 
-      AudioPlayerService.isFavorite(_song!.filePath).then((f) { if (mounted) setState(() => _isFav = f); });
+      AudioPlayerService.getFavorites().then((l) => l.contains(_song!.filePath)).then((f) { if (mounted) setState(() => _isFav = f); });
 
     }
 

@@ -33,7 +33,7 @@ class PlaylistPageState extends State<PlaylistPage> {
     final localSongs = await scanLocalAudioFiles(dir);
     final recentSongs = await RecentlyPlayedService.getRecentSongs();
     final favPaths = await AudioPlayerService.getFavorites();
-    final favSongs = localSongs.where((s) => favPaths.contains(s.filePath)).toList();
+    final favSongs = favPaths.map((fp) => localSongs.where((s) => s.filePath == fp).firstOrNull).where((s) => s != null).cast<Song>().toList();
     final customPls = await PlaylistService.getPlaylists();
 
     if (!mounted) return;

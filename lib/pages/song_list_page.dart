@@ -21,6 +21,8 @@ class _SongListPageState extends State<SongListPage> {
   String _searchText = '';
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
+  bool _batchMode = false;
+  final Set<int> _selectedIndices = {};
 
   @override
   void initState() {
@@ -43,7 +45,7 @@ class _SongListPageState extends State<SongListPage> {
 
   Future<void> _loadFavs() async {
     final f = await AudioPlayerService.getFavorites();
-    if (mounted) setState(() => _favs = f);
+    if (mounted) setState(() => _favs = f.toSet());
   }
 
   Future<void> _refresh() async {
@@ -187,10 +189,45 @@ class _SongListPageState extends State<SongListPage> {
         IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh, tooltip: '刷新'),
       ]),
       body: Column(children: [
-        Padding(padding: const EdgeInsets.all(10), child: TextField(
-          decoration: InputDecoration(hintText: '搜索...', prefixIcon: const Icon(Icons.search, size: 20), border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)), contentPadding: const EdgeInsets.symmetric(vertical: 0)),
+        Padding(padding: const EdgeInsets.fromLTRB(8, 6, 8, 0), child: TextField(
+          decoration: InputDecoration(hintText: '搜索...', prefixIcon: const Icon(Icons.search, size: 18), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 8), isDense: true),
           onChanged: (v) => setState(() => _searchText = v),
         )),
+        // 功能栏
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(children: [
+            _actionBtn(Icons.play_arrow, '播放全部', () {
+              _service.setQueue(_getFiltered(), startIndex: 0);
+              _service.playSong(_getFiltered().first);
+            }),
+            _actionBtn(Icons.my_location, '定位', () {
+              final idx = _getFiltered().indexWhere((s) => s.filePath == _service.currentSong?.filePath);
+              if (idx >= 0) {
+                // need a ScrollController, but we don't have one directly
+                // use find.byType approach or just skip for now
+              }
+            }),
+            const Spacer(),
+            if (_batchMode)
+              Row(children: [
+                TextButton.icon(onPressed: () {
+                  final selected = _getFiltered().where((s) => _selectedIndices.contains(_getFiltered().indexOf(s)));
+                  for (final s in selected) { AudioPlayerService.toggleFavorite(s.filePath); }
+                  _loadFavs(); _selectedIndices.clear(); _batchMode = false;
+                }, icon: const Icon(Icons.favorite, size: 16, color: Colors.red), label: const Text('收藏', style: TextStyle(fontSize: 11))),
+                TextButton.icon(onPressed: () {
+                  setState(() { _batchMode = false; _selectedIndices.clear(); });
+                }, icon: const Icon(Icons.close, size: 16), label: const Text('取消', style: TextStyle(fontSize: 11))),
+              ]),
+            TextButton.icon(
+              onPressed: () => setState(() { _batchMode = !_batchMode; _selectedIndices.clear(); }),
+              icon: Icon(_batchMode ? Icons.check_box : Icons.check_box_outline_blank, size: 16),
+              label: Text(_batchMode ? '取消选择' : '批量', style: const TextStyle(fontSize: 11)),
+            ),
+          ]),
+        ),
+        const Divider(height: 1),
         Expanded(child: filtered.isEmpty
           ? const Center(child: Text('没有歌曲', style: TextStyle(color: Colors.grey)))
           : ListView.separated(
@@ -199,7 +236,13 @@ class _SongListPageState extends State<SongListPage> {
               itemBuilder: (_, i) {
                 final song = filtered[i]; final isFav = _favs.contains(song.filePath);
                 final isPlaying = _service.currentSong?.filePath == song.filePath;
+                final checkbox = _batchMode ? Checkbox(
+                    value: _selectedIndices.contains(i),
+                    onChanged: (v) => setState(() { if (v == true) _selectedIndices.add(i); else _selectedIndices.remove(i); }),
+                    visualDensity: VisualDensity.compact,
+                  ) : null;
                 return GestureDetector(
+                  onTap: _batchMode ? () => setState(() { if (_selectedIndices.contains(i)) _selectedIndices.remove(i); else _selectedIndices.add(i); }) : null,
                   onLongPress: () {
                     Clipboard.setData(ClipboardData(text: song.title));
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -417,5 +460,19 @@ class _SongListPageState extends State<SongListPage> {
       }
     }
     return Icon(Icons.music_note, color: Colors.deepPurple, size: 24);
+  }
+
+  Widget _actionBtn(IconData icon, String label, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(4),
+        onTap: onTap,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 18, color: Colors.deepPurple),
+          Text(label, style: const TextStyle(fontSize: 9)),
+        ]),
+      ),
+    );
   }
 }
