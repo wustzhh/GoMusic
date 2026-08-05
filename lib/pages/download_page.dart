@@ -26,6 +26,7 @@ class _DownloadPageState extends State<DownloadPage> {
   VideoStream? _selectedStream;
   bool _alreadyDownloaded = false;
   bool _coverMissing = false;
+  bool _videoMissing = false;
 
   // 批量下载
   List<_BatchItem> _batchItems = [];
@@ -319,7 +320,25 @@ class _DownloadPageState extends State<DownloadPage> {
         _buildAlreadyBadge(),
       if (_coverMissing)
         _buildCoverMissingBadge(),
-      if (!_alreadyDownloaded && !_coverMissing) ...[
+      if (_videoMissing) ...[
+        _buildVideoMissingBadge(),
+        const SizedBox(height: 8),
+        Row(children: [
+          const Icon(Icons.video_file_outlined, color: Colors.grey, size: 18),
+          const SizedBox(width: 4),
+          const Text('补下载视频', style: TextStyle(fontSize: 14)),
+          const Spacer(),
+          Switch(value: _downloadVideo, onChanged: _isDownloading ? null : (v) => setState(() => _downloadVideo = v)),
+        ]),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          onPressed: _isDownloading ? null : _startSingle,
+          icon: const Icon(Icons.download, size: 18),
+          label: const Text('下载视频'),
+        ),
+        const SizedBox(height: 12),
+      ],
+      if (!_alreadyDownloaded && !_coverMissing && !_videoMissing) ...[
         if (info.videoStreams.length > 1) _buildQualityPicker(),
         const SizedBox(height: 12),
         _buildEditableFields(),
@@ -348,6 +367,19 @@ class _DownloadPageState extends State<DownloadPage> {
         Icon(Icons.check_circle, color: Colors.green, size: 16),
         SizedBox(width: 6),
         Text('本地已下载', style: TextStyle(color: Colors.green, fontSize: 13)),
+      ]),
+    );
+  }
+
+  Widget _buildVideoMissingBadge() {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(8)),
+      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.video_file_outlined, color: Colors.orange, size: 16),
+        SizedBox(width: 6),
+        Text('音频已下载，视频未下载', style: TextStyle(color: Colors.orange, fontSize: 13)),
       ]),
     );
   }
