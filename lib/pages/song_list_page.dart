@@ -209,21 +209,23 @@ class _SongListPageState extends State<SongListPage> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(children: [
-            _actionBtn(Icons.play_arrow, '播放全部', () {
-              _service.setQueue(_getFiltered(), startIndex: 0);
-              _service.playSong(_getFiltered().first, forceRestart: true);
-            }),
-            _actionBtn(Icons.my_location, '定位', () {
-              final idx = _getFiltered().indexWhere((s) => s.filePath == _service.currentSong?.filePath);
-              if (idx < 0) return;
-              if (!_mainScrollCtrl.hasClients) return;
-              final est = (idx * 64.0 - _mainScrollCtrl.position.viewportDimension / 2).clamp(0.0, _mainScrollCtrl.position.maxScrollExtent);
-              _mainScrollCtrl.jumpTo(est);
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                final ctx = _playingRowKey.currentContext;
-                if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
-              });
-            }),
+            if (!_batchMode) ...[
+              _actionBtn(Icons.play_arrow, '播放全部', () {
+                _service.setQueue(_getFiltered(), startIndex: 0);
+                _service.playSong(_getFiltered().first, forceRestart: true);
+              }),
+              _actionBtn(Icons.my_location, '定位', () {
+                final idx = _getFiltered().indexWhere((s) => s.filePath == _service.currentSong?.filePath);
+                if (idx < 0) return;
+                if (!_mainScrollCtrl.hasClients) return;
+                final est = (idx * 64.0 - _mainScrollCtrl.position.viewportDimension / 2).clamp(0.0, _mainScrollCtrl.position.maxScrollExtent);
+                _mainScrollCtrl.jumpTo(est);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  final ctx = _playingRowKey.currentContext;
+                  if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
+                });
+              }),
+            ],
             const Spacer(),
             if (_batchMode) ...[
               TextButton.icon(onPressed: _batchAddTo, icon: const Icon(Icons.playlist_add, size: 16), label: const Text('添加到', style: TextStyle(fontSize: 11))),
@@ -323,7 +325,9 @@ class _SongListPageState extends State<SongListPage> {
   Widget _buildSongItem(Song song) {
     final isFav = _favs.contains(song.filePath);
     final isPlaying = _service.currentSong?.filePath == song.filePath;
+    final selected = _selectedPaths.contains(song.filePath);
     return GestureDetector(
+      onTap: _batchMode ? () => setState(() { if (selected) _selectedPaths.remove(song.filePath); else _selectedPaths.add(song.filePath); }) : null,
       onLongPress: () {
         Clipboard.setData(ClipboardData(text: song.title));
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -335,24 +339,33 @@ class _SongListPageState extends State<SongListPage> {
       },
       child: Container(
         key: isPlaying ? _playingRowKey : null,
-        color: isPlaying ? Colors.lightBlue.withValues(alpha: 0.3) : Colors.transparent,
+        color: selected ? Colors.deepPurple.withValues(alpha: 0.15) : (isPlaying ? Colors.lightBlue.withValues(alpha: 0.3) : Colors.transparent),
         child: InkWell(
-          onTap: () => _playSong(song),
+          onTap: _batchMode ? () => setState(() { if (selected) _selectedPaths.remove(song.filePath); else _selectedPaths.add(song.filePath); }) : () => _playSong(song),
           child: ListTile(
             contentPadding: const EdgeInsets.only(left: 0, right: 4),
             horizontalTitleGap: 8,
-            leading: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                _buildCover(song),
-                if (isFav)
-                  Positioned(right: -4, bottom: -4,
-                    child: Icon(Icons.favorite, color: Colors.red, size: 14)),
-              ],
-            ),
+            leading: _batchMode
+              ? Row(mainAxisSize: MainAxisSize.min, children: [
+                  Checkbox(
+                    value: selected,
+                    onChanged: (v) => setState(() { if (v == true) _selectedPaths.add(song.filePath); else _selectedPaths.remove(song.filePath); }),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  _buildCover(song),
+                ])
+              : Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    _buildCover(song),
+                    if (isFav)
+                      Positioned(right: -4, bottom: -4,
+                        child: Icon(Icons.favorite, color: Colors.red, size: 14)),
+                  ],
+                ),
             title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isPlaying ? Colors.red : null), maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-            trailing: SizedBox(
+            trailing: _batchMode ? null : SizedBox(
               width: 32, height: 32,
               child: Material(
                 color: Colors.transparent,
