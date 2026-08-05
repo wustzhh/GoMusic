@@ -199,7 +199,7 @@ class _SongListPageState extends State<SongListPage> {
           child: Row(children: [
             _actionBtn(Icons.play_arrow, '播放全部', () {
               _service.setQueue(_getFiltered(), startIndex: 0);
-              _service.playSong(_getFiltered().first);
+              _service.playSong(_getFiltered().first, forceRestart: true);
             }),
             _actionBtn(Icons.my_location, '定位', () {
               final idx = _getFiltered().indexWhere((s) => s.filePath == _service.currentSong?.filePath);
@@ -360,7 +360,8 @@ class _SongListPageState extends State<SongListPage> {
       isDismissible: true,
       barrierColor: Colors.black54,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (_) => ConstrainedBox(
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSheetState) => ConstrainedBox(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.65),
         child: Container(
           decoration: BoxDecoration(
@@ -378,7 +379,7 @@ class _SongListPageState extends State<SongListPage> {
                   final modes = PlayMode.values;
                   final next = (modes.indexOf(_service.playMode) + 1) % modes.length;
                   _service.setPlayMode(modes[next]);
-                  setState(() {});
+                  setSheetState(() {});
                 },
                 child: const Icon(Icons.swap_horiz, color: Colors.grey, size: 20),
               ),
@@ -410,6 +411,7 @@ class _SongListPageState extends State<SongListPage> {
             )),
           ]),
         ),
+      ),
       ),
     );
   }

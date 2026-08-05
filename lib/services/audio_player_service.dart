@@ -33,6 +33,7 @@ class AudioPlayerService {
   }
 
   final AudioPlayer _player = AudioPlayer();
+  bool _sourceLoaded = false;
   final StreamController<Duration> _positionController = StreamController<Duration>.broadcast();
   Duration _lastPosition = Duration.zero;
   bool _playing = false;
@@ -55,20 +56,27 @@ class AudioPlayerService {
 
   // ==================== 播放 ====================
 
-  Future<void> playSong(Song song) async {
+  Future<void> playSong(Song song, {bool forceRestart = false}) async {
     final idx = _queue.indexWhere((s) => s.filePath == song.filePath);
     if (idx >= 0) _queueIndex = idx;
-    if (_currentSong?.filePath == song.filePath) {
+    if (_currentSong?.filePath == song.filePath && !forceRestart) {
       if (_playing) { _player.pause(); _playing = false; } else {
-        await _player.play(DeviceFileSource(song.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
+        if (!_sourceLoaded) {
+          await _player.play(DeviceFileSource(song.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
+          _sourceLoaded = true;
+        } else {
+          await _player.play(DeviceFileSource(song.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
+        }
         _playing = true;
       }
       return;
     }
+    _lastPosition = Duration.zero;
     _currentSong = song;
     currentSongNotifier.value = song;
     await _player.stop();
     await _player.play(DeviceFileSource(song.filePath));
+    _sourceLoaded = true;
     _playing = true;
     // 新歌：清除上次位置，避免残留影响
     _lastPosition = Duration.zero;
@@ -83,11 +91,17 @@ class AudioPlayerService {
       _player.pause();
       _playing = false;
     } else {
-      if (_lastPosition > Duration.zero && _currentSong != null) {
-        final cur = await _player.getCurrentPosition();
-        if (cur == null || cur == Duration.zero) await _player.seek(_lastPosition);
+      if (!_sourceLoaded && _currentSong != null) {
+        await _player.play(DeviceFileSource(_currentSong!.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
+        _sourceLoaded = true;
+      } else {
+        if (_lastPosition > Duration.zero && _currentSong != null) {
+          final cur = await _player.getCurrentPosition();
+          if (cur == null || cur == Duration.zero) await _player.seek(_lastPosition);
+        }
+        _player.resume();
       }
-      _player.resume(); _playing = true;
+      _playing = true;
     }
     _saveState();
     currentSongNotifier.notifyListeners(); // 强制刷新UI
