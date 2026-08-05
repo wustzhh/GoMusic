@@ -49,3 +49,4 @@ app.*.map.json
 /downloads/
 .gradle/
 save_state.json
+song_groups.json
