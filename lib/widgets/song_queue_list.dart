@@ -83,10 +83,8 @@ class _SongQueueListState extends State<SongQueueList> {
       if (used.contains(s.filePath)) continue;
       final g = groups.where((g) => g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : s.filePath)).firstOrNull;
       if (g != null) {
-        final members = g.songPaths
-            .map((p) => queue.where((x) => x.bvid == p || x.filePath == p).firstOrNull)
-            .whereType<Song>()
-            .toList();
+        // 按队列中的顺序取组内成员（队列已按组设置排列）
+        final members = queue.where((x) => g.songPaths.contains(x.bvid.isNotEmpty ? x.bvid : x.filePath)).toList();
         if (members.isEmpty) continue;
         final color = _groupColors[gi % _groupColors.length];
         gi++;
