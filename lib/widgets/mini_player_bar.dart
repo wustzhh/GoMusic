@@ -157,28 +157,30 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
   void initState() {
     super.initState();
     widget.player.currentSongNotifier.addListener(() { if (mounted) setState(() {}); });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final curFp = widget.player.currentSong?.filePath;
-      if (curFp == null || !_scrollCtrl.hasClients) return;
-      final idx = widget.player.queue.indexWhere((s) => s.filePath == curFp);
-      if (idx < 0) return;
-      final est = (idx * 64.0 - _scrollCtrl.position.viewportDimension / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
-      _scrollCtrl.jumpTo(est);
-      int tries = 0;
-      void locate() {
-        if (tries++ > 10) return;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final ctx = _targetKey.currentContext;
-          if (ctx != null) {
-            Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
-            return;
-          }
-          _scrollCtrl.jumpTo((_scrollCtrl.offset + _scrollCtrl.position.viewportDimension * 0.7).clamp(0.0, _scrollCtrl.position.maxScrollExtent));
-          locate();
-        });
-      }
-      locate();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _locate());
+  }
+
+  void _locate() {
+    final curFp = widget.player.currentSong?.filePath;
+    if (curFp == null || !_scrollCtrl.hasClients) return;
+    final idx = widget.player.queue.indexWhere((s) => s.filePath == curFp);
+    if (idx < 0) return;
+    final est = (idx * 64.0 - _scrollCtrl.position.viewportDimension / 2).clamp(0.0, _scrollCtrl.position.maxScrollExtent);
+    _scrollCtrl.jumpTo(est);
+    int tries = 0;
+    void locate() {
+      if (tries++ > 10) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final ctx = _targetKey.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
+          return;
+        }
+        _scrollCtrl.jumpTo((_scrollCtrl.offset + _scrollCtrl.position.viewportDimension * 0.7).clamp(0.0, _scrollCtrl.position.maxScrollExtent));
+        locate();
+      });
+    }
+    locate();
   }
 
   Widget _queueCover(Song s, bool cur) {
@@ -208,6 +210,7 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
             final next = (modes.indexOf(widget.player.playMode) + 1) % modes.length;
             widget.player.setPlayMode(modes[next]);
             setState(() {});
+            WidgetsBinding.instance.addPostFrameCallback((_) => _locate());
           },
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text(widget.player.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),

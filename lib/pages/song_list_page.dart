@@ -23,11 +23,17 @@ class _SongListPageState extends State<SongListPage> {
   Duration _duration = Duration.zero;
   bool _batchMode = false;
   final Set<int> _selectedIndices = {};
+  final ScrollController _mainScrollCtrl = ScrollController();
+  final GlobalKey _playingRowKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
     _songs = List.from(widget.playlist.songs);
+    // 进入歌单：队列同步为歌单顺序（非随机模式），保证播放顺序和歌单一致
+    if (_service.playMode != PlayMode.shuffle) {
+      _service.setQueue(_songs, startIndex: _songs.indexWhere((s) => s.filePath == _service.currentSong?.filePath).clamp(0, _songs.length - 1));
+    }
     _loadFavs();
     _position = _service.currentPosition;
     _service.currentSongNotifier.addListener(_onSongChanged);
@@ -203,10 +209,14 @@ class _SongListPageState extends State<SongListPage> {
             }),
             _actionBtn(Icons.my_location, '定位', () {
               final idx = _getFiltered().indexWhere((s) => s.filePath == _service.currentSong?.filePath);
-              if (idx >= 0) {
-                // need a ScrollController, but we don't have one directly
-                // use find.byType approach or just skip for now
-              }
+              if (idx < 0) return;
+              if (!_mainScrollCtrl.hasClients) return;
+              final est = (idx * 64.0 - _mainScrollCtrl.position.viewportDimension / 2).clamp(0.0, _mainScrollCtrl.position.maxScrollExtent);
+              _mainScrollCtrl.jumpTo(est);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                final ctx = _playingRowKey.currentContext;
+                if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
+              });
             }),
             const Spacer(),
             if (_batchMode)
@@ -231,6 +241,7 @@ class _SongListPageState extends State<SongListPage> {
         Expanded(child: filtered.isEmpty
           ? const Center(child: Text('没有歌曲', style: TextStyle(color: Colors.grey)))
           : ListView.separated(
+              controller: _mainScrollCtrl,
               padding: const EdgeInsets.symmetric(horizontal: 12), itemCount: filtered.length,
               separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (_, i) {
@@ -253,6 +264,7 @@ class _SongListPageState extends State<SongListPage> {
                     ));
                   },
                   child: Container(
+                    key: isPlaying ? _playingRowKey : null,
                     color: isPlaying ? Colors.lightBlue.withValues(alpha: 0.3) : Colors.transparent,
                     child: InkWell(
                       onTap: () => _playSong(song),
@@ -344,7 +356,7 @@ class _SongListPageState extends State<SongListPage> {
   void _showQueueSheet() {
     final scrollCtrl = ScrollController();
     final targetKey = GlobalKey();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    void locate() {
       final curFp = _service.currentSong?.filePath;
       if (curFp == null || !scrollCtrl.hasClients) return;
       final idx = _service.queue.indexWhere((s) => s.filePath == curFp);
@@ -352,7 +364,7 @@ class _SongListPageState extends State<SongListPage> {
       final est = (idx * 64.0 - scrollCtrl.position.viewportDimension / 2).clamp(0.0, scrollCtrl.position.maxScrollExtent);
       scrollCtrl.jumpTo(est);
       int tries = 0;
-      void locate() {
+      void loop() {
         if (tries++ > 10) return;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           final ctx = targetKey.currentContext;
@@ -361,11 +373,12 @@ class _SongListPageState extends State<SongListPage> {
             return;
           }
           scrollCtrl.jumpTo((scrollCtrl.offset + scrollCtrl.position.viewportDimension * 0.7).clamp(0.0, scrollCtrl.position.maxScrollExtent));
-          locate();
+          loop();
         });
       }
-      locate();
-    });
+      loop();
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => locate());
     showModalBottomSheet(
       context: context,
       isDismissible: true,
@@ -389,6 +402,7 @@ class _SongListPageState extends State<SongListPage> {
                   final next = (modes.indexOf(_service.playMode) + 1) % modes.length;
                   _service.setPlayMode(modes[next]);
                   setSheetState(() {});
+                  WidgetsBinding.instance.addPostFrameCallback((_) => locate());
                 },
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
                   Text(_service.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),

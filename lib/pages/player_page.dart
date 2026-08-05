@@ -549,6 +549,7 @@ class _QueueSheetState extends State<_QueueSheet> {
             final next = (modes.indexOf(widget.player.playMode) + 1) % modes.length;
             widget.player.setPlayMode(modes[next]);
             setState(() {});
+            WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTarget());
           },
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text(widget.player.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
