@@ -52,7 +52,8 @@ class _SongListPageState extends State<SongListPage> {
   void _onSongChanged() {
     if (mounted) setState(() {
       _position = _service.currentPosition;
-      _duration = _service.currentSong?.duration ?? Duration.zero;
+      final d = _service.currentSong?.duration;
+      if (d != null && d.inMilliseconds > 0) _duration = d;
     });
   }
 
@@ -202,6 +203,7 @@ class _SongListPageState extends State<SongListPage> {
         IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh, tooltip: '刷新'),
       ]),
       body: Column(children: [
+        if (widget.playlist.id != 'recent') ...[
         Padding(padding: const EdgeInsets.fromLTRB(8, 6, 8, 0), child: TextField(
           decoration: InputDecoration(hintText: '搜索...', prefixIcon: const Icon(Icons.search, size: 18), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 8), isDense: true),
           onChanged: (v) => setState(() => _searchText = v),
@@ -247,6 +249,7 @@ class _SongListPageState extends State<SongListPage> {
           ]),
         ),
         const Divider(height: 1),
+        ],
         Expanded(child: filtered.isEmpty
           ? const Center(child: Text('没有歌曲', style: TextStyle(color: Colors.grey)))
           : LayoutBuilder(builder: (ctx, cons) {

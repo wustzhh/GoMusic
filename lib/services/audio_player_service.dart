@@ -229,7 +229,7 @@ class AudioPlayerService {
         'title': _currentSong!.title,
         'uploader': _currentSong!.uploader,
         'duration': _currentSong!.duration.inSeconds,
-        'bvid': _currentSong!.bvid,
+        'bvid': _currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _currentSong!.filePath.split('\\').last.split('/').last.split('.').first,
         'cover': _currentSong!.coverUrl ?? '',
         'position': _lastPosition.inMilliseconds,
         'queue': _queue.map((s) => {'p': s.filePath, 't': s.title, 'u': s.uploader, 'c': s.coverUrl ?? ''}).toList(),
@@ -280,11 +280,12 @@ class AudioPlayerService {
         final dir = await svc.getDownloadPath();
         final local = await scanLocalAudioFiles(dir);
         final byBvid = {for (final s in local) if (s.bvid.isNotEmpty) s.bvid: s};
+        final byPath = {for (final s in local) s.filePath: s};
         for (var i = 0; i < _queue.length; i++) {
-          final full = byBvid[_queue[i].bvid];
+          final full = byBvid[_queue[i].bvid] ?? byPath[_queue[i].filePath];
           if (full != null) _queue[i] = full;
         }
-        final curFull = byBvid[_currentSong?.bvid];
+        final curFull = byBvid[_currentSong?.bvid] ?? byPath[_currentSong?.filePath];
         if (curFull != null) {
           _currentSong = curFull;
           currentSongNotifier.value = curFull;

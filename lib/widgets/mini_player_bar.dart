@@ -43,7 +43,8 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
     if (mounted) setState(() {
       _song = _service.currentSong;
       _position = _service.currentPosition;
-      _duration = _service.currentSong?.duration ?? Duration.zero;
+      final d = _service.currentSong?.duration;
+      if (d != null && d.inMilliseconds > 0) _duration = d;
     });
   }
 
