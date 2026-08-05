@@ -64,13 +64,15 @@ class _MainScreenState extends State<MainScreen> {
         children: [
           const MiniPlayerBar(),
           BottomNavigationBar(
+            type: BottomNavigationBarType.fixed,
             currentIndex: _currentIndex,
             onTap: (index) {
               setState(() => _currentIndex = index);
               // 切换到播放页时刷新
               if (index == 1) _playlistKey.currentState?.refresh();
             },
-            selectedItemColor: Colors.deepPurple,
+            selectedItemColor: Colors.deepPurpleAccent,
+            unselectedItemColor: Colors.grey[400],
             items: const [
               BottomNavigationBarItem(icon: Icon(Icons.download), label: '下载'),
               BottomNavigationBarItem(icon: Icon(Icons.play_circle_outline), label: '播放'),
