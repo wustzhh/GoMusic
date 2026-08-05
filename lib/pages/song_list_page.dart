@@ -624,11 +624,20 @@ class _SongListPageState extends State<SongListPage> {
       context: context,
       builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
         const Padding(padding: EdgeInsets.all(12), child: Text('添加到歌单', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
+        ListTile(
+          leading: const Icon(Icons.favorite, color: Colors.red, size: 20),
+          title: const Text('我喜欢', style: TextStyle(fontSize: 14)),
+          onTap: () async {
+            for (final s in sel) await AudioPlayerService.toggleFavorite(s);
+            Navigator.pop(ctx);
+            if (mounted) { setState(() { _batchMode = false; _selectedPaths.clear(); }); _loadFavs(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已添加到我喜欢'))); }
+          },
+        ),
         ...pls.map((pl) => ListTile(
           leading: Text(pl.icon, style: const TextStyle(fontSize: 20)),
           title: Text(pl.name, style: const TextStyle(fontSize: 14)),
           onTap: () async {
-            for (final s in sel) await PlaylistService.addSongToPlaylist(pl.id, s.filePath);
+            await PlaylistService.addSongsToPlaylist(pl.id, sel.map((s) => s.filePath).toList());
             Navigator.pop(ctx);
             if (mounted) { setState(() { _batchMode = false; _selectedPaths.clear(); }); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}'))); }
           },

@@ -218,7 +218,12 @@ class PlaylistService {
     await p.setStringList(_key, list);
   }
 
-  static Future<void> addSongToPlaylist(String pid, String filePath) async {
+  static Future<void> addSongToPlaylist(String pid, String filePath) =>
+      addSongsToPlaylist(pid, [filePath]);
+
+  /// 批量添加：新歌曲保持传入顺序，整体插到歌单最前面；旧歌曲去重后保持原顺序在后
+  static Future<void> addSongsToPlaylist(String pid, List<String> newPaths) async {
+    if (newPaths.isEmpty) return;
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
     for (var i = 0; i < list.length; i++) {
@@ -226,11 +231,12 @@ class PlaylistService {
       while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
       while (parts.length < 4) parts.add('');
       if (parts[0] == pid) {
-        List<dynamic> paths = [];
-        try { paths = jsonDecode(parts[3]); } catch (_) { paths = parts[3].split(','); }
-        final set = paths.map((x) => x.toString()).where((x) => x.isNotEmpty).toSet();
-        set.add(filePath);
-        parts[3] = jsonEncode(set.toList());
+        List<String> oldPaths = [];
+        try { oldPaths = (jsonDecode(parts[3]) as List).map((x) => x.toString()).where((x) => x.isNotEmpty).toList(); }
+        catch (_) { oldPaths = parts[3].split(',').where((s) => s.isNotEmpty).toList(); }
+        final newSet = newPaths.toSet();
+        final oldFiltered = oldPaths.where((x) => !newSet.contains(x)).toList();
+        parts[3] = jsonEncode([...newPaths, ...oldFiltered]);
         while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
         list[i] = parts.join('|||');
         await p.setStringList(_key, list);

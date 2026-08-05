@@ -42,7 +42,19 @@ class PlaylistPageState extends State<PlaylistPage> {
         .where((s) => s != null)
         .cast<Song>()
         .toList();
-    final customPls = await PlaylistService.getPlaylists();
+    var customPls = await PlaylistService.getPlaylists();
+    // 补全自定义歌单歌曲信息（标题/封面，用BV号匹配本地对照表）
+    for (var i = 0; i < customPls.length; i++) {
+      final pl = customPls[i];
+      final songs = pl.songs.map((s) {
+        final bv = s.bvid.isNotEmpty
+            ? s.bvid
+            : s.filePath.split('\\').last.split('/').last.split('.').first;
+        final full = localSongs.where((x) => x.bvid == bv || x.filePath == s.filePath).firstOrNull;
+        return full ?? s;
+      }).toList();
+      customPls[i] = Playlist(id: pl.id, name: pl.name, icon: pl.icon, songs: songs);
+    }
 
     if (!mounted) return;
     setState(() {
