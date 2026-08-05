@@ -318,10 +318,11 @@ class PlaylistService {
 // ============================================================
 class SongGroup {
   final String id;
+  final String playlistId; // 所属歌单
   String name;
   final List<String> songPaths;
   bool shuffle; // 组内随机
-  SongGroup({required this.id, required this.name, required this.songPaths, this.shuffle = false});
+  SongGroup({required this.id, required this.playlistId, required this.name, required this.songPaths, this.shuffle = false});
 }
 
 class SongGroupService {
@@ -339,6 +340,7 @@ class SongGroupService {
           final m = e as Map<String, dynamic>;
           return SongGroup(
             id: m['id'] as String? ?? '',
+            playlistId: m['pl'] as String? ?? '',
             name: m['name'] as String? ?? '组',
             songPaths: List<String>.from(m['paths'] ?? []),
             shuffle: m['shuffle'] as bool? ?? false,
@@ -354,34 +356,34 @@ class SongGroupService {
   static void _save() {
     try {
       File('song_groups.json').writeAsStringSync(jsonEncode(_cache.map((g) => {
-        'id': g.id, 'name': g.name, 'paths': g.songPaths, 'shuffle': g.shuffle,
+        'id': g.id, 'pl': g.playlistId, 'name': g.name, 'paths': g.songPaths, 'shuffle': g.shuffle,
       }).toList()));
     } catch (_) {}
   }
 
-  /// 获取所有组（只包含 >=2 首的组；单曲默认隐式独立组）
-  static List<SongGroup> getGroups() {
+  /// 获取某歌单的组（>=2首；单曲默认隐式独立组）
+  static List<SongGroup> getGroups({String? playlistId}) {
     _ensureLoaded();
-    return List.unmodifiable(_cache.where((g) => g.songPaths.length >= 2));
+    return List.unmodifiable(_cache.where((g) => g.songPaths.length >= 2 && (playlistId == null || g.playlistId == playlistId)));
   }
 
   /// 获取某首歌所在组（无组返回 null，即单曲独立组）
-  static SongGroup? groupOf(String filePath) {
+  static SongGroup? groupOf(String filePath, {String? playlistId}) {
     _ensureLoaded();
     for (final g in _cache) {
-      if (g.songPaths.contains(filePath)) return g;
+      if (g.songPaths.contains(filePath) && (playlistId == null || g.playlistId == playlistId)) return g;
     }
     return null;
   }
 
   /// 组队：把选中歌曲合并为一个组（各自原有组合并后生成新组）
-  static void groupSongs(List<String> paths) {
+  static void groupSongs(List<String> paths, {required String playlistId}) {
     _ensureLoaded();
     if (paths.length < 2) return;
-    final involved = <String>{}; // 所有受影响歌曲
+    final involved = <String>{};
     final toRemove = <String>[];
     for (final g in _cache) {
-      if (g.songPaths.any((p) => paths.contains(p))) {
+      if (g.playlistId == playlistId && g.songPaths.any((p) => paths.contains(p))) {
         involved.addAll(g.songPaths);
         toRemove.add(g.id);
       }
@@ -392,6 +394,7 @@ class SongGroupService {
     final title = first.split('\\').last.split('/').last.split('.').first;
     _cache.add(SongGroup(
       id: 'g${DateTime.now().millisecondsSinceEpoch}',
+      playlistId: playlistId,
       name: title,
       songPaths: involved.toList(),
     ));
@@ -414,14 +417,13 @@ class SongGroupService {
     _save();
   }
 
-  /// 随机模式下一首：组内没播完先播组内，否则随机跳组
-  static Song? nextInGroup(String currentFp, List<Song> queue) {
+  /// 随机模式下一首：组内没播完先播组内，否则随机跳组（限定当前歌单的组）
+  static Song? nextInGroup(String currentFp, List<Song> queue, {String? playlistId}) {
     _ensureLoaded();
-    final group = groupOf(currentFp);
+    final group = groupOf(currentFp, playlistId: playlistId);
     if (group != null) {
       final curIdx = group.songPaths.indexOf(currentFp);
       if (group.shuffle) {
-        // 组内随机挑一首没在当前位次的
         if (group.songPaths.length > 1) {
           var n = curIdx;
           while (n == curIdx) n = Random().nextInt(group.songPaths.length);
@@ -430,8 +432,7 @@ class SongGroupService {
       } else if (curIdx < group.songPaths.length - 1) {
         return queue.where((s) => s.filePath == group.songPaths[curIdx + 1]).firstOrNull;
       }
-      // 组播完：随机选另一组
-      final groups = getGroups();
+      final groups = getGroups(playlistId: playlistId);
       if (groups.isNotEmpty) {
         var g = groups[Random().nextInt(groups.length)];
         if (g.id == group.id && groups.length > 1) {

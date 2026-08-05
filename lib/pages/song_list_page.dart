@@ -32,7 +32,7 @@ class _SongListPageState extends State<SongListPage> {
     _songs = List.from(widget.playlist.songs);
     // 进入歌单：队列同步为歌单顺序（非随机模式），保证播放顺序和歌单一致
     if (_service.playMode != PlayMode.shuffle) {
-      _service.setQueue(_songs, startIndex: _songs.indexWhere((s) => s.filePath == _service.currentSong?.filePath).clamp(0, _songs.length - 1));
+      _service.setQueue(_songs, startIndex: _songs.indexWhere((s) => s.filePath == _service.currentSong?.filePath).clamp(0, _songs.length - 1), playlistId: widget.playlist.id);
     }
     _loadFavs();
     _position = _service.currentPosition;
@@ -83,7 +83,7 @@ class _SongListPageState extends State<SongListPage> {
   }
 
   void _playSong(Song song) {
-    _service.setQueue(_getFiltered(), startIndex: _getFiltered().indexWhere((s) => s.filePath == song.filePath));
+    _service.setQueue(_getFiltered(), startIndex: _getFiltered().indexWhere((s) => s.filePath == song.filePath), playlistId: widget.playlist.id);
     _service.playSong(song);
   }
 
@@ -211,7 +211,7 @@ class _SongListPageState extends State<SongListPage> {
           child: Row(children: [
             if (!_batchMode) ...[
               _actionBtn(Icons.play_arrow, '播放全部', () {
-                _service.setQueue(_getFiltered(), startIndex: 0);
+                _service.setQueue(_getFiltered(), startIndex: 0, playlistId: widget.playlist.id);
                 _service.playSong(_getFiltered().first, forceRestart: true);
               }),
               _actionBtn(Icons.my_location, '定位', () {
@@ -273,7 +273,8 @@ class _SongListPageState extends State<SongListPage> {
   List<Widget> _buildGroupedItems(List<Song> filtered) {
     final items = <Widget>[];
     final used = <String>{};
-    final groups = SongGroupService.getGroups();
+    final isFlat = widget.playlist.id == 'recent' || widget.playlist.id == 'fav';
+    final groups = isFlat ? <SongGroup>[] : SongGroupService.getGroups(playlistId: widget.playlist.id);
     var gi = 0;
     for (final g in groups) {
       final members = g.songPaths
@@ -679,7 +680,7 @@ class _SongListPageState extends State<SongListPage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请至少选择2首歌组队')));
       return;
     }
-    SongGroupService.groupSongs(sel.map((s) => s.filePath).toList());
+    SongGroupService.groupSongs(sel.map((s) => s.filePath).toList(), playlistId: widget.playlist.id);
     if (mounted) {
       setState(() { _batchMode = false; _selectedPaths.clear(); });
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已创建小组（${sel.length}首）')));

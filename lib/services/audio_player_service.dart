@@ -41,6 +41,7 @@ class AudioPlayerService {
   Song? _currentSong;
   final List<Song> _queue = [];
   List<Song>? _orderedQueue;
+  String _currentPlaylistId = "";
   PlayMode _playMode = PlayMode.loopList;
   int _queueIndex = 0;
   final currentSongNotifier = ValueNotifier<Song?>(null);
@@ -124,7 +125,7 @@ class AudioPlayerService {
     if (_playMode == PlayMode.shuffle) {
       final curFp = _currentSong?.filePath;
       if (curFp != null) {
-        final ns = SongGroupService.nextInGroup(curFp, _queue);
+        final ns = SongGroupService.nextInGroup(curFp, _queue, playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId);
         if (ns != null) { await playSong(ns); return; }
       }
       _queueIndex = Random().nextInt(_queue.length);
@@ -144,7 +145,8 @@ class AudioPlayerService {
   }
 
   // ==================== 队列 ====================
-  void setQueue(List<Song> s, {int startIndex = 0}) {
+  void setQueue(List<Song> s, {int startIndex = 0, String? playlistId}) {
+    if (playlistId != null) _currentPlaylistId = playlistId;
     _queue.clear();
     _queue.addAll(s);
     _queueIndex = startIndex.clamp(0, _queue.length - 1);
@@ -185,7 +187,7 @@ class AudioPlayerService {
 
   /// 按组重排：多歌组优先（组内按组配置顺序/随机），单曲在后
   List<Song> _groupedQueue(List<Song> q) {
-    final groups = SongGroupService.getGroups();
+    final groups = SongGroupService.getGroups(playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId);
     final result = <Song>[];
     final used = <String>{};
     for (final g in groups) {
