@@ -195,7 +195,7 @@ class AudioPlayerService {
     final used = <String>{};
     for (final g in groups) {
       final members = g.songPaths
-          .map((p) => q.where((s) => s.bvid == p || s.filePath == p).firstOrNull)
+          .map((p) => q.where((s) => (s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)) == p).firstOrNull)
           .whereType<Song>()
           .toList();
       if (members.isEmpty) continue;
@@ -225,7 +225,7 @@ class AudioPlayerService {
       final g = groups.where((g) => g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : s.filePath)).firstOrNull;
       if (g != null) {
         var members = g.songPaths
-            .map((p) => q.where((x) => x.bvid == p || x.filePath == p).firstOrNull)
+            .map((p) => q.where((x) => (x.bvid.isNotEmpty ? x.bvid : _fileNameKey(x.filePath)) == p).firstOrNull)
             .whereType<Song>()
             .toList();
         if (g.shuffle && members.length > 1) members.shuffle(Random());
@@ -243,15 +243,36 @@ class AudioPlayerService {
 
   // ==================== 收藏 ====================
   static const _favKey = 'favorites';
-  static Future<List<String>> getFavorites() async { final p = await SharedPreferences.getInstance(); return p.getStringList(_favKey) ?? []; }
+  static Future<List<String>> getFavorites() async {
+    final p = await SharedPreferences.getInstance();
+    final list = p.getStringList(_favKey) ?? [];
+    // 迁移旧数据：filePath 条目转成文件名键（BV号）
+    final migrated = list.map((e) {
+      if (e.contains('\\') || e.contains('/')) {
+        final name = e.split('\\').last.split('/').last;
+        final dot = name.lastIndexOf('.');
+        return dot > 0 ? name.substring(0, dot) : name;
+      }
+      return e;
+    }).toList();
+    if (migrated.join('|') != list.join('|')) await p.setStringList(_favKey, migrated);
+    return migrated;
+  }
   static Future<void> toggleFavorite(Song song) async {
-    final key = song.bvid.isNotEmpty ? song.bvid : song.filePath;
+    final key = song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath);
     final p = await SharedPreferences.getInstance();
     final list = List<String>.from(p.getStringList(_favKey) ?? []);
     final idx = list.indexOf(key);
     if (idx >= 0) { list.removeAt(idx); } else { list.add(key); }
     await p.setStringList(_favKey, list);
     _instance.favoritesChangedNotifier.value++;
+  }
+
+  /// 文件名（不含扩展名）作为无BV号歌曲的键
+  static String _fileNameKey(String fp) {
+    final name = fp.split('\\').last.split('/').last;
+    final dot = name.lastIndexOf('.');
+    return dot > 0 ? name.substring(0, dot) : name;
   }
   static Future<bool> isFavorite(String fp) async { final f = await getFavorites(); return f.contains(fp); }
 
@@ -314,13 +335,14 @@ class AudioPlayerService {
         final svc = await SettingsService.getInstance();
         final dir = await svc.getDownloadPath();
         final local = await scanLocalAudioFiles(dir);
-        final byBvid = {for (final s in local) if (s.bvid.isNotEmpty) s.bvid: s};
-        final byPath = {for (final s in local) s.filePath: s};
+        final byKey = {for (final s in local) if (s.bvid.isNotEmpty) s.bvid: s, for (final s in local) if (s.bvid.isEmpty) _fileNameKey(s.filePath): s};
         for (var i = 0; i < _queue.length; i++) {
-          final full = byBvid[_queue[i].bvid] ?? byPath[_queue[i].filePath];
+          final k = _queue[i].bvid.isNotEmpty ? _queue[i].bvid : _fileNameKey(_queue[i].filePath);
+          final full = byKey[k];
           if (full != null) _queue[i] = full;
         }
-        final curFull = byBvid[_currentSong?.bvid] ?? byPath[_currentSong?.filePath];
+        final curK = _currentSong != null ? (_currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _fileNameKey(_currentSong!.filePath)) : null;
+        final curFull = curK != null ? byKey[curK] : null;
         if (curFull != null) {
           _currentSong = curFull;
           currentSongNotifier.value = curFull;

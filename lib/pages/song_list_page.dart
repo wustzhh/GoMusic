@@ -33,7 +33,7 @@ class _SongListPageState extends State<SongListPage> {
     _songs = List.from(widget.playlist.songs);
     // 进入歌单：队列同步为歌单顺序（非随机模式），保证播放顺序和歌单一致
     if (_service.playMode != PlayMode.shuffle) {
-      final curIdx = _songs.indexWhere((s) => s.filePath == _service.currentSong?.filePath);
+      final curIdx = _songs.indexWhere((s) => _songKey(s) == (_service.currentSong != null ? _songKey(_service.currentSong!) : ""));
       _service.setQueue(_songs, startIndex: _songs.isEmpty ? 0 : curIdx.clamp(0, _songs.length - 1), playlistId: widget.playlist.id);
     }
     _loadFavs();
@@ -86,7 +86,7 @@ class _SongListPageState extends State<SongListPage> {
   }
 
   void _playSong(Song song) {
-    _service.setQueue(_getFiltered(), startIndex: _getFiltered().indexWhere((s) => s.filePath == song.filePath), playlistId: widget.playlist.id);
+    _service.setQueue(_getFiltered(), startIndex: _getFiltered().indexWhere((s) => _songKey(s) == _songKey(song)), playlistId: widget.playlist.id);
     _service.playSong(song);
   }
 
@@ -219,7 +219,7 @@ class _SongListPageState extends State<SongListPage> {
                 _service.playSong(_getFiltered().first, forceRestart: true);
               }),
               _actionBtn(Icons.my_location, '定位', () {
-                final idx = _getFiltered().indexWhere((s) => s.filePath == _service.currentSong?.filePath);
+                final idx = _getFiltered().indexWhere((s) => _songKey(s) == (_service.currentSong != null ? _songKey(_service.currentSong!) : ""));
                 if (idx < 0) return;
                 if (!_mainScrollCtrl.hasClients) return;
                 final est = (idx * 64.0 - _mainScrollCtrl.position.viewportDimension / 2).clamp(0.0, _mainScrollCtrl.position.maxScrollExtent);
@@ -287,7 +287,7 @@ class _SongListPageState extends State<SongListPage> {
       final g = groups.where((g) => g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : s.filePath)).firstOrNull;
       if (g != null) {
         final members = g.songPaths
-            .map((p) => filtered.where((x) => x.bvid == p || x.filePath == p).firstOrNull)
+            .map((p) => filtered.where((x) => x.bvid == p || _songKey(x) == p).firstOrNull)
             .whereType<Song>()
             .toList();
         if (members.isEmpty) continue;
@@ -609,6 +609,13 @@ class _SongListPageState extends State<SongListPage> {
     );
   }
 
+
+  String _songKey(Song s) {
+    if (s.bvid.isNotEmpty) return s.bvid;
+    final name = s.filePath.split('\\').last.split('/').last;
+    final dot = name.lastIndexOf('.');
+    return dot > 0 ? name.substring(0, dot) : name;
+  }
   List<Song> _selectedSongs() {
     final f = _getFiltered();
     return f.where((s) => _selectedPaths.contains(s.filePath)).toList();

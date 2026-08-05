@@ -34,12 +34,12 @@ class PlaylistPageState extends State<PlaylistPage> {
     final localSongs = await scanLocalAudioFiles(dir);
     final recentBvids = await RecentlyPlayedService.getRecentBvids();
     final recentSongs = recentBvids
-        .map((bv) => localSongs.where((s) => s.bvid == bv || s.filePath == bv).firstOrNull)
+        .map((bv) => localSongs.where((s) => s.bvid == bv || _fileNameKey(s) == bv).firstOrNull)
         .whereType<Song>()
         .toList();
     final favPaths = await AudioPlayerService.getFavorites();
     final favSongs = favPaths
-        .map((k) => localSongs.where((s) => s.bvid == k || s.filePath == k).firstOrNull)
+        .map((k) => localSongs.where((s) => s.bvid == k || _fileNameKey(s) == k).firstOrNull)
         .where((s) => s != null)
         .cast<Song>()
         .toList();
@@ -51,7 +51,7 @@ class PlaylistPageState extends State<PlaylistPage> {
         final bv = s.bvid.isNotEmpty
             ? s.bvid
             : s.filePath.split('\\').last.split('/').last.split('.').first;
-        final full = localSongs.where((x) => x.bvid == bv || x.filePath == s.filePath).firstOrNull;
+        final full = localSongs.where((x) => x.bvid == bv || _fileNameKey(x) == bv).firstOrNull;
         return full ?? s;
       }).toList();
       customPls[i] = Playlist(id: pl.id, name: pl.name, icon: pl.icon, songs: songs);
@@ -69,6 +69,13 @@ class PlaylistPageState extends State<PlaylistPage> {
     });
   }
 
+
+  String _fileNameKey(Song s) {
+    if (s.bvid.isNotEmpty) return s.bvid;
+    final name = s.filePath.split('\\').last.split('/').last;
+    final dot = name.lastIndexOf('.');
+    return dot > 0 ? name.substring(0, dot) : name;
+  }
   Widget _playlistCover(Playlist pl) {
     if (pl.songs.isNotEmpty) {
       final first = pl.songs.first;
