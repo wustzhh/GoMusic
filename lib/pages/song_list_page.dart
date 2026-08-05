@@ -105,7 +105,7 @@ class _SongListPageState extends State<SongListPage> {
         const Text('添加到收藏夹', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
         ListTile(leading: const Icon(Icons.favorite, color: Colors.red, size: 24), title: const Text('我喜欢'),
-          trailing: _favs.contains(song.bvid.isNotEmpty ? song.bvid : song.filePath) ? const Icon(Icons.check, color: Colors.green) : null,
+          trailing: (_favs.contains(song.bvid) || _favs.contains(song.filePath)) ? const Icon(Icons.check, color: Colors.green) : null,
           onTap: () async { Navigator.pop(ctx); await AudioPlayerService.toggleFavorite(song); _loadFavs(); },
         ),
         ...existing.map((pl) => FutureBuilder<bool>(
@@ -354,7 +354,7 @@ class _SongListPageState extends State<SongListPage> {
   }
 
   Widget _buildSongItem(Song song) {
-    final isFav = _favs.contains(song.bvid.isNotEmpty ? song.bvid : song.filePath);
+    final isFav = (_favs.contains(song.bvid) || _favs.contains(song.filePath));
     final isPlaying = _service.currentSong?.filePath == song.filePath;
     final selected = _selectedPaths.contains(song.filePath);
     return GestureDetector(

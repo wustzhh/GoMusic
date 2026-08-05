@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/music_data.dart';
 import '../services/settings_service.dart';
@@ -66,6 +67,19 @@ class PlaylistPageState extends State<PlaylistPage> {
       ];
       _loaded = true;
     });
+  }
+
+  Widget _playlistCover(Playlist pl) {
+    if (pl.songs.isNotEmpty) {
+      final first = pl.songs.first;
+      if (first.coverUrl != null && first.coverUrl!.isNotEmpty) {
+        final f = File(first.coverUrl!);
+        if (f.existsSync() && f.lengthSync() > 0) {
+          return ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(f, width: 40, height: 40, fit: BoxFit.cover));
+        }
+      }
+    }
+    return Text(pl.icon, style: const TextStyle(fontSize: 28));
   }
 
   void _showSettings() async {
@@ -142,7 +156,7 @@ class PlaylistPageState extends State<PlaylistPage> {
             return Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
-                leading: Text(pl.icon, style: const TextStyle(fontSize: 28)),
+                leading: _playlistCover(pl),
                 title: Text(pl.name, style: const TextStyle(fontSize: 16)),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
