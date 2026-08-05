@@ -39,6 +39,7 @@ class AudioPlayerService {
   bool _playing = false;
   Song? _currentSong;
   final List<Song> _queue = [];
+  List<Song>? _orderedQueue;
   PlayMode _playMode = PlayMode.loopList;
   int _queueIndex = 0;
   final currentSongNotifier = ValueNotifier<Song?>(null);
@@ -119,8 +120,7 @@ class AudioPlayerService {
   Future<void> next() async {
     if (_queue.isEmpty) return;
     if (_playMode == PlayMode.loopOne) { await seek(Duration.zero); return; }
-    if (_playMode == PlayMode.shuffle) { var n = _queueIndex; while (n == _queueIndex && _queue.length > 1) n = Random().nextInt(_queue.length); _queueIndex = n; }
-    else { _queueIndex = (_queueIndex + 1) % _queue.length; }
+    _queueIndex = (_queueIndex + 1) % _queue.length;
     await playSong(_queue[_queueIndex]);
   }
 
@@ -133,10 +133,41 @@ class AudioPlayerService {
   }
 
   // ==================== 队列 ====================
-  void setQueue(List<Song> s, {int startIndex = 0}) { _queue.clear(); _queue.addAll(s); _queueIndex = startIndex.clamp(0, _queue.length - 1); currentSongNotifier.notifyListeners(); }
+  void setQueue(List<Song> s, {int startIndex = 0}) {
+    _queue.clear();
+    _queue.addAll(s);
+    _queueIndex = startIndex.clamp(0, _queue.length - 1);
+    if (_playMode == PlayMode.shuffle) {
+      final curFp = _queue.isNotEmpty ? _queue[_queueIndex].filePath : null;
+      _orderedQueue = List<Song>.from(_queue);
+      _queue.shuffle(Random());
+      _queueIndex = curFp != null ? _queue.indexWhere((x) => x.filePath == curFp) : 0;
+      if (_queueIndex < 0) _queueIndex = 0;
+    }
+    currentSongNotifier.notifyListeners();
+  }
   void addToQueue(Song s) { _queue.add(s); currentSongNotifier.notifyListeners(); }
   void removeFromQueue(int i) { if (i >= _queue.length) return; _queue.removeAt(i); if (i < _queueIndex) _queueIndex--; if (_queueIndex >= _queue.length) _queueIndex = (_queue.length - 1).clamp(0, 999); currentSongNotifier.notifyListeners(); }
-  void setPlayMode(PlayMode m) { _playMode = m; _saveMode(); _saveState(); currentSongNotifier.notifyListeners(); }
+  void setPlayMode(PlayMode m) {
+    if (m == PlayMode.shuffle && _playMode != PlayMode.shuffle) {
+      _orderedQueue = List<Song>.from(_queue);
+      final curFp = _currentSong?.filePath;
+      _queue.shuffle(Random());
+      _queueIndex = _queue.indexWhere((s) => s.filePath == curFp);
+      if (_queueIndex < 0) _queueIndex = 0;
+    } else if (_playMode == PlayMode.shuffle && m != PlayMode.shuffle && _orderedQueue != null) {
+      final curFp = _currentSong?.filePath;
+      _queue.clear();
+      _queue.addAll(_orderedQueue!);
+      _orderedQueue = null;
+      _queueIndex = _queue.indexWhere((s) => s.filePath == curFp);
+      if (_queueIndex < 0) _queueIndex = 0;
+    }
+    _playMode = m;
+    _saveMode();
+    _saveState();
+    currentSongNotifier.notifyListeners();
+  }
   String get playModeLabel { switch (_playMode) { case PlayMode.sequential: return '顺序播放'; case PlayMode.loopList: return '列表循环'; case PlayMode.loopOne: return '单曲循环'; case PlayMode.shuffle: return '随机播放'; }}
 
   // ==================== 收藏 ====================
