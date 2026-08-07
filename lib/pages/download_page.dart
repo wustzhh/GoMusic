@@ -121,7 +121,7 @@ class _DownloadPageState extends State<DownloadPage> {
     setState(() {
       _batchItems = videos.map((v) {
         final name = v.bvid;
-        final exists = File('$dir\\$name.m4a').existsSync();
+        final exists = File('$dir/$name.m4a').existsSync();
         return _BatchItem(info: v, exists: exists, name: name);
       }).toList();
       _isParsing = false;
@@ -132,9 +132,9 @@ class _DownloadPageState extends State<DownloadPage> {
     if (_downloadDir == null) await _initDir();
     final dir = _downloadDir ?? '';
     final name = info.bvid;
-    final hasAudio = File('$dir\\$name.m4a').existsSync();
-    final hasCover = File('$dir\\$name.jpg').existsSync();
-    final hasVideo = File('$dir\\$name.mp4').existsSync();
+    final hasAudio = File('$dir/$name.m4a').existsSync();
+    final hasCover = File('$dir/$name.jpg').existsSync();
+    final hasVideo = File('$dir/$name.mp4').existsSync();
     _alreadyDownloaded = hasAudio && hasCover && hasVideo;
     _coverMissing = hasAudio && !hasCover;
     _videoMissing = hasAudio && hasCover && !hasVideo;
@@ -215,42 +215,42 @@ class _DownloadPageState extends State<DownloadPage> {
     // 封面（失败不影响主流程）
     var coverFailed = false;
     if (info.coverUrl.isNotEmpty) {
-      final ok = await StreamDownloader.download(url: info.coverUrl, savePath: '$dir\\$name.jpg', onProgress: (_) {});
+      final ok = await StreamDownloader.download(url: info.coverUrl, savePath: '$dir/$name.jpg', onProgress: (_) {});
       coverFailed = !ok;
     }
     // 音频
     final audioOk = await StreamDownloader.download(
-      url: info.audioUrl!, savePath: '$dir\\$name.m4a',
+      url: info.audioUrl!, savePath: '$dir/$name.m4a',
       onProgress: (p) { if (mounted) setState(() => _downloadProgress = p * (_downloadVideo ? 0.5 : 1.0)); },
     );
     // 视频
     var videoOk = !_downloadVideo;
     if (_downloadVideo && _selectedStream?.baseUrl != null && audioOk) {
       videoOk = await StreamDownloader.download(
-        url: _selectedStream!.baseUrl!, savePath: '$dir\\$name.mp4',
+        url: _selectedStream!.baseUrl!, savePath: '$dir/$name.mp4',
         onProgress: (p) { if (mounted) setState(() => _downloadProgress = 0.5 + p * 0.5); },
       );
     }
 
     if (!mounted) return;
     String sizeText = '';
-    try { final f = File('$dir\\$name.m4a'); if (f.existsSync()) sizeText = '${(f.lengthSync() / 1048576).toStringAsFixed(1)} MB'; } catch (_) {}
+    try { final f = File('$dir/$name.m4a'); if (f.existsSync()) sizeText = '${(f.lengthSync() / 1048576).toStringAsFixed(1)} MB'; } catch (_) {}
 
     // 完全下载成功后才登记（不受页面切换影响）
     if (audioOk && videoOk) {
       SongManager.registerSong(
-        filePath: '$dir\\$name.m4a',
+        filePath: '$dir/$name.m4a',
         title: info.title,
         uploader: _authorController.text.trim(),
         durationSec: info.durationSeconds,
         bvid: info.bvid,
         url: info.url,
-        coverPath: '$dir\\$name.jpg',
+        coverPath: '$dir/$name.jpg',
       );
     }
     // 视频下载成功：登记到唯一元数据文件
     if (videoOk && _downloadVideo) {
-      SongManager.registerVideoPath('$dir\\$name.m4a', '$dir\\$name.mp4');
+      SongManager.registerVideoPath('$dir/$name.m4a', '$dir/$name.mp4');
     }
     if (!mounted) return;
     _cancelNotifier?.value = false;
@@ -284,21 +284,21 @@ class _DownloadPageState extends State<DownloadPage> {
 
       // 封面
       if (full!.coverUrl.isNotEmpty) {
-        await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}\\${item.name}.jpg', onProgress: (_) {});
+        await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {});
       }
       // 音频
       final ok = await StreamDownloader.download(
-        url: full.audioUrl!, savePath: '${_downloadDir}\\${item.name}.m4a',
+        url: full.audioUrl!, savePath: '${_downloadDir}/${item.name}.m4a',
         onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
       );
 
       if (ok) {
         item.exists = true;
         SongManager.registerSong(
-          filePath: '${_downloadDir}\\${item.name}.m4a',
+          filePath: '${_downloadDir}/${item.name}.m4a',
           title: full.title, uploader: full.author, durationSec: full.durationSeconds,
           bvid: full.bvid, url: full.url,
-          coverPath: '${_downloadDir}\\${item.name}.jpg',
+          coverPath: '${_downloadDir}/${item.name}.jpg',
         );
       }
       setState(() {
@@ -474,7 +474,7 @@ class _DownloadPageState extends State<DownloadPage> {
     final dir = _downloadDir ?? '';
     final name = _safeName(_nameController.text.trim());
     final ok = await StreamDownloader.download(
-      url: info.coverUrl, savePath: '$dir\\$name.jpg', onProgress: (_) {},
+      url: info.coverUrl, savePath: '$dir/$name.jpg', onProgress: (_) {},
     );
     if (ok) {
       setState(() {
@@ -623,18 +623,18 @@ class _DownloadPageState extends State<DownloadPage> {
     if (full?.audioUrl == null) { setState(() => item.status = _BatchStatus.failed); return; }
 
     if (full!.coverUrl.isNotEmpty) {
-      await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}\\${item.name}.jpg', onProgress: (_) {});
+      await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {});
     }
     final ok = await StreamDownloader.download(
-      url: full.audioUrl!, savePath: '${_downloadDir}\\${item.name}.m4a',
+      url: full.audioUrl!, savePath: '${_downloadDir}/${item.name}.m4a',
       onProgress: (_) {},
     );
     if (ok) {
       SongManager.registerSong(
-        filePath: '${_downloadDir}\\${item.name}.m4a',
+        filePath: '${_downloadDir}/${item.name}.m4a',
         title: full.title, uploader: full.author, durationSec: full.durationSeconds,
         bvid: full.bvid, url: full.url,
-        coverPath: '${_downloadDir}\\${item.name}.jpg',
+        coverPath: '${_downloadDir}/${item.name}.jpg',
       );
     }
     setState(() { item.status = ok ? _BatchStatus.done : _BatchStatus.failed; if (ok) item.exists = true; });

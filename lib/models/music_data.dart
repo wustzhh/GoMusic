@@ -93,7 +93,7 @@ class SongManager {
     String? videoPath,
   }) {
     final map = _readMap();
-    map[filePath] = {
+    map[File(filePath).absolute.path] = {
       'title': title,
       'uploader': uploader,
       'duration': durationSec,
@@ -108,7 +108,7 @@ class SongManager {
   /// 单独登记/更新视频路径（视频下载完成后调用）
   static void registerVideoPath(String filePath, String videoPath) {
     final map = _readMap();
-    final m = map[filePath] as Map<String, dynamic>?;
+    final m = map[File(filePath).absolute.path] as Map<String, dynamic>?;
     if (m != null) {
       m['videoPath'] = videoPath;
       _writeMap(map);
@@ -118,7 +118,7 @@ class SongManager {
   /// 播放时更新时长（唯一元数据文件）
   static void updateDuration(String filePath, int seconds) {
     final map = _readMap();
-    final m = map[filePath] as Map<String, dynamic>?;
+    final m = map[File(filePath).absolute.path] as Map<String, dynamic>?;
     if (m != null) {
       m['duration'] = seconds;
       _writeMap(map);
@@ -137,7 +137,7 @@ class SongManager {
   /// 删除歌曲登记
   static void unregisterSong(String filePath) {
     final map = _readMap();
-    map.remove(filePath);
+    map.remove(File(filePath).absolute.path);
     _writeMap(map);
   }
 
@@ -157,7 +157,7 @@ class SongManager {
         final ext = f.path.split('.').last.toLowerCase();
         if (ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav') {
           // 从注册表中查元数据
-          final meta = map[f.path] as Map<String, dynamic>?;
+          final meta = map[f.absolute.path] as Map<String, dynamic>?;
           final title = meta?['title'] as String? ?? f.path.split(Platform.pathSeparator).last.split('.').first;
           final uploader = meta?['uploader'] as String? ?? '';
           final duration = Duration(seconds: meta?['duration'] as int? ?? 0);
