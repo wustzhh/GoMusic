@@ -72,7 +72,7 @@ class _SongListPageState extends State<SongListPage> {
     } else if (widget.playlist.id == 'fav') {
       final favPaths = await AudioPlayerService.getFavorites();
       final all = await scanLocalAudioFiles(dir);
-      _songs = all.where((s) => favPaths.contains(s.filePath)).toList();
+      _songs = all.where((s) => favPaths.contains(_songKey(s))).toList();
     } else {
       final pls = await PlaylistService.getPlaylists();
       final found = pls.where((p) => p.id == widget.playlist.id).firstOrNull;
@@ -105,7 +105,7 @@ class _SongListPageState extends State<SongListPage> {
         const Text('添加到收藏夹', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
         ListTile(leading: const Icon(Icons.favorite, color: Colors.red, size: 24), title: const Text('我喜欢'),
-          trailing: (_favs.contains(song.bvid) || _favs.contains(song.filePath)) ? const Icon(Icons.check, color: Colors.green) : null,
+          trailing: _favs.contains(_songKey(song)) ? const Icon(Icons.check, color: Colors.green) : null,
           onTap: () async { Navigator.pop(ctx); await AudioPlayerService.toggleFavorite(song); _loadFavs(); },
         ),
         ...existing.map((pl) => FutureBuilder<bool>(
@@ -235,17 +235,17 @@ class _SongListPageState extends State<SongListPage> {
               TextButton.icon(
                 onPressed: () {
                   final all = _getFiltered();
-                  final allSelected = all.every((s) => _selectedPaths.contains(s.filePath));
+                  final allSelected = all.every((s) => _selectedPaths.contains(_songKey(s)));
                   setState(() {
                     if (allSelected) {
                       _selectedPaths.clear();
                     } else {
-                      _selectedPaths.addAll(all.map((s) => s.filePath));
+                      _selectedPaths.addAll(all.map(_songKey));
                     }
                   });
                 },
                 icon: const Icon(Icons.select_all, size: 16),
-                label: Text(_getFiltered().isNotEmpty && _getFiltered().every((s) => _selectedPaths.contains(s.filePath)) ? '全消' : '全选', style: const TextStyle(fontSize: 11)),
+                label: Text(_getFiltered().isNotEmpty && _getFiltered().every((s) => _selectedPaths.contains(_songKey(s))) ? '全消' : '全选', style: const TextStyle(fontSize: 11)),
               ),
               TextButton.icon(onPressed: _batchAddTo, icon: const Icon(Icons.playlist_add, size: 16), label: const Text('添加到', style: TextStyle(fontSize: 11))),
               if (widget.playlist.id != 'local')
@@ -295,8 +295,8 @@ class _SongListPageState extends State<SongListPage> {
     var gi = 0;
     // 按歌单顺序遍历：组内歌曲相邻并框住（位置=组首成员位置，不提前），单曲原位
     for (final s in filtered) {
-      if (used.contains(s.filePath)) continue;
-      final g = groups.where((g) => g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : s.filePath)).firstOrNull;
+      if (used.contains(_songKey(s))) continue;
+      final g = groups.where((g) => g.songPaths.contains(_songKey(s))).firstOrNull;
       if (g != null) {
         final members = g.songPaths
             .map((p) => filtered.where((x) => x.bvid == p || _songKey(x) == p).firstOrNull)
@@ -333,11 +333,11 @@ class _SongListPageState extends State<SongListPage> {
               ]),
             ),
             const Divider(height: 1, color: Colors.white12),
-            ...members.map((m) { used.add(m.filePath); return _buildSongItem(m); }),
+            ...members.map((m) { used.add(_songKey(m)); return _buildSongItem(m); }),
           ]),
         ));
       } else {
-        used.add(s.filePath);
+        used.add(_songKey(s));
         items.add(_buildSongItem(s));
       }
     }
@@ -366,11 +366,11 @@ class _SongListPageState extends State<SongListPage> {
   }
 
   Widget _buildSongItem(Song song) {
-    final isFav = (_favs.contains(song.bvid) || _favs.contains(song.filePath));
+    final isFav = _favs.contains(_songKey(song));
     final isPlaying = _service.currentSong?.filePath == song.filePath;
-    final selected = _selectedPaths.contains(song.filePath);
+    final selected = _selectedPaths.contains(_songKey(song));
     return GestureDetector(
-      onTap: _batchMode ? () => setState(() { if (selected) _selectedPaths.remove(song.filePath); else _selectedPaths.add(song.filePath); }) : null,
+      onTap: _batchMode ? () => setState(() { if (selected) _selectedPaths.remove(_songKey(song)); else _selectedPaths.add(_songKey(song)); }) : null,
       onLongPress: () {
         Clipboard.setData(ClipboardData(text: song.title));
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -384,7 +384,7 @@ class _SongListPageState extends State<SongListPage> {
         key: isPlaying ? _playingRowKey : null,
         color: selected ? Colors.deepPurple.withValues(alpha: 0.15) : (isPlaying ? Colors.lightBlue.withValues(alpha: 0.3) : Colors.transparent),
         child: InkWell(
-          onTap: _batchMode ? () => setState(() { if (selected) _selectedPaths.remove(song.filePath); else _selectedPaths.add(song.filePath); }) : () => _playSong(song),
+          onTap: _batchMode ? () => setState(() { if (selected) _selectedPaths.remove(_songKey(song)); else _selectedPaths.add(_songKey(song)); }) : () => _playSong(song),
           child: ListTile(
             contentPadding: const EdgeInsets.only(left: 0, right: 4),
             horizontalTitleGap: 8,
@@ -392,7 +392,7 @@ class _SongListPageState extends State<SongListPage> {
               ? Row(mainAxisSize: MainAxisSize.min, children: [
                   Checkbox(
                     value: selected,
-                    onChanged: (v) => setState(() { if (v == true) _selectedPaths.add(song.filePath); else _selectedPaths.remove(song.filePath); }),
+                    onChanged: (v) => setState(() { if (v == true) _selectedPaths.add(_songKey(song)); else _selectedPaths.remove(_songKey(song)); }),
                     visualDensity: VisualDensity.compact,
                   ),
                   _buildCover(song),
@@ -630,7 +630,7 @@ class _SongListPageState extends State<SongListPage> {
   }
   List<Song> _selectedSongs() {
     final f = _getFiltered();
-    return f.where((s) => _selectedPaths.contains(s.filePath)).toList();
+    return f.where((s) => _selectedPaths.contains(_songKey(s))).toList();
   }
 
   // 批量：添加到歌单
