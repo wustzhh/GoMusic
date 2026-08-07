@@ -50,3 +50,4 @@ app.*.map.json
 .gradle/
 save_state.json
 song_groups.json
+/android/build/
