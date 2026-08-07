@@ -68,7 +68,7 @@ class _SongListPageState extends State<SongListPage> {
     final dir = await svc.getDownloadPath();
     _cleanZeroFiles(dir);
     if (widget.playlist.id == 'local') {
-      _songs = await scanLocalAudioFiles(dir);
+      _songs = (await scanLocalAudioFiles(dir))..sort((a, b) => a.title.compareTo(b.title));
     } else if (widget.playlist.id == 'fav') {
       final favPaths = await AudioPlayerService.getFavorites();
       final all = await scanLocalAudioFiles(dir);

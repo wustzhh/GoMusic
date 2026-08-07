@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import '../services/bilibili_api.dart';
 import '../services/settings_service.dart';
+import '../widgets/top_toast.dart';
 import '../models/music_data.dart';
 
 class DownloadPage extends StatefulWidget {
@@ -22,6 +24,7 @@ class _DownloadPageState extends State<DownloadPage> {
   bool _isDownloading = false;
   ValueNotifier<bool>? _cancelNotifier;
   String _downloadingTitle = '';
+  int _downloadingSize = 0;
   double _downloadProgress = 0;
 
   BilibiliVideoInfo? _singleInfo;
@@ -154,41 +157,8 @@ class _DownloadPageState extends State<DownloadPage> {
   }
   static String get _now => DateTime.now().toIso8601String().substring(11, 19);
 
-  void _showDebugLog() {
-    final dir = _downloadDir ?? '';
-    String content = '下载目录: $dir\n\n';
-    try {
-      final f = File('$dir/debug.log');
-      if (f.existsSync()) {
-        content += f.readAsStringSync();
-      } else {
-        content += '(暂无日志文件)';
-      }
-    } catch (e) {
-      content += '读取失败: $e';
-    }
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('调试日志', style: TextStyle(fontSize: 15)),
-        content: SizedBox(
-          width: 420,
-          child: SingleChildScrollView(child: SelectableText(content, style: const TextStyle(fontSize: 11))),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
-          TextButton(onPressed: () {
-            Navigator.pop(ctx);
-            _dlog('== 清空日志 ==');
-            try { File('${Directory.systemTemp.path}${Platform.pathSeparator}gomusic_debug.log').writeAsStringSync(''); } catch (_) {}
-          }, child: const Text('清空')),
-        ],
-      ),
-    );
-  }
-
   void _snack(String msg) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    if (mounted) showTopToast(context, msg);
   }
 
   void _saveMeta(String dir, String name, String author, BilibiliVideoInfo info) {
@@ -196,6 +166,13 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   // ==================== 单个下载 ====================
+
+  static void _foregroundCallback() {
+    FlutterForegroundTask.updateService(
+      notificationTitle: 'GoMusic 下载中',
+      notificationText: '正在下载歌曲...',
+    );
+  }
 
   Future<void> _startSingle() async {
     final info = _singleInfo;
@@ -211,6 +188,14 @@ class _DownloadPageState extends State<DownloadPage> {
 
     setState(() { _isDownloading = true; _downloadProgress = 0; _downloadingTitle = info.title; });
     _cancelNotifier = ValueNotifier(false);
+    if (Platform.isAndroid) {
+      FlutterForegroundTask.startService(
+        serviceId: 100,
+        notificationTitle: 'GoMusic 下载中',
+        notificationText: info.title,
+        callback: _foregroundCallback,
+      );
+    }
 
     // 封面（失败不影响主流程）
     var coverFailed = false;
@@ -226,6 +211,7 @@ class _DownloadPageState extends State<DownloadPage> {
     // 视频
     var videoOk = !_downloadVideo;
     if (_downloadVideo && _selectedStream?.baseUrl != null && audioOk) {
+      _downloadingSize = _selectedStream!.size;
       videoOk = await StreamDownloader.download(
         url: _selectedStream!.baseUrl!, savePath: '$dir/$name.mp4',
         onProgress: (p) { if (mounted) setState(() => _downloadProgress = 0.5 + p * 0.5); },
@@ -254,10 +240,14 @@ class _DownloadPageState extends State<DownloadPage> {
     }
     if (!mounted) return;
     _cancelNotifier?.value = false;
-    setState(() {
-      _isDownloading = false;
-      _downloadingTitle = '';
-    });
+    if (mounted) {
+      setState(() {
+        _isDownloading = false;
+        _downloadProgress = 1.0;
+        _downloadingTitle = '';
+      });
+    }
+    if (Platform.isAndroid) FlutterForegroundTask.stopService();
     await _checkSingleExists(info);
     _snack('${audioOk && videoOk ? "下载完成" : (_cancelNotifier?.value == true ? "已取消" : "下载失败")} $sizeText${coverFailed ? " ⚠封面下载失败" : ""}');
   }
@@ -325,9 +315,7 @@ class _DownloadPageState extends State<DownloadPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('下载'), centerTitle: true, actions: [
-        IconButton(icon: const Icon(Icons.bug_report_outlined, size: 20), tooltip: '', onPressed: _showDebugLog),
-      ]),
+      appBar: AppBar(title: const Text('下载'), centerTitle: true),
       body: Column(children: [
         _buildUrlInput(),
         // 下载进度固定在顶部
@@ -656,7 +644,7 @@ class _DownloadPageState extends State<DownloadPage> {
               if (_downloadingTitle.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 6),
-                  child: Text('正在下载：$_downloadingTitle', style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  child: Text('正在下载：$_downloadingTitle${_downloadingSize > 0 ? ' (${(_downloadingSize / 1048576).toStringAsFixed(1)}MB)' : ''}', style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
               Row(children: [
                 Expanded(

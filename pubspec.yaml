@@ -43,6 +43,7 @@ dependencies:
   media_kit: ^1.2.2
   media_kit_video: ^1.2.7
   media_kit_libs_video: ^1.0.7
+  flutter_foreground_task: ^8.7.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

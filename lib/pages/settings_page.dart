@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/settings_service.dart';
 import 'bilibili_login_page.dart';
+import '../widgets/top_toast.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -61,10 +63,40 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  void _showDebugLog() {
+    String content = '';
+    try {
+      final tmp = Directory.systemTemp;
+      final f = File('${tmp.path}${Platform.pathSeparator}gomusic_debug.log');
+      content = f.existsSync() ? f.readAsStringSync() : '(暂无日志文件)';
+    } catch (e) {
+      content = '读取失败: $e';
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('调试日志', style: TextStyle(fontSize: 15)),
+        content: SizedBox(width: 420, child: SingleChildScrollView(child: SelectableText(content, style: const TextStyle(fontSize: 11)))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+          TextButton(onPressed: () {
+            Navigator.pop(ctx);
+            try {
+              final tmp = Directory.systemTemp;
+              File('${tmp.path}${Platform.pathSeparator}gomusic_debug.log').writeAsStringSync('');
+            } catch (_) {}
+          }, child: const Text('清空')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('设置'), centerTitle: true),
+      appBar: AppBar(title: const Text('设置'), centerTitle: true, actions: [
+        IconButton(icon: const Icon(Icons.bug_report_outlined, size: 20), tooltip: '', onPressed: _showDebugLog),
+      ]),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
