@@ -14,7 +14,7 @@ class AudioPlayerService {
   static final _instance = AudioPlayerService._();
   factory AudioPlayerService() => _instance;
   AudioPlayerService._() {
-    _player.onPlayerComplete.listen((_) => next());
+    _player.onPlayerComplete.listen((_) => _autoNext());
     WidgetsBinding.instance.addObserver(_AppObserver(_saveState));
     _player.onDurationChanged.listen((d) {
       if (d.inMilliseconds > 0 && _currentSong != null) {
@@ -78,10 +78,16 @@ class AudioPlayerService {
     _lastPosition = Duration.zero;
     _currentSong = song;
     currentSongNotifier.value = song;
-    await _player.stop();
-    await _player.play(DeviceFileSource(song.filePath));
-    _sourceLoaded = true;
-    _playing = true;
+    try {
+      await _player.play(DeviceFileSource(song.filePath));
+      _sourceLoaded = true;
+      _playing = true;
+    } catch (e) {
+      // 播放失败：跳过该曲（下一曲容错）
+      _playing = false;
+      Future.delayed(const Duration(milliseconds: 300), () => next());
+      return;
+    }
     // 新歌：清除上次位置，避免残留影响
     _lastPosition = Duration.zero;
     _saveState();
@@ -121,8 +127,30 @@ class AudioPlayerService {
   }
 
   Future<void> next() async {
+    try {
+      await _next();
+    } catch (_) {
+      // 出错也尝试跳下一首
+      if (_queue.isNotEmpty && _queue.length > 1) {
+        _queueIndex = (_queueIndex + 1) % _queue.length;
+        await playSong(_queue[_queueIndex]);
+      }
+    }
+  }
+
+  /// 播放完成自动触发：单曲循环重播自己，否则切下一首
+  Future<void> _autoNext() async {
     if (_queue.isEmpty) return;
-    if (_playMode == PlayMode.loopOne) { await seek(Duration.zero); return; }
+    if (_playMode == PlayMode.loopOne) {
+      await seek(Duration.zero);
+      if (!_playing) { _player.resume(); _playing = true; }
+      return;
+    }
+    await next();
+  }
+
+  Future<void> _next() async {
+    if (_queue.isEmpty) return;
     if (_playMode == PlayMode.shuffle) {
       final curFp = _currentSong?.filePath;
       if (curFp != null) {
