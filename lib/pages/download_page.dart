@@ -145,6 +145,39 @@ class _DownloadPageState extends State<DownloadPage> {
   }
   static String get _now => DateTime.now().toIso8601String().substring(11, 19);
 
+  void _showDebugLog() {
+    final dir = _downloadDir ?? '';
+    String content = '下载目录: $dir\n\n';
+    try {
+      final f = File('$dir/debug.log');
+      if (f.existsSync()) {
+        content += f.readAsStringSync();
+      } else {
+        content += '(暂无日志文件)';
+      }
+    } catch (e) {
+      content += '读取失败: $e';
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('调试日志', style: TextStyle(fontSize: 15)),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(child: SelectableText(content, style: const TextStyle(fontSize: 11))),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+          TextButton(onPressed: () {
+            Navigator.pop(ctx);
+            _dlog('== 清空日志 ==');
+            try { File('$dir/debug.log').writeAsStringSync(''); } catch (_) {}
+          }, child: const Text('清空')),
+        ],
+      ),
+    );
+  }
+
   void _snack(String msg) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
@@ -279,7 +312,9 @@ class _DownloadPageState extends State<DownloadPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('下载'), centerTitle: true),
+      appBar: AppBar(title: const Text('下载'), centerTitle: true, actions: [
+        IconButton(icon: const Icon(Icons.bug_report_outlined, size: 20), tooltip: '', onPressed: _showDebugLog),
+      ]),
       body: Column(children: [
         _buildUrlInput(),
         // 下载进度固定在顶部
