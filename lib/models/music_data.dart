@@ -11,6 +11,7 @@ class Song {
   final Duration duration;
   final String? coverUrl;
   final bool hasVideo;
+  final String? videoPath;
   final String bvid;
   final String filePath;
   final String originalUrl;
@@ -25,6 +26,7 @@ class Song {
     required this.duration,
     this.coverUrl,
     this.hasVideo = false,
+    this.videoPath,
     this.bvid = '',
     this.filePath = '',
     this.lastPlayed,
@@ -79,7 +81,7 @@ class SongManager {
     File(_mapPath).writeAsStringSync(jsonEncode(map));
   }
 
-  /// 下载完全成功后登记歌曲
+  /// 下载完全成功后登记歌曲（唯一的元数据管理文件：音频/视频/封面）
   static void registerSong({
     required String filePath,
     required String title,
@@ -88,6 +90,7 @@ class SongManager {
     required String bvid,
     required String url,
     String? coverPath,
+    String? videoPath,
   }) {
     final map = _readMap();
     map[filePath] = {
@@ -97,8 +100,29 @@ class SongManager {
       'bvid': bvid,
       'url': url,
       'coverPath': coverPath ?? '',
+      'videoPath': videoPath ?? '',
     };
     _writeMap(map);
+  }
+
+  /// 单独登记/更新视频路径（视频下载完成后调用）
+  static void registerVideoPath(String filePath, String videoPath) {
+    final map = _readMap();
+    final m = map[filePath] as Map<String, dynamic>?;
+    if (m != null) {
+      m['videoPath'] = videoPath;
+      _writeMap(map);
+    }
+  }
+
+  /// 播放时更新时长（唯一元数据文件）
+  static void updateDuration(String filePath, int seconds) {
+    final map = _readMap();
+    final m = map[filePath] as Map<String, dynamic>?;
+    if (m != null) {
+      m['duration'] = seconds;
+      _writeMap(map);
+    }
   }
 
   /// 删除歌曲登记
@@ -128,10 +152,16 @@ class SongManager {
           final bvid = meta?['bvid'] as String? ?? '';
           final url = meta?['url'] as String? ?? '';
           final coverPath = meta?['coverPath'] as String? ?? '';
+          final videoPath = meta?['videoPath'] as String? ?? '';
           // 检查封面文件是否存在
           String? cover;
           if (coverPath.isNotEmpty && File(coverPath).existsSync()) {
             cover = coverPath;
+          }
+          // 检查视频文件是否存在
+          String? video;
+          if (videoPath.isNotEmpty && File(videoPath).existsSync()) {
+            video = videoPath;
           }
           songs.add(Song(
             id: f.path,
@@ -144,6 +174,8 @@ class SongManager {
             originalUrl: url,
             originalTitle: title,
             originalAuthor: uploader,
+            hasVideo: video != null,
+            videoPath: video,
           ));
         }
       }

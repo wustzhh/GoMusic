@@ -36,7 +36,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   Future<void> _open() async {
-    final f = File(widget.song.filePath);
+    final path = widget.song.videoPath ?? widget.song.filePath;
+    final f = File(path);
     if (!f.existsSync()) return;
     await _player.open(Media(f.path));
     await _player.setRate(_speed);

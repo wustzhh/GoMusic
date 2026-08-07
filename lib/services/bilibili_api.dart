@@ -100,12 +100,14 @@ class BilibiliApi {
     if (_buvid3 != null) return;
     try {
       final r = await http.get(
-        Uri.parse('https://www.bilibili.com/'),
-        headers: {'User-Agent': _ua},
+        Uri.parse('https://api.bilibili.com/x/frontend/finger/spi'),
+        headers: {'User-Agent': _ua, 'Referer': 'https://www.bilibili.com/'},
       );
-      final setCookies = r.headers['set-cookie'] ?? '';
-      final m = RegExp(r'buvid3=([^;]+)').firstMatch(setCookies);
-      if (m != null) _buvid3 = 'buvid3=${m.group(1)}';
+      if (r.statusCode == 200) {
+        final d = jsonDecode(r.body);
+        final b3 = d['data']?['b_3'] as String?;
+        if (b3 != null && b3.isNotEmpty) _buvid3 = 'buvid3=$b3';
+      }
     } catch (_) {}
   }
 
@@ -339,24 +341,31 @@ class StreamDownloader {
     required void Function(double progress) onProgress,
   }) async {
     try {
+      // 断点续传：下载到 .part，已存在则从断点继续（Range 请求）
+      final partPath = '$savePath.part';
+      final partFile = File(partPath);
+      final existing = partFile.existsSync() ? partFile.lengthSync() : 0;
+
       final request = http.Request('GET', Uri.parse(url));
       request.headers.addAll({
         'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Referer': 'https://www.bilibili.com/',
+        if (existing > 0) 'Range': 'bytes=$existing-',
         if (BilibiliApi.cookie != null && BilibiliApi.cookie!.isNotEmpty)
           'Cookie': BilibiliApi.cookie!,
       });
 
       final streamed = await request.send();
-      final total = streamed.contentLength ?? 0;
-      var received = 0;
+      // 206=续传成功；200=服务器不支持 Range 或需重头下
+      final append = (streamed.statusCode == 206) && existing > 0;
+      if (streamed.statusCode != 200 && streamed.statusCode != 206) return false;
 
-      // 确保目录存在
-      final file = File(savePath);
-      await file.parent.create(recursive: true);
+      final total = (streamed.contentLength ?? 0) + (append ? existing : 0);
+      var received = append ? existing : 0;
 
-      final sink = file.openWrite();
+      await partFile.parent.create(recursive: true);
+      final sink = partFile.openWrite(mode: append ? FileMode.append : FileMode.write);
       await for (final chunk in streamed.stream) {
         received += chunk.length;
         sink.add(chunk);
@@ -365,6 +374,10 @@ class StreamDownloader {
         }
       }
       await sink.close();
+      // 完成：重命名为最终文件
+      final file = File(savePath);
+      if (file.existsSync()) file.deleteSync();
+      await partFile.rename(savePath);
       return true;
     } catch (_) {
       return false;

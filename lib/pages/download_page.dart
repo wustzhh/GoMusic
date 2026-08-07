@@ -186,6 +186,10 @@ class _DownloadPageState extends State<DownloadPage> {
     }
 
     if (!mounted) return;
+    // 视频下载成功：登记到唯一元数据文件
+    if (videoOk && _downloadVideo) {
+      SongManager.registerVideoPath('$dir\$name.m4a', '$dir\$name.mp4');
+    }
     setState(() {
       _isDownloading = false;
       _checkSingleExists(info);

@@ -18,7 +18,7 @@ class AudioPlayerService {
     WidgetsBinding.instance.addObserver(_AppObserver(_saveState));
     _player.onDurationChanged.listen((d) {
       if (d.inMilliseconds > 0 && _currentSong != null) {
-        _writeMeta(_currentSong!, d);
+        SongManager.updateDuration(_currentSong!.filePath, d.inSeconds);
       }
     });
     // 进度轮询
@@ -359,13 +359,6 @@ class AudioPlayerService {
     } catch (_) {
       return null;
     }
-  }
-
-  void _writeMeta(Song song, Duration d) {
-    try {
-      final metaPath = '${song.filePath.substring(0, song.filePath.lastIndexOf('.'))}.json';
-      File(metaPath).writeAsStringSync(jsonEncode({'author': song.uploader, 'duration': d.inSeconds}));
-    } catch (_) {}
   }
 }
 
