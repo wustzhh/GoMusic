@@ -235,17 +235,17 @@ class _SongListPageState extends State<SongListPage> {
               TextButton.icon(
                 onPressed: () {
                   final all = _getFiltered();
-                  final allSelected = all.every((s) => _selectedPaths.contains(_songKey(s)));
+                  final allSelected = all.every((s) => _selectedPaths.contains(s.filePath));
                   setState(() {
                     if (allSelected) {
                       _selectedPaths.clear();
                     } else {
-                      _selectedPaths.addAll(all.map(_songKey));
+                      _selectedPaths.addAll(all.map((s) => s.filePath));
                     }
                   });
                 },
                 icon: const Icon(Icons.select_all, size: 16),
-                label: Text(_getFiltered().isNotEmpty && _getFiltered().every((s) => _selectedPaths.contains(_songKey(s))) ? '全消' : '全选', style: const TextStyle(fontSize: 11)),
+                label: Text(_getFiltered().isNotEmpty && _getFiltered().every((s) => _selectedPaths.contains(s.filePath)) ? '全消' : '全选', style: const TextStyle(fontSize: 11)),
               ),
               TextButton.icon(onPressed: _batchAddTo, icon: const Icon(Icons.playlist_add, size: 16), label: const Text('添加到', style: TextStyle(fontSize: 11))),
               if (widget.playlist.id != 'local')
