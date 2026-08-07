@@ -131,6 +131,12 @@ class _DownloadPageState extends State<DownloadPage> {
     _videoMissing = hasAudio && hasCover && !hasVideo;
   }
 
+  String _fmtSpeed(double bytesPerSec) {
+    if (bytesPerSec >= 1048576) return '${(bytesPerSec / 1048576).toStringAsFixed(1)}MB/s';
+    if (bytesPerSec >= 1024) return '${(bytesPerSec / 1024).toStringAsFixed(0)}KB/s';
+    return '${bytesPerSec.toStringAsFixed(0)}B/s';
+  }
+
   void _snack(String msg) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
@@ -532,9 +538,21 @@ class _DownloadPageState extends State<DownloadPage> {
                 onPressed: () => _retryItem(item),
               ),
             ),
-          Text(_downloadVideo ? '🎵🎬' : '🎵', style: const TextStyle(fontSize: 11)),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(fontSize: 11, color: color)),
+          if (item.status == _BatchStatus.downloading) ...[
+            SizedBox(
+              width: 90,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(value: item.progress.clamp(0.0, 1.0), minHeight: 5, backgroundColor: Colors.grey.withValues(alpha: 0.2), color: Colors.orange),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text('${(item.progress * 100).clamp(0, 100).toStringAsFixed(0)}% ${item.speed > 0 ? _fmtSpeed(item.speed) : ""}', style: const TextStyle(fontSize: 10, color: Colors.orange)),
+          ] else ...[
+            Text(_downloadVideo ? '🎵🎬' : '🎵', style: const TextStyle(fontSize: 11)),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(fontSize: 11, color: color)),
+          ]
         ]),
       ),
     );
@@ -636,5 +654,7 @@ class _BatchItem {
   final String name;
   bool exists;
   _BatchStatus status;
+  double progress = 0;   // 0~1
+  double speed = 0;      // bytes/秒
   _BatchItem({required this.info, required this.name, this.exists = false, this.status = _BatchStatus.waiting});
 }

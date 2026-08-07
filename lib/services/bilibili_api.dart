@@ -345,9 +345,12 @@ class StreamDownloader {
     ValueNotifier<bool>? cancel,
   }) async {
     try {
-      // 断点续传：下载到 .part，已存在则从断点继续（Range 请求）
-      final partPath = '$savePath.part';
-      final partFile = File(partPath);
+      // 缓存区：下载到独立临时目录，完成后才移动到目标目录并命名
+      // 目标目录出现的文件永远是完整正确的
+      final saveFile = File(savePath);
+      final tmpDir = Directory('${saveFile.parent.path}${Platform.pathSeparator}.tmp');
+      tmpDir.createSync(recursive: true);
+      final partFile = File('${tmpDir.path}${Platform.pathSeparator}${saveFile.uri.pathSegments.last}.part');
       final existing = partFile.existsSync() ? partFile.lengthSync() : 0;
 
       final request = http.Request('GET', Uri.parse(url));
@@ -368,12 +371,11 @@ class StreamDownloader {
       final total = (streamed.contentLength ?? 0) + (append ? existing : 0);
       var received = append ? existing : 0;
 
-      await partFile.parent.create(recursive: true);
       final sink = partFile.openWrite(mode: append ? FileMode.append : FileMode.write);
       await for (final chunk in streamed.stream) {
         if (cancel?.value == true) {
           await sink.close();
-          return false; // 保留 .part，下次断点续传
+          return false; // 保留缓存区 .part，下次断点续传
         }
         received += chunk.length;
         sink.add(chunk);
@@ -382,9 +384,9 @@ class StreamDownloader {
         }
       }
       await sink.close();
-      // 完成：重命名为最终文件
-      final file = File(savePath);
-      if (file.existsSync()) file.deleteSync();
+      // 下载完整：移动缓存文件到目标目录并命名
+      if (saveFile.existsSync()) saveFile.deleteSync();
+      await saveFile.parent.create(recursive: true);
       await partFile.rename(savePath);
       return true;
     } catch (_) {
