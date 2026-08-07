@@ -343,6 +343,7 @@ class StreamDownloader {
     required String savePath,
     required void Function(double progress) onProgress,
     ValueNotifier<bool>? cancel,
+    int? expectedSize,
   }) async {
     try {
       // 缓存区：下载到独立临时目录，完成后才移动到目标目录并命名
@@ -368,7 +369,7 @@ class StreamDownloader {
       final append = (streamed.statusCode == 206) && existing > 0;
       if (streamed.statusCode != 200 && streamed.statusCode != 206) return false;
 
-      final total = (streamed.contentLength ?? 0) + (append ? existing : 0);
+      final total = (streamed.contentLength ?? expectedSize ?? 0) + (append ? existing : 0);
       var received = append ? existing : 0;
 
       final sink = partFile.openWrite(mode: append ? FileMode.append : FileMode.write);
