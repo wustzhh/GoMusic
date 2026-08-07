@@ -172,7 +172,7 @@ class _DownloadPageState extends State<DownloadPage> {
     String sizeText = '';
     try { final f = File('$dir\\$name.m4a'); if (f.existsSync()) sizeText = '${(f.lengthSync() / 1048576).toStringAsFixed(1)} MB'; } catch (_) {}
 
-    // 完全下载成功后才登记
+    // 完全下载成功后才登记（不受页面切换影响）
     if (audioOk && videoOk) {
       SongManager.registerSong(
         filePath: '$dir\\$name.m4a',
@@ -184,12 +184,11 @@ class _DownloadPageState extends State<DownloadPage> {
         coverPath: '$dir\\$name.jpg',
       );
     }
-
-    if (!mounted) return;
     // 视频下载成功：登记到唯一元数据文件
     if (videoOk && _downloadVideo) {
-      SongManager.registerVideoPath('$dir\$name.m4a', '$dir\$name.mp4');
+      SongManager.registerVideoPath('$dir\\$name.m4a', '$dir\\$name.mp4');
     }
+    if (!mounted) return;
     setState(() {
       _isDownloading = false;
       _checkSingleExists(info);
@@ -550,7 +549,14 @@ class _DownloadPageState extends State<DownloadPage> {
       url: full.audioUrl!, savePath: '${_downloadDir}\\${item.name}.m4a',
       onProgress: (_) {},
     );
-    if (ok) _saveMeta(_downloadDir!, item.name, full.author, full);
+    if (ok) {
+      SongManager.registerSong(
+        filePath: '${_downloadDir}\\${item.name}.m4a',
+        title: full.title, uploader: full.author, durationSec: full.durationSeconds,
+        bvid: full.bvid, url: full.url,
+        coverPath: '${_downloadDir}\\${item.name}.jpg',
+      );
+    }
     setState(() { item.status = ok ? _BatchStatus.done : _BatchStatus.failed; if (ok) item.exists = true; });
   }
 
@@ -566,18 +572,33 @@ class _DownloadPageState extends State<DownloadPage> {
         border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.15))),
       ),
       child: _isDownloading
-          ? SizedBox(
-              width: double.infinity, height: 44,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  // TODO: 真正取消下载
-                  setState(() => _isDownloading = false);
-                },
-                icon: const Icon(Icons.close, color: Colors.red, size: 18),
-                label: const Text('取消下载', style: TextStyle(fontSize: 15, color: Colors.red)),
-                style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+          ? Column(mainAxisSize: MainAxisSize.min, children: [
+              Row(children: [
+                Expanded(
+                  child: LinearProgressIndicator(
+                    value: _downloadProgress.clamp(0.0, 1.0),
+                    minHeight: 6,
+                    backgroundColor: Colors.grey.withValues(alpha: 0.2),
+                    color: Colors.deepPurple,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text('${(_downloadProgress * 100).clamp(0, 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 12)),
+              ]),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity, height: 36,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    // TODO: 真正取消下载
+                    setState(() => _isDownloading = false);
+                  },
+                  icon: const Icon(Icons.close, color: Colors.red, size: 16),
+                  label: const Text('取消下载', style: TextStyle(fontSize: 13, color: Colors.red)),
+                  style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                ),
               ),
-            )
+            ])
           : SizedBox(
               width: double.infinity, height: 44,
               child: ElevatedButton.icon(
