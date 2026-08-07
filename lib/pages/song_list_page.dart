@@ -232,6 +232,21 @@ class _SongListPageState extends State<SongListPage> {
             ],
             const Spacer(),
             if (_batchMode) ...[
+              TextButton.icon(
+                onPressed: () {
+                  final all = _getFiltered();
+                  final allSelected = all.every((s) => _selectedPaths.contains(_songKey(s)));
+                  setState(() {
+                    if (allSelected) {
+                      _selectedPaths.clear();
+                    } else {
+                      _selectedPaths.addAll(all.map(_songKey));
+                    }
+                  });
+                },
+                icon: const Icon(Icons.select_all, size: 16),
+                label: Text(_getFiltered().isNotEmpty && _getFiltered().every((s) => _selectedPaths.contains(_songKey(s))) ? '全消' : '全选', style: const TextStyle(fontSize: 11)),
+              ),
               TextButton.icon(onPressed: _batchAddTo, icon: const Icon(Icons.playlist_add, size: 16), label: const Text('添加到', style: TextStyle(fontSize: 11))),
               if (widget.playlist.id != 'local')
                 TextButton.icon(onPressed: _batchRemove, icon: const Icon(Icons.playlist_remove, size: 16), label: const Text('移出', style: TextStyle(fontSize: 11))),
