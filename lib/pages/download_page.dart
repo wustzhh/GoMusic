@@ -137,6 +137,14 @@ class _DownloadPageState extends State<DownloadPage> {
     return '${bytesPerSec.toStringAsFixed(0)}B/s';
   }
 
+  void _dlog(String msg) {
+    try {
+      final dir = _downloadDir ?? '';
+      File('$dir/debug.log').writeAsStringSync('[$_now] $msg\n', mode: FileMode.append);
+    } catch (_) {}
+  }
+  static String get _now => DateTime.now().toIso8601String().substring(11, 19);
+
   void _snack(String msg) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
@@ -149,8 +157,9 @@ class _DownloadPageState extends State<DownloadPage> {
 
   Future<void> _startSingle() async {
     final info = _singleInfo;
-    if (info == null || info.audioUrl == null) { _snack('无下载地址'); return; }
+    if (info == null || info.audioUrl == null) { _dlog('startSingle: audioUrl null'); _snack('无下载地址'); return; }
     final dir = _downloadDir ?? '';
+    _dlog('startSingle dir=$dir url=${info.audioUrl!.substring(0, info.audioUrl!.length > 40 ? 40 : info.audioUrl!.length)}... size=${info.audioSize}');
     final name = info.bvid;  // 用BV号做文件名，纯英文
     SongManager.init(dir);   // 确保metadata目录已初始化
 
