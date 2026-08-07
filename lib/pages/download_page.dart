@@ -40,7 +40,15 @@ class _DownloadPageState extends State<DownloadPage> {
   @override
   void initState() {
     super.initState();
-    SettingsService.getInstance().then((s) => s.getDownloadPath().then((d) => _downloadDir = d));
+    _initDir();
+  }
+
+  Future<void> _initDir() async {
+    try {
+      final s = await SettingsService.getInstance();
+      final d = await s.getDownloadPath();
+      if (mounted) setState(() => _downloadDir = d);
+    } catch (_) {}
   }
 
   @override
@@ -68,7 +76,7 @@ class _DownloadPageState extends State<DownloadPage> {
       final info = await _api.getVideoInfo(url);
       if (!mounted) return;
       if (info != null) {
-        _checkSingleExists(info);
+        await _checkSingleExists(info);
         setState(() {
           _singleInfo = info; _isParsing = false;
           _nameController.text = info.title;
@@ -95,7 +103,7 @@ class _DownloadPageState extends State<DownloadPage> {
       final info = await _api.getVideoInfo(url);
       if (!mounted) return;
       if (info != null) {
-        _checkSingleExists(info);
+        await _checkSingleExists(info);
         setState(() {
           _singleInfo = info; _isParsing = false;
           _nameController.text = info.title;
@@ -120,7 +128,8 @@ class _DownloadPageState extends State<DownloadPage> {
     });
   }
 
-  void _checkSingleExists(BilibiliVideoInfo info) {
+  Future<void> _checkSingleExists(BilibiliVideoInfo info) async {
+    if (_downloadDir == null) await _initDir();
     final dir = _downloadDir ?? '';
     final name = info.bvid;
     final hasAudio = File('$dir\\$name.m4a').existsSync();
@@ -171,7 +180,7 @@ class _DownloadPageState extends State<DownloadPage> {
           TextButton(onPressed: () {
             Navigator.pop(ctx);
             _dlog('== 清空日志 ==');
-            try { File('$dir/debug.log').writeAsStringSync(''); } catch (_) {}
+            try { File('${Directory.systemTemp.path}${Platform.pathSeparator}gomusic_debug.log').writeAsStringSync(''); } catch (_) {}
           }, child: const Text('清空')),
         ],
       ),
@@ -191,7 +200,11 @@ class _DownloadPageState extends State<DownloadPage> {
   Future<void> _startSingle() async {
     final info = _singleInfo;
     if (info == null || info.audioUrl == null) { _dlog('startSingle: audioUrl null'); _snack('无下载地址'); return; }
-    final dir = _downloadDir ?? '';
+    if (_downloadDir == null) {
+      await _initDir();
+      if (_downloadDir == null) { _snack('下载目录初始化失败'); return; }
+    }
+    final dir = _downloadDir!;
     _dlog('startSingle dir=$dir url=${info.audioUrl!.substring(0, info.audioUrl!.length > 40 ? 40 : info.audioUrl!.length)}... size=${info.audioSize}');
     final name = info.bvid;  // 用BV号做文件名，纯英文
     SongManager.init(dir);   // 确保metadata目录已初始化
@@ -244,8 +257,8 @@ class _DownloadPageState extends State<DownloadPage> {
     setState(() {
       _isDownloading = false;
       _downloadingTitle = '';
-      _checkSingleExists(info);
     });
+    await _checkSingleExists(info);
     _snack('${audioOk && videoOk ? "下载完成" : (_cancelNotifier?.value == true ? "已取消" : "下载失败")} $sizeText${coverFailed ? " ⚠封面下载失败" : ""}');
   }
 
