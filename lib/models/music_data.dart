@@ -337,7 +337,7 @@ class PlaylistService {
     }
   }
 
-  /// 从歌单移除歌曲
+  /// 从歌单移除歌曲（兼容旧数据 filePath 条目）
   static Future<void> removeSongFromPlaylist(String pid, String bvid) async {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
@@ -346,10 +346,20 @@ class PlaylistService {
       while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
       while (parts.length < 4) parts.add('');
       if (parts[0] == pid) {
-        List<dynamic> paths = [];
-        try { paths = jsonDecode(parts[3]); } catch (_) { paths = parts[3].split(','); }
-        paths.removeWhere((x) => x.toString() == bvid);
-        parts[3] = jsonEncode(paths.map((x) => x.toString()).where((x) => x.isNotEmpty).toList());
+        List<String> paths = [];
+        try { paths = (jsonDecode(parts[3]) as List).map((x) => x.toString()).where((x) => x.isNotEmpty).toList(); }
+        catch (_) { paths = parts[3].split(',').where((s) => s.isNotEmpty).toList(); }
+        // 迁移旧格式：filePath 条目转成 bvid 后比较
+        paths.removeWhere((x) {
+          var k = x;
+          if (k.contains('\\') || k.contains('/')) {
+            final name = k.split('\\').last.split('/').last;
+            final dot = name.lastIndexOf('.');
+            k = dot > 0 ? name.substring(0, dot) : name;
+          }
+          return k == bvid;
+        });
+        parts[3] = jsonEncode(paths);
         while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
         list[i] = parts.join('|||');
         await p.setStringList(_key, list);
