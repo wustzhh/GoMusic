@@ -20,6 +20,8 @@ class _DownloadPageState extends State<DownloadPage> {
   bool _downloadVideo = false;
   bool _isParsing = false;
   bool _isDownloading = false;
+  ValueNotifier<bool>? _cancelNotifier;
+  String _downloadingTitle = '';
   double _downloadProgress = 0;
 
   BilibiliVideoInfo? _singleInfo;
@@ -146,7 +148,8 @@ class _DownloadPageState extends State<DownloadPage> {
     final name = info.bvid;  // 用BV号做文件名，纯英文
     SongManager.init(dir);   // 确保metadata目录已初始化
 
-    setState(() { _isDownloading = true; _downloadProgress = 0; });
+    setState(() { _isDownloading = true; _downloadProgress = 0; _downloadingTitle = info.title; });
+    _cancelNotifier = ValueNotifier(false);
 
     // 封面（失败不影响主流程）
     var coverFailed = false;
@@ -189,11 +192,13 @@ class _DownloadPageState extends State<DownloadPage> {
       SongManager.registerVideoPath('$dir\\$name.m4a', '$dir\\$name.mp4');
     }
     if (!mounted) return;
+    _cancelNotifier?.value = false;
     setState(() {
       _isDownloading = false;
+      _downloadingTitle = '';
       _checkSingleExists(info);
     });
-    _snack('${audioOk && videoOk ? "下载完成" : "下载失败"} $sizeText${coverFailed ? " ⚠封面下载失败" : ""}');
+    _snack('${audioOk && videoOk ? "下载完成" : (_cancelNotifier?.value == true ? "已取消" : "下载失败")} $sizeText${coverFailed ? " ⚠封面下载失败" : ""}');
   }
 
   // ==================== 批量下载 ====================
@@ -573,6 +578,11 @@ class _DownloadPageState extends State<DownloadPage> {
       ),
       child: _isDownloading
           ? Column(mainAxisSize: MainAxisSize.min, children: [
+              if (_downloadingTitle.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text('正在下载：$_downloadingTitle', style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                ),
               Row(children: [
                 Expanded(
                   child: LinearProgressIndicator(
@@ -590,7 +600,7 @@ class _DownloadPageState extends State<DownloadPage> {
                 width: double.infinity, height: 36,
                 child: OutlinedButton.icon(
                   onPressed: () {
-                    // TODO: 真正取消下载
+                    _cancelNotifier?.value = true;
                     setState(() => _isDownloading = false);
                   },
                   icon: const Icon(Icons.close, color: Colors.red, size: 16),

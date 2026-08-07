@@ -125,6 +125,15 @@ class SongManager {
     }
   }
 
+  /// 是否已登记（按 bvid 查）
+  static bool isRegistered(String bvid) {
+    final map = _readMap();
+    for (final v in map.values) {
+      if (v is Map && v['bvid'] == bvid) return true;
+    }
+    return false;
+  }
+
   /// 删除歌曲登记
   static void unregisterSong(String filePath) {
     final map = _readMap();

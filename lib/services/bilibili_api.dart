@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// 单个视频流（一种画质）
@@ -340,6 +342,7 @@ class StreamDownloader {
     required String url,
     required String savePath,
     required void Function(double progress) onProgress,
+    ValueNotifier<bool>? cancel,
   }) async {
     try {
       // 断点续传：下载到 .part，已存在则从断点继续（Range 请求）
@@ -368,6 +371,10 @@ class StreamDownloader {
       await partFile.parent.create(recursive: true);
       final sink = partFile.openWrite(mode: append ? FileMode.append : FileMode.write);
       await for (final chunk in streamed.stream) {
+        if (cancel?.value == true) {
+          await sink.close();
+          return false; // 保留 .part，下次断点续传
+        }
         received += chunk.length;
         sink.add(chunk);
         if (total > 0) {
