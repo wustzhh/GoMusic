@@ -252,7 +252,7 @@ class BilibiliApi {
         audios.sort((a, b) =>
             ((b['bandwidth'] as int?) ?? 0).compareTo((a['bandwidth'] as int?) ?? 0));
         final best = audios.first;
-        info.audioUrl = (best['baseUrl'] ?? best['base_url']) as String?;
+        info.audioUrl = ((best['baseUrl'] ?? best['base_url']) as String?)?.replaceAll('http:', 'https:');
         info.audioSize = (best['size'] as int?) ?? 0;
       }
 
@@ -264,7 +264,7 @@ class BilibiliApi {
         width: (v['width'] as int?) ?? 0,
         height: (v['height'] as int?) ?? 0,
         codecs: (v['codecs'] as String?) ?? '',
-        baseUrl: (v['baseUrl'] ?? v['base_url']) as String?,
+        baseUrl: ((v['baseUrl'] ?? v['base_url']) as String?)?.replaceAll('http:', 'https:'),
         size: (v['size'] as int?) ?? 0,
       )).toList()
         ..sort((a, b) => b.bandwidth.compareTo(a.bandwidth));
@@ -352,44 +352,57 @@ class StreamDownloader {
       final tmpDir = Directory('${saveFile.parent.path}${Platform.pathSeparator}.tmp');
       tmpDir.createSync(recursive: true);
       final partFile = File('${tmpDir.path}${Platform.pathSeparator}${saveFile.uri.pathSegments.last}.part');
-      final existing = partFile.existsSync() ? partFile.lengthSync() : 0;
+      var existing = partFile.existsSync() ? partFile.lengthSync() : 0;
 
-      final request = http.Request('GET', Uri.parse(url));
-      request.headers.addAll({
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'https://www.bilibili.com/',
-        if (existing > 0) 'Range': 'bytes=$existing-',
-        if (BilibiliApi.cookie != null && BilibiliApi.cookie!.isNotEmpty)
-          'Cookie': BilibiliApi.cookie!,
-      });
+      var attempt = 0;
+      while (attempt < 2) {
+        attempt++;
+        final request = http.Request('GET', Uri.parse(url));
+        request.headers.addAll({
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://www.bilibili.com/',
+          if (existing > 0) 'Range': 'bytes=$existing-',
+          if (BilibiliApi.cookie != null && BilibiliApi.cookie!.isNotEmpty)
+            'Cookie': BilibiliApi.cookie!,
+        });
 
-      final streamed = await request.send();
-      // 206=续传成功；200=服务器不支持 Range 或需重头下
-      final append = (streamed.statusCode == 206) && existing > 0;
-      if (streamed.statusCode != 200 && streamed.statusCode != 206) return false;
-
-      final total = (streamed.contentLength ?? expectedSize ?? 0) + (append ? existing : 0);
-      var received = append ? existing : 0;
-
-      final sink = partFile.openWrite(mode: append ? FileMode.append : FileMode.write);
-      await for (final chunk in streamed.stream) {
-        if (cancel?.value == true) {
-          await sink.close();
-          return false; // 保留缓存区 .part，下次断点续传
+        final streamed = await request.send();
+        if (streamed.statusCode == 416) {
+          // Range 越界：缓存损坏，删除后从头重下
+          if (partFile.existsSync()) partFile.deleteSync();
+          existing = 0;
+          continue;
         }
-        received += chunk.length;
-        sink.add(chunk);
-        if (total > 0) {
-          onProgress(received / total);
+        // 206=续传成功；200=服务器不支持 Range 或需重头下
+        final append = (streamed.statusCode == 206) && existing > 0;
+        if (streamed.statusCode != 200 && streamed.statusCode != 206) return false;
+
+        final total = (streamed.contentLength ?? expectedSize ?? 0) + (append ? existing : 0);
+        var received = append ? existing : 0;
+
+        final sink = partFile.openWrite(mode: append ? FileMode.append : FileMode.write);
+        await for (final chunk in streamed.stream) {
+          if (cancel?.value == true) {
+            await sink.close();
+            return false; // 保留缓存区 .part，下次断点续传
+          }
+          received += chunk.length;
+          sink.add(chunk);
+          if (total > 0) {
+            onProgress(received / total);
+          }
         }
+        await sink.close();
+        // 下载完整：强制进度 100%（total 未知时也更新）
+        onProgress(1.0);
+        // 移动缓存文件到目标目录并命名
+        if (saveFile.existsSync()) saveFile.deleteSync();
+        await saveFile.parent.create(recursive: true);
+        await partFile.rename(savePath);
+        return true;
       }
-      await sink.close();
-      // 下载完整：移动缓存文件到目标目录并命名
-      if (saveFile.existsSync()) saveFile.deleteSync();
-      await saveFile.parent.create(recursive: true);
-      await partFile.rename(savePath);
-      return true;
+      return false;
     } catch (_) {
       return false;
     }
