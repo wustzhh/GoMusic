@@ -20,6 +20,7 @@ class _DownloadPageState extends State<DownloadPage> {
   final _api = BilibiliApi();
 
   bool _downloadVideo = false;
+  bool _downloadAudio = true;
   bool _isParsing = false;
   bool _isDownloading = false;
   ValueNotifier<bool>? _cancelNotifier;
@@ -203,19 +204,48 @@ class _DownloadPageState extends State<DownloadPage> {
       final ok = await StreamDownloader.download(url: info.coverUrl, savePath: '$dir/$name.jpg', onProgress: (_) {});
       coverFailed = !ok;
     }
-    // 音频
-    final audioOk = await StreamDownloader.download(
-      url: info.audioUrl!, savePath: '$dir/$name.m4a',
-      onProgress: (p) { if (mounted) setState(() => _downloadProgress = p * (_downloadVideo ? 0.5 : 1.0)); },
-    );
-    // 视频
-    var videoOk = !_downloadVideo;
-    if (_downloadVideo && _selectedStream?.baseUrl != null && audioOk) {
-      _downloadingSize = _selectedStream!.size;
-      videoOk = await StreamDownloader.download(
-        url: _selectedStream!.baseUrl!, savePath: '$dir/$name.mp4',
-        onProgress: (p) { if (mounted) setState(() => _downloadProgress = 0.5 + p * 0.5); },
-      );
+    // 音频（勾选才下载；已存在跳过）
+    var audioOk = true;
+    if (_downloadAudio) {
+      final hasAudio = File('$dir/$name.m4a').existsSync() && File('$dir/$name.m4a').lengthSync() > 0;
+      if (!hasAudio) {
+        _downloadingSize = info.audioSize;
+        var lastUi = DateTime.now();
+        audioOk = await StreamDownloader.download(
+          url: info.audioUrl!, savePath: '$dir/$name.m4a',
+          onProgress: (p) {
+            final now = DateTime.now();
+            if (mounted && now.difference(lastUi).inMilliseconds >= 400) {
+              lastUi = now;
+              setState(() => _downloadProgress = p * (_downloadVideo ? 0.5 : 1.0));
+            }
+          },
+          cancel: _cancelNotifier,
+          expectedSize: info.audioSize > 0 ? info.audioSize : null,
+        );
+      }
+    }
+    // 视频（勾选才下载）
+    var videoOk = true;
+    if (_downloadVideo) {
+      if (_selectedStream?.baseUrl != null) {
+        _downloadingSize = _selectedStream!.size;
+        var lastUi2 = DateTime.now();
+        videoOk = await StreamDownloader.download(
+          url: _selectedStream!.baseUrl!, savePath: '$dir/$name.mp4',
+          onProgress: (p) {
+            final now = DateTime.now();
+            if (mounted && now.difference(lastUi2).inMilliseconds >= 400) {
+              lastUi2 = now;
+              setState(() => _downloadProgress = 0.5 + p * 0.5);
+            }
+          },
+          cancel: _cancelNotifier,
+          expectedSize: _selectedStream!.size > 0 ? _selectedStream!.size : null,
+        );
+      } else {
+        videoOk = false;
+      }
     }
 
     if (!mounted) return;
@@ -276,12 +306,26 @@ class _DownloadPageState extends State<DownloadPage> {
       if (full!.coverUrl.isNotEmpty) {
         await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {});
       }
-      // 音频
-      final ok = await StreamDownloader.download(
-        url: full.audioUrl!, savePath: '${_downloadDir}/${item.name}.m4a',
-        onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
-      );
+      // 音频（勾选才下载）
+      var audioOk = true;
+      if (_downloadAudio) {
+        audioOk = await StreamDownloader.download(
+          url: full.audioUrl!, savePath: '${_downloadDir}/${item.name}.m4a',
+          onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
+        );
+      }
+      // 视频（勾选才下载，取最高画质）
+      var videoOk = true;
+      if (_downloadVideo && full.videoStreams.isNotEmpty) {
+        final best = full.videoStreams.first;
+        videoOk = await StreamDownloader.download(
+          url: best.baseUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
+          expectedSize: best.size > 0 ? best.size : null,
+          onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
+        );
+      }
 
+      final ok = audioOk && videoOk;
       if (ok) {
         item.exists = true;
         SongManager.registerSong(
@@ -289,6 +333,7 @@ class _DownloadPageState extends State<DownloadPage> {
           title: full.title, uploader: full.author, durationSec: full.durationSeconds,
           bvid: full.bvid, url: full.url,
           coverPath: '${_downloadDir}/${item.name}.jpg',
+          videoPath: _downloadVideo && File('${_downloadDir}/${item.name}.mp4').existsSync() ? '${_downloadDir}/${item.name}.mp4' : null,
         );
       }
       setState(() {
@@ -393,9 +438,16 @@ class _DownloadPageState extends State<DownloadPage> {
         _buildEditableFields(),
         const SizedBox(height: 8),
         Row(children: [
+          const Icon(Icons.music_note, color: Colors.grey, size: 18),
+          const SizedBox(width: 4),
+          const Text('下载音频', style: TextStyle(fontSize: 14)),
+          const Spacer(),
+          Switch(value: _downloadAudio, onChanged: _isDownloading ? null : (v) => setState(() => _downloadAudio = v)),
+        ]),
+        Row(children: [
           const Icon(Icons.video_file_outlined, color: Colors.grey, size: 18),
           const SizedBox(width: 4),
-          Text(_videoMissing ? '下载视频' : '同时下载视频', style: const TextStyle(fontSize: 14)),
+          Text(_videoMissing ? '下载视频' : '下载视频', style: const TextStyle(fontSize: 14)),
           const Spacer(),
           Switch(value: _downloadVideo, onChanged: _isDownloading ? null : (v) => setState(() => _downloadVideo = v)),
         ]),
@@ -546,6 +598,10 @@ class _DownloadPageState extends State<DownloadPage> {
       Row(children: [
         Text('收藏夹 · ${_batchItems.length}个视频', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
         const Spacer(),
+        Text('音频', style: const TextStyle(fontSize: 11)),
+        Switch(value: _downloadAudio, onChanged: _isDownloading ? null : (v) => setState(() => _downloadAudio = v), visualDensity: VisualDensity.compact),
+        Text('视频', style: const TextStyle(fontSize: 11)),
+        Switch(value: _downloadVideo, onChanged: _isDownloading ? null : (v) => setState(() => _downloadVideo = v), visualDensity: VisualDensity.compact),
         Text('已完成 ${_batchItems.where((b) => b.exists || b.status == _BatchStatus.done).length}/${_batchItems.length}',
             style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ]),

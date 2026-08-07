@@ -76,7 +76,14 @@ class _SongListPageState extends State<SongListPage> {
     } else {
       final pls = await PlaylistService.getPlaylists();
       final found = pls.where((p) => p.id == widget.playlist.id).firstOrNull;
-      if (found != null) _songs = found.songs;
+      if (found != null) {
+        // 补全：自定义歌单存的是BV号，用本地对照表查标题/封面
+        final local = await scanLocalAudioFiles(dir);
+        _songs = found.songs.map((s) {
+          final bv = s.bvid.isNotEmpty ? s.bvid : _songKey(s);
+          return local.where((x) => x.bvid == bv || _songKey(x) == bv).firstOrNull ?? s;
+        }).toList();
+      }
     }
     if (mounted) setState(() {});
   }

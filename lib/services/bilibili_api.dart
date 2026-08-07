@@ -274,14 +274,34 @@ class BilibiliApi {
   /// 解析收藏夹/合集链接，返回视频列表
   Future<List<BilibiliVideoInfo>?> getCollectionVideos(String url) async {
     try {
-      // 提取 ml 合集ID 或 favlist fid
+      // 提取 ml 合集ID / favlist fid / lists合集 season_id
       final mlMatch = RegExp(r'ml(\d+)').firstMatch(url);
       final fidMatch = RegExp(r'[?&]fid=(\d+)').firstMatch(url);
       final uidMatch = RegExp(r'space\.bilibili\.com/(\d+)').firstMatch(url);
+      final seriesMatch = RegExp(r'lists/(\d+)').firstMatch(url);
 
       List<dynamic> videoList = [];
 
-      if (mlMatch != null) {
+      if (seriesMatch != null && uidMatch != null) {
+        // 合集(space): https://space.bilibili.com/{uid}/lists/{season_id}
+        final seasonId = seriesMatch.group(1)!;
+        final uid = uidMatch.group(1)!;
+        var pn = 1;
+        while (true) {
+          final uri = Uri.parse('https://api.bilibili.com/x/polymer/web-space/seasons_archives_list')
+              .replace(queryParameters: {'mid': uid, 'season_id': seasonId, 'page_num': pn.toString(), 'page_size': '30'});
+          final r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 15));
+          if (r.statusCode != 200) break;
+          final d = jsonDecode(r.body);
+          if (d['code'] != 0) break;
+          final arcs = d['data']?['archives'] as List?;
+          if (arcs == null || arcs.isEmpty) break;
+          videoList.addAll(arcs);
+          final isEnd = d['data']?['is_end'] as bool? ?? true;
+          if (isEnd == true) break;
+          pn++;
+        }
+      } else if (mlMatch != null) {
         // 合集: https://api.bilibili.com/x/v1/medialist/info?type=1&biz_id=xxx
         final mlId = int.parse(mlMatch.group(1)!);
         final p = await _signed({'type': '1', 'biz_id': mlId.toString()});
