@@ -123,8 +123,10 @@ class _DownloadPageState extends State<DownloadPage> {
     final name = info.bvid;
     final hasAudio = File('$dir\\$name.m4a').existsSync();
     final hasCover = File('$dir\\$name.jpg').existsSync();
-    _alreadyDownloaded = hasAudio && hasCover;
+    final hasVideo = File('$dir\\$name.mp4').existsSync();
+    _alreadyDownloaded = hasAudio && hasCover && hasVideo;
     _coverMissing = hasAudio && !hasCover;
+    _videoMissing = hasAudio && hasCover && !hasVideo;
   }
 
   void _snack(String msg) {
