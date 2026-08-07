@@ -29,6 +29,15 @@ class SettingsService {
       final projRoot = File(exeDir).parent.parent.parent.parent.parent.path;
       return '$projRoot\\downloads';
     } else {
+      // Android: 公共 Download 目录（用户文件管理器可见，需"所有文件访问"权限）
+      try {
+        final ext = await getExternalStorageDirectory();
+        if (ext != null) {
+          final d = '${ext.path}/Download/GoMusic';
+          Directory(d).createSync(recursive: true);
+          return d;
+        }
+      } catch (_) {}
       final dir = await getApplicationDocumentsDirectory();
       return '${dir.path}/downloads';
     }
