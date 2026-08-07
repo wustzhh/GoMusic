@@ -189,7 +189,7 @@ class BilibiliApi {
       final uri = Uri.parse('https://api.bilibili.com/x/web-interface/view')
           .replace(queryParameters: p);
 
-      final r = await http.get(uri, headers: _headers);
+      final r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 15));
       if (r.statusCode != 200) return null;
 
       final d = jsonDecode(r.body);
@@ -285,7 +285,7 @@ class BilibiliApi {
         final p = await _signed({'type': '1', 'biz_id': mlId.toString()});
         final uri = Uri.parse('https://api.bilibili.com/x/v1/medialist/info')
             .replace(queryParameters: p);
-        final r = await http.get(uri, headers: _headers);
+        final r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 15));
         if (r.statusCode == 200) {
           final d = jsonDecode(r.body);
           if (d['code'] == 0) {
@@ -297,10 +297,9 @@ class BilibiliApi {
         final fid = fidMatch.group(1)!;
         var pn = 1;
         while (true) {
-          final p = await _signed({'media_id': fid, 'ps': '20', 'pn': pn.toString()});
           final uri = Uri.parse('https://api.bilibili.com/x/v3/fav/resource/list')
-              .replace(queryParameters: p);
-          final r = await http.get(uri, headers: _headers);
+              .replace(queryParameters: {'media_id': fid, 'ps': '20', 'pn': pn.toString()});
+          final r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 15));
           if (r.statusCode != 200) break;
           final d = jsonDecode(r.body);
           if (d['code'] != 0) break;
@@ -314,7 +313,9 @@ class BilibiliApi {
 
       if (videoList.isEmpty) return null;
 
-      return videoList.map((v) {
+      return videoList
+          .where((v) => (v['bvid'] as String? ?? '').isNotEmpty) // 过滤空 bvid（失效视频）
+          .map((v) {
         final bvid = v['bvid'] as String? ?? '';
         final baseUrl = 'https://www.bilibili.com/video/$bvid';
         return BilibiliVideoInfo(
