@@ -427,7 +427,7 @@ class SongGroupService {
   /// 获取某首歌所在组（无组返回 null，即单曲独立组）
   static SongGroup? groupOf(Song song, {String? playlistId}) {
     _ensureLoaded();
-    final key = song.bvid.isNotEmpty ? song.bvid : song.filePath;
+    final key = song.bvid.isNotEmpty ? song.bvid : song.filePath.split("\\").last.split("/").last.split(".").first;
     for (final g in _cache) {
       if (g.songPaths.contains(key) && (playlistId == null || g.playlistId == playlistId)) return g;
     }
@@ -438,7 +438,7 @@ class SongGroupService {
   static void groupSongs(List<Song> songs, {required String playlistId}) {
     _ensureLoaded();
     if (songs.length < 2) return;
-    final paths = songs.map((s) => s.bvid.isNotEmpty ? s.bvid : s.filePath).toList();
+    final paths = songs.map((s) => s.bvid.isNotEmpty ? s.bvid : s.filePath.split("\\").last.split("/").last.split(".").first).toList();
     final involved = <String>{};
     final toRemove = <String>[];
     for (final g in _cache) {
@@ -480,17 +480,17 @@ class SongGroupService {
     _ensureLoaded();
     final group = groupOf(currentSong, playlistId: playlistId);
     final currentFp = currentSong.filePath;
-    final curKey = currentSong.bvid.isNotEmpty ? currentSong.bvid : currentSong.filePath;
+    final curKey = currentSong.bvid.isNotEmpty ? currentSong.bvid : currentSong.filePath.split("\\").last.split("/").last.split(".").first;
     if (group != null) {
       final curIdx = group.songPaths.indexOf(currentFp);
       if (group.shuffle) {
         if (group.songPaths.length > 1) {
           var n = curIdx;
           while (n == curIdx) n = Random().nextInt(group.songPaths.length);
-          return queue.where((s) => (s.bvid.isNotEmpty ? s.bvid : s.filePath) == group.songPaths[n]).firstOrNull;
+          return queue.where((s) => (s.bvid.isNotEmpty ? s.bvid : s.filePath.split("\\").last.split("/").last.split(".").first) == group.songPaths[n]).firstOrNull;
         }
       } else if (curIdx < group.songPaths.length - 1) {
-        return queue.where((s) => (s.bvid.isNotEmpty ? s.bvid : s.filePath) == group.songPaths[curIdx + 1]).firstOrNull;
+        return queue.where((s) => (s.bvid.isNotEmpty ? s.bvid : s.filePath.split("\\").last.split("/").last.split(".").first) == group.songPaths[curIdx + 1]).firstOrNull;
       }
       final groups = getGroups(playlistId: playlistId);
       if (groups.isNotEmpty) {
@@ -499,7 +499,7 @@ class SongGroupService {
           g = groups[(groups.indexOf(g) + 1) % groups.length];
         }
         final first = g.songPaths.first;
-        return queue.where((s) => (s.bvid.isNotEmpty ? s.bvid : s.filePath) == first).firstOrNull;
+        return queue.where((s) => (s.bvid.isNotEmpty ? s.bvid : s.filePath.split("\\").last.split("/").last.split(".").first) == first).firstOrNull;
       }
     }
     return null;

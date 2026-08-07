@@ -94,7 +94,7 @@ class _SongQueueListState extends State<SongQueueList> {
       final g = groups.where((g) => g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : s.filePath)).firstOrNull;
       if (g != null) {
         // 按队列中的顺序取组内成员（队列已按组设置排列）
-        final members = queue.where((x) => g.songPaths.contains(x.bvid.isNotEmpty ? x.bvid : x.filePath)).toList();
+        final members = queue.where((x) => g.songPaths.contains(x.bvid.isNotEmpty ? x.bvid : x.filePath.split("\\").last.split("/").last.split(".").first)).toList();
         if (members.isEmpty) continue;
         final color = _groupColors[gi % _groupColors.length];
         gi++;
@@ -122,7 +122,7 @@ class _SongQueueListState extends State<SongQueueList> {
             ),
             const Divider(height: 1, color: Colors.white12),
             ...members.map((m) {
-              used.add(m.filePath);
+              used.add(m.filePath.split("\\").last.split("/").last.split(".").first);
               return _buildRow(m, queue.indexOf(m));
             }),
           ]),

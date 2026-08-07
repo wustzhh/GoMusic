@@ -61,7 +61,7 @@ class AudioPlayerService {
   // ==================== 播放 ====================
 
   Future<void> playSong(Song song, {bool forceRestart = false}) async {
-    final idx = _queue.indexWhere((s) => s.filePath == song.filePath);
+    final idx = _queue.indexWhere((s) => (s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)) == (song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath)));
     if (idx >= 0) _queueIndex = idx;
     if (_currentSong?.filePath == song.filePath && !forceRestart) {
       if (_playing) { _player.pause(); _playing = false; } else {
@@ -85,7 +85,7 @@ class AudioPlayerService {
     // 新歌：清除上次位置，避免残留影响
     _lastPosition = Duration.zero;
     _saveState();
-    RecentlyPlayedService.addIfNotExists(song.bvid.isNotEmpty ? song.bvid : song.filePath).catchError((_) {});
+    RecentlyPlayedService.addIfNotExists(song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath)).catchError((_) {});
   }
 
   void togglePause() async {
@@ -150,14 +150,14 @@ class AudioPlayerService {
   void setQueue(List<Song> s, {int startIndex = 0, String? playlistId}) {
     if (playlistId != null) _currentPlaylistId = playlistId;
     final curKey = s.isNotEmpty && startIndex >= 0 && startIndex < s.length
-        ? (s[startIndex].bvid.isNotEmpty ? s[startIndex].bvid : s[startIndex].filePath)
+        ? (s[startIndex].bvid.isNotEmpty ? s[startIndex].bvid : _fileNameKey(s[startIndex].filePath))
         : null;
     _queue.clear();
     _queue.addAll(_playMode == PlayMode.shuffle ? _shuffleGroups(s) : _groupedQueue(s));
     _queueIndex = _queue.isEmpty
         ? 0
         : (curKey != null
-            ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : x.filePath) == curKey)
+            ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : _fileNameKey(x.filePath)) == curKey)
             : startIndex.clamp(0, _queue.length - 1));
     if (_queueIndex < 0) _queueIndex = 0;
     currentSongNotifier.notifyListeners();
@@ -167,19 +167,19 @@ class AudioPlayerService {
   void setPlayMode(PlayMode m) {
     if (m == PlayMode.shuffle && _playMode != PlayMode.shuffle) {
       _orderedQueue = List<Song>.from(_queue);
-      final curKey = _currentSong != null ? (_currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _currentSong!.filePath) : null;
+      final curKey = _currentSong != null ? (_currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _fileNameKey(_currentSong!.filePath)) : null;
       final grouped = _shuffleGroups(_orderedQueue!);
       _queue.clear();
       _queue.addAll(grouped);
-      _queueIndex = curKey != null ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : x.filePath) == curKey) : 0;
+      _queueIndex = curKey != null ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : _fileNameKey(x.filePath)) == curKey) : 0;
       if (_queueIndex < 0) _queueIndex = 0;
     } else if (_playMode == PlayMode.shuffle && m != PlayMode.shuffle && _orderedQueue != null) {
-      final curKey = _currentSong != null ? (_currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _currentSong!.filePath) : null;
+      final curKey = _currentSong != null ? (_currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _fileNameKey(_currentSong!.filePath)) : null;
       final restored = List<Song>.from(_orderedQueue!);
       _queue.clear();
       _queue.addAll(restored);
       _orderedQueue = null;
-      _queueIndex = curKey != null ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : x.filePath) == curKey) : 0;
+      _queueIndex = curKey != null ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : _fileNameKey(x.filePath)) == curKey) : 0;
       if (_queueIndex < 0) _queueIndex = 0;
     }
     _playMode = m;
@@ -203,10 +203,10 @@ class AudioPlayerService {
         members.shuffle(Random());
       }
       units.add(members);
-      for (final s in members) used.add(s.filePath);
+      for (final s in members) used.add(_fileNameKey(s.filePath));
     }
     for (final s in q) {
-      if (!used.contains(s.filePath)) units.add([s]);
+      if (!used.contains(_fileNameKey(s.filePath))) units.add([s]);
     }
     units.shuffle(Random());
     final result = <Song>[];
@@ -220,9 +220,9 @@ class AudioPlayerService {
     final result = <Song>[];
     final used = <String>{};
     for (final s in q) {
-      if (used.contains(s.filePath)) continue;
+      if (used.contains(_fileNameKey(s.filePath))) continue;
       // 若当前歌属于某组，输出整个组（相邻），组内按组配置
-      final g = groups.where((g) => g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : s.filePath)).firstOrNull;
+      final g = groups.where((g) => g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath))).firstOrNull;
       if (g != null) {
         var members = g.songPaths
             .map((p) => q.where((x) => (x.bvid.isNotEmpty ? x.bvid : _fileNameKey(x.filePath)) == p).firstOrNull)
@@ -230,10 +230,10 @@ class AudioPlayerService {
             .toList();
         if (g.shuffle && members.length > 1) members.shuffle(Random());
         for (final m in members) {
-          if (used.add(m.filePath)) result.add(m);
+          if (used.add(_fileNameKey(m.filePath))) result.add(m);
         }
       } else {
-        used.add(s.filePath);
+        used.add(_fileNameKey(s.filePath));
         result.add(s);
       }
     }
@@ -281,14 +281,14 @@ class AudioPlayerService {
     if (_currentSong == null) return;
     try {
       final state = <String, dynamic>{
-        'song': _currentSong!.filePath,
+        'song': _currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _fileNameKey(_currentSong!.filePath),
         'title': _currentSong!.title,
         'uploader': _currentSong!.uploader,
         'duration': _currentSong!.duration.inSeconds,
         'bvid': _currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _currentSong!.filePath.split('\\').last.split('/').last.split('.').first,
         'cover': _currentSong!.coverUrl ?? '',
         'position': _lastPosition.inMilliseconds,
-        'queue': _queue.map((s) => {'p': s.filePath, 't': s.title, 'u': s.uploader, 'c': s.coverUrl ?? ''}).toList(),
+        'queue': _queue.map((s) => s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)).toList(),
         'queue_index': _queueIndex,
       };
       File('save_state.json').writeAsStringSync(jsonEncode(state));
