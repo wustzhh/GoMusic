@@ -93,11 +93,33 @@ class BilibiliApi {
 
   /// 设置 B站 Cookie
   static String? cookie;
-  Map<String, String> get _headers => {
-        'User-Agent': _ua,
-        'Referer': 'https://www.bilibili.com/',
-        if (cookie != null && cookie!.isNotEmpty) 'Cookie': cookie!,
-      };
+  static String? _buvid3;
+
+  /// 获取 buvid3（B站匿名标识，缺失会导致 wbi/playurl 返回 412）
+  static Future<void> ensureBuvid3() async {
+    if (_buvid3 != null) return;
+    try {
+      final r = await http.get(
+        Uri.parse('https://www.bilibili.com/'),
+        headers: {'User-Agent': _ua},
+      );
+      final setCookies = r.headers['set-cookie'] ?? '';
+      final m = RegExp(r'buvid3=([^;]+)').firstMatch(setCookies);
+      if (m != null) _buvid3 = 'buvid3=${m.group(1)}';
+    } catch (_) {}
+  }
+
+  Map<String, String> get _headers {
+    var ck = cookie ?? '';
+    if (_buvid3 != null && _buvid3!.isNotEmpty) {
+      ck = ck.isEmpty ? _buvid3! : '$ck; $_buvid3';
+    }
+    return {
+      'User-Agent': _ua,
+      'Referer': 'https://www.bilibili.com/',
+      if (ck.isNotEmpty) 'Cookie': ck,
+    };
+  }
 
   static String? extractBvid(String url) {
     final m = RegExp(r'BV[a-zA-Z0-9]{10}').firstMatch(url);
@@ -201,10 +223,17 @@ class BilibiliApi {
         'qn': '127',       // 请求最高画质 (127=8K, 120=4K, 116=1080P60)
       });
 
-      final uri = Uri.parse('https://api.bilibili.com/x/player/wbi/playurl')
+      var uri = Uri.parse('https://api.bilibili.com/x/player/wbi/playurl')
           .replace(queryParameters: p);
 
-      final r = await http.get(uri, headers: _headers);
+      var r = await http.get(uri, headers: _headers);
+      // wbi 接口失败(412/403等)时降级到非 wbi 接口
+      if (r.statusCode != 200) {
+        final p2 = Map<String, String>.from(p)..remove('w_rid')..remove('wts');
+        uri = Uri.parse('https://api.bilibili.com/x/player/playurl')
+            .replace(queryParameters: p2);
+        r = await http.get(uri, headers: _headers);
+      }
       if (r.statusCode != 200) return;
 
       final d = jsonDecode(r.body);

@@ -14,6 +14,7 @@ void main() async {
   MediaKit.ensureInitialized();
   final service = await SettingsService.getInstance();
   BilibiliApi.cookie = await service.getBilibiliCookie();
+  await BilibiliApi.ensureBuvid3();
 
   // 恢复上次播放状态
   final audioService = AudioPlayerService();
