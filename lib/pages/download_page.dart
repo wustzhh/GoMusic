@@ -324,6 +324,8 @@ class _DownloadPageState extends State<DownloadPage> {
         _buildAlreadyBadge(),
       if (_coverMissing)
         _buildCoverMissingBadge(),
+      if (_videoMissing)
+        _buildVideoMissingBadge(),
       if (!_alreadyDownloaded && !_coverMissing) ...[
         if (info.videoStreams.length > 1) _buildQualityPicker(),
         const SizedBox(height: 12),
