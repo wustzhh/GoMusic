@@ -369,7 +369,7 @@ class StreamDownloader {
 
         final streamed = await request.send();
         try {
-          File('${saveFile.parent.path}/debug.log').writeAsStringSync('[$now] dl status=${streamed.statusCode} len=${streamed.contentLength} range=$existing part=${partFile.path}\n', mode: FileMode.append);
+          File('${saveFile.parent.path}/debug.log').writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] dl status=${streamed.statusCode} len=${streamed.contentLength} range=$existing part=${partFile.path}\n', mode: FileMode.append);
         } catch (_) {}
         if (streamed.statusCode == 416) {
           // Range 越界：缓存损坏，删除后从头重下

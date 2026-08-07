@@ -144,7 +144,7 @@ class SongManager {
   /// 扫描本地文件，返回 Song 列表
   static List<Song> scanLocalSongs() {
     try {
-      File('$_downloadDir/debug.log').writeAsStringSync('[$now] scan dir=$_downloadDir exists=${_downloadDir != null ? Directory(_downloadDir!).existsSync() : false}\n', mode: FileMode.append);
+      File('$_downloadDir/debug.log').writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] scan dir=$_downloadDir exists=${_downloadDir != null ? Directory(_downloadDir!).existsSync() : false}\n', mode: FileMode.append);
     } catch (_) {}
     if (_downloadDir == null) return [];
     final dir = Directory(_downloadDir!);
