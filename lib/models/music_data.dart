@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 歌曲数据模型
@@ -59,18 +60,48 @@ class Playlist {
 class SongManager {
   static String? _downloadDir;
 
+  /// 本地歌单的拖动排序（BV号列表）；未拖动过时按添加顺序（mtime 倒序）
+  static const _localOrderKey = 'local_playlist_order';
+
+  static Future<List<String>> getLocalOrder() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getStringList(_localOrderKey) ?? [];
+  }
+
+  static Future<void> saveLocalOrder(List<String> bvids) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setStringList(_localOrderKey, bvids);
+  }
+
   static Future<void> init(String dir) async {
     _downloadDir = dir;
   }
 
   static String get _mapPath => '$_downloadDir${Platform.pathSeparator}metadata_map.json';
 
-  /// 读取全部元数据
+  /// 归一化路径作为 map key：统一分隔符（Windows 反斜杠 / Android 正斜杠）+ 绝对路径。
+  /// 历史数据（下载时 `'$dir/$name.m4a'` 拼出混合分隔符）会导致与扫描路径 key 不匹配，
+  /// 标题查不到后回退成文件名（BV号）。
+  static String _normKey(String path) {
+    final norm = path.replaceAll('\\', Platform.pathSeparator).replaceAll('/', Platform.pathSeparator);
+    return File(norm).absolute.path;
+  }
+
+  /// 读取全部元数据（key 归一化，历史混合分隔符数据自动迁移）
   static Map<String, dynamic> _readMap() {
     final f = File(_mapPath);
     if (!f.existsSync()) return {};
     try {
-      return jsonDecode(f.readAsStringSync());
+      final raw = jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;
+      final normalized = <String, dynamic>{};
+      var changed = false;
+      raw.forEach((k, v) {
+        final nk = _normKey(k);
+        normalized[nk] = v;
+        if (nk != k) changed = true;
+      });
+      if (changed) File(_mapPath).writeAsStringSync(jsonEncode(normalized));
+      return normalized;
     } catch (_) {
       return {};
     }
@@ -93,7 +124,7 @@ class SongManager {
     String? videoPath,
   }) {
     final map = _readMap();
-    map[File(filePath).absolute.path] = {
+    map[_normKey(filePath)] = {
       'title': title,
       'uploader': uploader,
       'duration': durationSec,
@@ -108,7 +139,7 @@ class SongManager {
   /// 单独登记/更新视频路径（视频下载完成后调用）
   static void registerVideoPath(String filePath, String videoPath) {
     final map = _readMap();
-    final m = map[File(filePath).absolute.path] as Map<String, dynamic>?;
+    final m = map[_normKey(filePath)] as Map<String, dynamic>?;
     if (m != null) {
       m['videoPath'] = videoPath;
       _writeMap(map);
@@ -118,7 +149,7 @@ class SongManager {
   /// 播放时更新时长（唯一元数据文件）
   static void updateDuration(String filePath, int seconds) {
     final map = _readMap();
-    final m = map[File(filePath).absolute.path] as Map<String, dynamic>?;
+    final m = map[_normKey(filePath)] as Map<String, dynamic>?;
     if (m != null) {
       m['duration'] = seconds;
       _writeMap(map);
@@ -137,7 +168,7 @@ class SongManager {
   /// 删除歌曲登记
   static void unregisterSong(String filePath) {
     final map = _readMap();
-    map.remove(File(filePath).absolute.path);
+    map.remove(_normKey(filePath));
     _writeMap(map);
   }
 
@@ -157,7 +188,7 @@ class SongManager {
         final ext = f.path.split('.').last.toLowerCase();
         if (ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav') {
           // 从注册表中查元数据
-          final meta = map[f.absolute.path] as Map<String, dynamic>?;
+          final meta = map[_normKey(f.absolute.path)] as Map<String, dynamic>?;
           final title = meta?['title'] as String? ?? f.path.split(Platform.pathSeparator).last.split('.').first;
           final uploader = meta?['uploader'] as String? ?? '';
           final duration = Duration(seconds: meta?['duration'] as int? ?? 0);
@@ -350,6 +381,24 @@ class PlaylistService {
   }
 
   /// 从歌单移除歌曲（兼容旧数据 filePath 条目）
+  /// 重排歌单内歌曲顺序（按 BV号），持久化
+  static Future<void> reorderSongsInPlaylist(String pid, List<String> newBvids) async {
+    final p = await SharedPreferences.getInstance();
+    final list = p.getStringList(_key) ?? [];
+    for (var i = 0; i < list.length; i++) {
+      var parts = list[i].split('|||');
+      while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
+      while (parts.length < 4) parts.add('');
+      if (parts[0] == pid) {
+        parts[3] = jsonEncode(newBvids);
+        while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
+        list[i] = parts.join('|||');
+        await p.setStringList(_key, list);
+        return;
+      }
+    }
+  }
+
   static Future<void> removeSongFromPlaylist(String pid, String bvid) async {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
@@ -398,6 +447,13 @@ class SongGroupService {
   static const _key = 'song_groups';
   static List<SongGroup> _cache = [];
   static bool _loaded = false;
+
+  /// 重置缓存（仅测试用：重新读取 song_groups.json）
+  @visibleForTesting
+  static void resetForTest() {
+    _cache = [];
+    _loaded = false;
+  }
 
   static void _ensureLoaded() {
     if (_loaded) return;
@@ -491,10 +547,9 @@ class SongGroupService {
   static Song? nextInGroup(Song currentSong, List<Song> queue, {String? playlistId}) {
     _ensureLoaded();
     final group = groupOf(currentSong, playlistId: playlistId);
-    final currentFp = currentSong.filePath;
     final curKey = currentSong.bvid.isNotEmpty ? currentSong.bvid : currentSong.filePath.split("\\").last.split("/").last.split(".").first;
     if (group != null) {
-      final curIdx = group.songPaths.indexOf(currentFp);
+      final curIdx = group.songPaths.indexOf(curKey);
       if (group.shuffle) {
         if (group.songPaths.length > 1) {
           var n = curIdx;

@@ -14,7 +14,11 @@ class AudioPlayerService {
   static final _instance = AudioPlayerService._();
   factory AudioPlayerService() => _instance;
   AudioPlayerService._() {
-    _player.onPlayerComplete.listen((_) => _autoNext());
+    _player.onPlayerComplete.listen((_) {
+      // 播完：先复位播放状态，再触发自动切歌（防抖由 _autoNext 处理）
+      _playing = false;
+      _autoNext();
+    });
     WidgetsBinding.instance.addObserver(_AppObserver(_saveState));
     _player.onDurationChanged.listen((d) {
       if (d.inMilliseconds > 0 && _currentSong != null) {
@@ -23,7 +27,7 @@ class AudioPlayerService {
     });
     // 进度轮询
     int _saveCounter = 0;
-    Timer.periodic(const Duration(milliseconds: 500), (_) async {
+    _pollTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
       if (_currentSong != null && _playing) {
         final p = await _player.getCurrentPosition();
         if (p != null) { _lastPosition = p; _positionController.add(p); }
@@ -31,6 +35,15 @@ class AudioPlayerService {
         if (_saveCounter % 4 == 0) _saveState(); // 每2秒保存
       }
     });
+  }
+
+  Timer? _pollTimer;
+
+  /// 释放轮询定时器（仅测试用；正常生命周期跟随进程，无需调用）。
+  @visibleForTesting
+  void disposeForTest() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
   }
 
   final AudioPlayer _player = AudioPlayer();
@@ -61,16 +74,28 @@ class AudioPlayerService {
   // ==================== 播放 ====================
 
   Future<void> playSong(Song song, {bool forceRestart = false}) async {
+    // 队列为空时兜底：把当前歌设为单曲队列，保证播放列表始终有内容
+    if (_queue.isEmpty) {
+      _queue.add(song);
+      _queueIndex = 0;
+    }
     final idx = _queue.indexWhere((s) => (s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)) == (song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath)));
     if (idx >= 0) _queueIndex = idx;
     if (_currentSong?.filePath == song.filePath && !forceRestart) {
-      if (_playing) { _player.pause(); _playing = false; } else {
-        if (!_sourceLoaded) {
-          await _player.play(DeviceFileSource(song.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
-          _sourceLoaded = true;
-        } else {
-          await _player.play(DeviceFileSource(song.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
-        }
+      final st = _player.state;
+      if (_playing && st != PlayerState.completed && st != PlayerState.stopped) {
+        _player.pause();
+        _playing = false;
+      } else if (st == PlayerState.completed) {
+        // 真的播完了：从头播放当前歌
+        _lastPosition = Duration.zero;
+        await _player.play(DeviceFileSource(song.filePath));
+        _sourceLoaded = true;
+        _playing = true;
+      } else {
+        // 暂停中/初始未加载：从记录位置续播（含启动恢复场景）
+        await _player.play(DeviceFileSource(song.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
+        _sourceLoaded = true;
         _playing = true;
       }
       return;
@@ -101,7 +126,20 @@ class AudioPlayerService {
       _player.pause();
       _playing = false;
     } else {
+      final st = _player.state;
+      if (_currentSong != null && st == PlayerState.completed) {
+        // 真的播完了：从头重新播放当前歌
+        // （resume/seek 结尾会导致立刻 complete 误切歌）
+        _lastPosition = Duration.zero;
+        await _player.play(DeviceFileSource(_currentSong!.filePath));
+        _sourceLoaded = true;
+        _playing = true;
+        _saveState();
+        currentSongNotifier.notifyListeners();
+        return;
+      }
       if (!_sourceLoaded && _currentSong != null) {
+        // 初始未加载（含启动恢复场景）：带恢复进度播放
         await _player.play(DeviceFileSource(_currentSong!.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
         _sourceLoaded = true;
       } else {
@@ -117,7 +155,18 @@ class AudioPlayerService {
     currentSongNotifier.notifyListeners(); // 强制刷新UI
   }
 
-  void resume() { _player.resume(); _playing = true; }
+  void resume() {
+    if (_currentSong == null) return;
+    if (_player.state == PlayerState.completed || _player.state == PlayerState.stopped) {
+      // 已播完/已停止：从记录位置重新播放（如拖动进度条后）
+      _player.play(DeviceFileSource(_currentSong!.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
+      _sourceLoaded = true;
+      _playing = true;
+      return;
+    }
+    _player.resume();
+    _playing = true;
+  }
 
   Future<void> seek(Duration p) async {
     _lastPosition = p;
@@ -139,11 +188,18 @@ class AudioPlayerService {
   }
 
   /// 播放完成自动触发：单曲循环重播自己，否则切下一首
+  /// 防抖：Windows 端换源时旧源的 complete 事件可能滞后到达，1 秒内忽略重复触发
+  DateTime? _lastCompleteAt;
   Future<void> _autoNext() async {
     if (_queue.isEmpty) return;
+    final now = DateTime.now();
+    if (_lastCompleteAt != null && now.difference(_lastCompleteAt!) < const Duration(seconds: 1)) {
+      return;
+    }
+    _lastCompleteAt = now;
     if (_playMode == PlayMode.loopOne) {
-      await seek(Duration.zero);
-      if (!_playing) { _player.resume(); _playing = true; }
+      // 单曲循环：重新播放自己（Windows 端播完已 Stop，resume 无效，必须重新 play）
+      await playSong(_currentSong!, forceRestart: true);
       return;
     }
     await next();
@@ -151,17 +207,8 @@ class AudioPlayerService {
 
   Future<void> _next() async {
     if (_queue.isEmpty) return;
-    if (_playMode == PlayMode.shuffle) {
-      final curFp = _currentSong?.filePath;
-      if (curFp != null) {
-        final cur = _currentSong;
-        final ns = cur != null ? SongGroupService.nextInGroup(cur, _queue, playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId) : null;
-        if (ns != null) { await playSong(ns); return; }
-      }
-      _queueIndex = Random().nextInt(_queue.length);
-      await playSong(_queue[_queueIndex]);
-      return;
-    }
+    // 随机模式 = 队列在 setQueue/setPlayMode 时已整体随机化，
+    // 下一曲永远按随机后列表顺序取下一首（不重复随机）
     _queueIndex = (_queueIndex + 1) % _queue.length;
     await playSong(_queue[_queueIndex]);
   }
@@ -175,18 +222,35 @@ class AudioPlayerService {
   }
 
   // ==================== 队列 ====================
-  void setQueue(List<Song> s, {int startIndex = 0, String? playlistId}) {
+  void setQueue(List<Song> s, {int startIndex = 0, String? playlistId, bool keepOrder = false}) {
     if (playlistId != null) _currentPlaylistId = playlistId;
     final curKey = s.isNotEmpty && startIndex >= 0 && startIndex < s.length
         ? (s[startIndex].bvid.isNotEmpty ? s[startIndex].bvid : _fileNameKey(s[startIndex].filePath))
         : null;
     _queue.clear();
-    _queue.addAll(_playMode == PlayMode.shuffle ? _shuffleGroups(s) : _groupedQueue(s));
-    _queueIndex = _queue.isEmpty
-        ? 0
-        : (curKey != null
-            ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : _fileNameKey(x.filePath)) == curKey)
-            : startIndex.clamp(0, _queue.length - 1));
+    if (_playMode == PlayMode.shuffle) {
+      // 随机模式：先随机化整个列表，播放全部时从随机后第一首开始
+      _queue.addAll(_shuffleGroups(s));
+      // 播放全部（startIndex==0）：从随机后队列第一首开始；否则定位原歌曲在随机队列中的位置
+      _queueIndex = _queue.isEmpty
+          ? 0
+          : (startIndex == 0
+              ? 0
+              : (curKey != null
+                  ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : _fileNameKey(x.filePath)) == curKey)
+                  : startIndex.clamp(0, _queue.length - 1)));
+    } else if (keepOrder) {
+      // 播放全部：严格按列表顺序，不做组重排
+      _queue.addAll(List<Song>.from(s));
+      _queueIndex = _queue.isEmpty ? 0 : startIndex.clamp(0, _queue.length - 1);
+    } else {
+      _queue.addAll(_groupedQueue(s));
+      _queueIndex = _queue.isEmpty
+          ? 0
+          : (curKey != null
+              ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : _fileNameKey(x.filePath)) == curKey)
+              : startIndex.clamp(0, _queue.length - 1));
+    }
     if (_queueIndex < 0) _queueIndex = 0;
     currentSongNotifier.notifyListeners();
   }
@@ -296,6 +360,13 @@ class AudioPlayerService {
     _instance.favoritesChangedNotifier.value++;
   }
 
+  /// 重排收藏顺序（我喜欢歌单拖动排序后保存）
+  static Future<void> saveFavoritesOrder(List<String> bvids) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setStringList(_favKey, bvids);
+    _instance.favoritesChangedNotifier.value++;
+  }
+
   /// 文件名（不含扩展名）作为无BV号歌曲的键
   static String _fileNameKey(String fp) {
     final name = fp.split('\\').last.split('/').last;
@@ -325,6 +396,12 @@ class AudioPlayerService {
   Future<void> _saveMode() async { final p = await SharedPreferences.getInstance(); await p.setInt('play_mode', _playMode.index); }
   Future<Song?> restoreLastSong() async {
     try {
+      // 恢复播放模式：优先 SharedPreferences（setPlayMode 写入），兼容旧 save_state.json 的 mode 字段
+      final prefs = await SharedPreferences.getInstance();
+      final smPref = prefs.getInt('play_mode');
+      if (smPref != null && smPref >= 0 && smPref < PlayMode.values.length) {
+        _playMode = PlayMode.values[smPref];
+      }
       final f = File('save_state.json');
       if (!f.existsSync()) return null;
       final data = jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;

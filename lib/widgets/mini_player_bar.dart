@@ -75,7 +75,17 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage())),
+      onTap: () async {
+        // 当前无歌（"未在播放"状态）：先恢复上次进度；无记录则播队列第一首
+        if (_service.currentSong == null) {
+          await _service.restoreLastSong();
+          if (_service.currentSong == null && _service.queue.isNotEmpty) {
+            _service.playSong(_service.queue.first);
+          }
+        }
+        if (!context.mounted || _service.currentSong == null) return;
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage()));
+      },
       child: Container(
         height: 52,
         decoration: BoxDecoration(
@@ -230,6 +240,8 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
         : SongQueueList(
             queue: queue,
             currentIndex: p.queueIndex,
+            currentTitle: p.currentSong?.title,
+            currentBvid: p.currentSong?.bvid,
             playlistId: p.currentPlaylistId,
             onPlay: (s) { p.playSong(s); Navigator.pop(context); },
             onRemove: (i) { p.removeFromQueue(i); setState(() {}); },

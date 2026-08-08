@@ -8,16 +8,22 @@ class SettingsService {
   static const _keyBilibiliCookie = 'bilibili_cookie';
 
   static SettingsService? _instance;
+  static Future<SettingsService>? _instanceFuture;
   late SharedPreferences _prefs;
 
   SettingsService._();
 
-  static Future<SettingsService> getInstance() async {
-    if (_instance == null) {
-      _instance = SettingsService._();
-      _instance!._prefs = await SharedPreferences.getInstance();
-    }
-    return _instance!;
+  static Future<SettingsService> getInstance() {
+    // 用 Future 缓存避免并发竞态：多个调用同时进入时只初始化一次，
+    // 其余调用等待同一个 Future 完成后再取实例。
+    return _instanceFuture ??= _initInstance();
+  }
+
+  static Future<SettingsService> _initInstance() async {
+    final s = SettingsService._();
+    s._prefs = await SharedPreferences.getInstance();
+    _instance = s;
+    return s;
   }
 
   /// 获取默认下载路径（exe所在目录下的 downloads 文件夹）

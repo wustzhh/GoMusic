@@ -386,17 +386,6 @@ class _PlayerPageState extends State<PlayerPage> {
 
         Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
 
-          IconButton(
-            icon: Icon(_isFav ? Icons.favorite : Icons.favorite_border, size: 28, color: _isFav ? Colors.red : Colors.grey),
-            onPressed: () async {
-              if (_song == null) return;
-              await AudioPlayerService.toggleFavorite(_song!);
-              setState(() => _isFav = !_isFav);
-            },
-          ),
-
-          IconButton(icon: const Icon(Icons.queue_music, size: 28, color: Colors.grey), onPressed: _showQueue),
-
           GestureDetector(
             onTap: () {
               final modes = PlayMode.values;
@@ -410,6 +399,17 @@ class _PlayerPageState extends State<PlayerPage> {
               const Icon(Icons.swap_horiz, color: Colors.grey, size: 16),
             ]),
           ),
+
+          IconButton(
+            icon: Icon(_isFav ? Icons.favorite : Icons.favorite_border, size: 28, color: _isFav ? Colors.red : Colors.grey),
+            onPressed: () async {
+              if (_song == null) return;
+              await AudioPlayerService.toggleFavorite(_song!);
+              setState(() => _isFav = !_isFav);
+            },
+          ),
+
+          IconButton(icon: const Icon(Icons.queue_music, size: 28, color: Colors.grey), onPressed: _showQueue),
 
         ]),
 
@@ -570,6 +570,8 @@ class _QueueSheetState extends State<_QueueSheet> {
         : SongQueueList(
             queue: queue,
             currentIndex: p.queueIndex,
+            currentTitle: p.currentSong?.title,
+            currentBvid: p.currentSong?.bvid,
             playlistId: p.currentPlaylistId,
             onPlay: (s) { p.playSong(s); Navigator.pop(context); },
             onRemove: (i) { p.removeFromQueue(i); setState(() {}); },

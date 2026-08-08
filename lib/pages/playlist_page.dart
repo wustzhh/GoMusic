@@ -44,6 +44,25 @@ class PlaylistPageState extends State<PlaylistPage> {
         .cast<Song>()
         .toList();
     var customPls = await PlaylistService.getPlaylists();
+    // 本地歌单：拖动过则应用拖动顺序；否则按添加顺序（mtime 倒序，最后添加的放最上面）
+    final localOrder = await SongManager.getLocalOrder();
+    List<Song> localList;
+    if (localOrder.isNotEmpty) {
+      final byKey = {for (final s in localSongs) _fileNameKey(s): s};
+      final ordered = <Song>[];
+      for (final k in localOrder) {
+        final s = byKey[k];
+        if (s != null) { ordered.add(s); byKey.remove(k); }
+      }
+      ordered.addAll(byKey.values);
+      localList = ordered;
+    } else {
+      localList = List.from(localSongs)..sort((a, b) {
+        final ma = _mtimeOf(a.filePath);
+        final mb = _mtimeOf(b.filePath);
+        return mb.compareTo(ma);
+      });
+    }
     // 补全自定义歌单歌曲信息（标题/封面，用BV号匹配本地对照表）
     for (var i = 0; i < customPls.length; i++) {
       final pl = customPls[i];
@@ -62,13 +81,23 @@ class PlaylistPageState extends State<PlaylistPage> {
       _playlists = [
         Playlist(id: 'fav', name: '我喜欢', icon: '❤️', songs: favSongs),
         ...customPls,
-        Playlist(id: 'local', name: '本地歌单', icon: '📁', songs: List.from(localSongs)..sort((a,b) => a.title.compareTo(b.title))),
+        Playlist(id: 'local', name: '本地歌单', icon: '📁', songs: localList),
         Playlist(id: 'recent', name: '最近播放', icon: '🕐', songs: recentSongs),
       ];
       _loaded = true;
     });
   }
 
+
+  /// 文件修改时间（不存在返回 epoch）
+  DateTime _mtimeOf(String path) {
+    try {
+      final f = File(path);
+      return f.existsSync() ? f.statSync().modified : DateTime.fromMillisecondsSinceEpoch(0);
+    } catch (_) {
+      return DateTime.fromMillisecondsSinceEpoch(0);
+    }
+  }
 
   String _fileNameKey(Song s) {
     if (s.bvid.isNotEmpty) return s.bvid;
