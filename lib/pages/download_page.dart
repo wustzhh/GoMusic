@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import '../services/bilibili_api.dart';
+import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
 import '../widgets/top_toast.dart';
 import '../models/music_data.dart';
@@ -229,20 +230,29 @@ class _DownloadPageState extends State<DownloadPage> {
     var videoOk = true;
     if (_downloadVideo) {
       if (_selectedStream?.baseUrl != null) {
-        _downloadingSize = _selectedStream!.size;
-        var lastUi2 = DateTime.now();
-        videoOk = await StreamDownloader.download(
-          url: _selectedStream!.baseUrl!, savePath: '$dir/$name.mp4',
-          onProgress: (p) {
-            final now = DateTime.now();
-            if (mounted && now.difference(lastUi2).inMilliseconds >= 400) {
-              lastUi2 = now;
-              setState(() => _downloadProgress = 0.5 + p * 0.5);
-            }
-          },
-          cancel: _cancelNotifier,
-          expectedSize: _selectedStream!.size > 0 ? _selectedStream!.size : null,
-        );
+        final audioFile = File('$dir/$name.m4a');
+        // durl 合并流场景：音频流 URL 与视频流相同（MP4 自带音轨），直接拷贝避免重复下载
+        if (info.audioUrl != null && _selectedStream!.baseUrl == info.audioUrl && audioFile.existsSync()) {
+          try {
+            audioFile.copySync('$dir/$name.mp4');
+            videoOk = true;
+          } catch (_) { videoOk = false; }
+        } else {
+          _downloadingSize = _selectedStream!.size;
+          var lastUi2 = DateTime.now();
+          videoOk = await StreamDownloader.download(
+            url: _selectedStream!.baseUrl!, savePath: '$dir/$name.mp4',
+            onProgress: (p) {
+              final now = DateTime.now();
+              if (mounted && now.difference(lastUi2).inMilliseconds >= 400) {
+                lastUi2 = now;
+                setState(() => _downloadProgress = 0.5 + p * 0.5);
+              }
+            },
+            cancel: _cancelNotifier,
+            expectedSize: _selectedStream!.size > 0 ? _selectedStream!.size : null,
+          );
+        }
       } else {
         videoOk = false;
       }
@@ -276,6 +286,8 @@ class _DownloadPageState extends State<DownloadPage> {
         _downloadProgress = 1.0;
         _downloadingTitle = '';
       });
+      // 通知主界面刷新（下载完成后本地歌单/历史记录立即更新）
+      AudioPlayerService().favoritesChangedNotifier.value++;
     }
     if (Platform.isAndroid) FlutterForegroundTask.stopService();
     await _checkSingleExists(info);
@@ -314,15 +326,24 @@ class _DownloadPageState extends State<DownloadPage> {
           onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
         );
       }
-      // 视频（勾选才下载，取最高画质）
+      // 视频（勾选才下载）
       var videoOk = true;
       if (_downloadVideo && full.videoStreams.isNotEmpty) {
         final best = full.videoStreams.first;
-        videoOk = await StreamDownloader.download(
-          url: best.baseUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
-          expectedSize: best.size > 0 ? best.size : null,
-          onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
-        );
+        final audioFile = File('${_downloadDir}/${item.name}.m4a');
+        // durl 合并流场景：视频流 URL 与音频流相同，直接拷贝避免重复下载
+        if (full.audioUrl != null && best.baseUrl == full.audioUrl && audioFile.existsSync()) {
+          try {
+            audioFile.copySync('${_downloadDir}/${item.name}.mp4');
+            videoOk = true;
+          } catch (_) { videoOk = false; }
+        } else {
+          videoOk = await StreamDownloader.download(
+            url: best.baseUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
+            expectedSize: best.size > 0 ? best.size : null,
+            onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
+          );
+        }
       }
 
       final ok = audioOk && videoOk;
@@ -345,6 +366,8 @@ class _DownloadPageState extends State<DownloadPage> {
 
     if (!mounted) return;
     setState(() => _isDownloading = false);
+    // 通知主界面刷新（下载完成后本地歌单/历史记录立即更新）
+    AudioPlayerService().favoritesChangedNotifier.value++;
     _snack('批量下载完成: $_batchDone/$_batchTotal');
   }
 

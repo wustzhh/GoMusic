@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// 单个视频流（一种画质）
@@ -215,34 +214,69 @@ class BilibiliApi {
     }
   }
 
-  Future<void> _fetchStreams(BilibiliVideoInfo info) async {
-    if (info.cid == 0) return;
+  /// 请求播放地址（wbi 接口失败时降级到非 wbi），返回解析后的 JSON
+  Future<Map<String, dynamic>?> _playUrl(Map<String, String> params) async {
     try {
-      final p = await _signed({
-        'bvid': info.bvid,
-        'cid': info.cid.toString(),
-        'fnver': '0',
-        'fnval': '4048',  // DASH + HDR + 杜比 + 4K
-        'fourk': '1',
-        'qn': '127',       // 请求最高画质 (127=8K, 120=4K, 116=1080P60)
-      });
-
+      final p = await _signed(params);
       var uri = Uri.parse('https://api.bilibili.com/x/player/wbi/playurl')
           .replace(queryParameters: p);
-
       var r = await http.get(uri, headers: _headers);
-      // wbi 接口失败(412/403等)时降级到非 wbi 接口
       if (r.statusCode != 200) {
         final p2 = Map<String, String>.from(p)..remove('w_rid')..remove('wts');
         uri = Uri.parse('https://api.bilibili.com/x/player/playurl')
             .replace(queryParameters: p2);
         r = await http.get(uri, headers: _headers);
       }
-      if (r.statusCode != 200) return;
-
+      if (r.statusCode != 200) return null;
       final d = jsonDecode(r.body);
-      if (d['code'] != 0) return;
+      if (d['code'] != 0) return null;
+      return d;
+    } catch (_) {
+      return null;
+    }
+  }
 
+  Future<void> _fetchStreams(BilibiliVideoInfo info) async {
+    if (info.cid == 0) return;
+    try {
+      // 第一次请求：fnval=1 → durl 合并流（MP4 自带音轨，视频有声）
+      final base = {
+        'bvid': info.bvid,
+        'cid': info.cid.toString(),
+        'fnver': '0',
+        'fnval': '1',
+        'fourk': '1',
+        'qn': '127',
+      };
+      var d = await _playUrl(base);
+      if (d != null) {
+        final durls = (d['data']['durl'] as List?) ?? [];
+        if (durls.isNotEmpty) {
+          final u = (durls.first['url'] as String? ?? '').replaceAll('http:', 'https:');
+          if (u.isNotEmpty) {
+            // durl 合并流：音频与视频是同一个带音轨文件
+            info.audioUrl = u;
+            info.audioSize = (durls.first['size'] as int?) ?? 0;
+            info.videoStreams = [
+              VideoStream(
+                id: 0,
+                bandwidth: (durls.first['size'] as int?) ?? 0,
+                width: (durls.first['width'] as int?) ?? 0,
+                height: (durls.first['height'] as int?) ?? 0,
+                codecs: '',
+                baseUrl: u,
+                size: (durls.first['size'] as int?) ?? 0,
+              ),
+            ];
+            return;
+          }
+        }
+      }
+
+      // 降级：fnval=4048 → DASH 分离流（音频小体积；视频纯画面无声，仅 durl 不可用时兜底）
+      final p2 = Map<String, String>.from(base)..['fnval'] = '4048';
+      d = await _playUrl(p2);
+      if (d == null) return;
       final dash = d['data']['dash'];
       if (dash == null) return;
 

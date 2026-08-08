@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../models/music_data.dart';
+import '../services/audio_player_service.dart';
 
 /// 视频播放器：播放/暂停/进度/倍速/全屏
 class VideoPlayerPage extends StatefulWidget {
@@ -43,6 +44,34 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     await _player.setRate(_speed);
   }
 
+  /// 删除本地视频文件并返回
+  void _confirmDeleteVideo(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除视频'),
+        content: Text('确定要删除「${widget.song.title}」的视频文件吗？\n音频保留。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () {
+            Navigator.pop(ctx);
+            try {
+              final vp = widget.song.videoPath;
+              if (vp != null && vp.isNotEmpty) {
+                final f = File(vp);
+                if (f.existsSync()) f.deleteSync();
+              }
+              SongManager.registerVideoPath(widget.song.filePath, '');
+            } catch (_) {}
+            // 通知主界面刷新并返回
+            AudioPlayerService().favoritesChangedNotifier.value++;
+            if (Navigator.canPop(context)) Navigator.pop(context);
+          }, child: const Text('删除', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _posSub?.cancel();
@@ -57,6 +86,20 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(widget.song.title, style: const TextStyle(fontSize: 15)), centerTitle: true, actions: [
+        // ⋮ 菜单：删除本地视频文件
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, size: 20),
+          onSelected: (v) {
+            if (v == 'delete') _confirmDeleteVideo(context);
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'delete', child: Row(children: [
+              Icon(Icons.delete_outline, color: Colors.red, size: 18),
+              SizedBox(width: 8),
+              Text('删除视频', style: TextStyle(color: Colors.red)),
+            ])),
+          ],
+        ),
         IconButton(icon: const Icon(Icons.fullscreen, size: 20), tooltip: '', onPressed: () => setState(() => _fullscreen = !_fullscreen)),
       ]),
       body: Column(children: [

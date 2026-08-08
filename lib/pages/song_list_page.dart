@@ -5,6 +5,7 @@ import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
 import 'player_page.dart';
+import 'video_detail_page.dart';
 import '../widgets/song_queue_list.dart';
 
 class SongListPage extends StatefulWidget {
@@ -251,6 +252,12 @@ class _SongListPageState extends State<SongListPage> {
             onTap: () { Navigator.pop(ctx); AudioPlayerService.toggleFavorite(song); _loadFavs(); }),
           ListTile(leading: const Icon(Icons.playlist_add), title: const Text('添加到歌单...'),
             onTap: () { Navigator.pop(ctx); _showAddToList(song); }),
+          if (song.hasVideo && song.videoPath != null && song.videoPath!.isNotEmpty)
+            ListTile(leading: const Icon(Icons.videocam_off_outlined, color: Colors.orange), title: const Text('删除视频', style: TextStyle(color: Colors.orange)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDeleteVideo(song);
+              }),
           ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('删除歌曲', style: TextStyle(color: Colors.red)),
             onTap: () {
               Navigator.pop(ctx);
@@ -272,6 +279,32 @@ class _SongListPageState extends State<SongListPage> {
           TextButton(onPressed: () {
             Navigator.pop(ctx);
             _deleteSong(song);
+          }, child: const Text('删除', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+  }
+
+  /// 单独删除视频文件（保留音频）
+  void _confirmDeleteVideo(Song song) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除视频'),
+        content: Text('确定要删除「${song.title}」的视频文件吗？\n音频保留。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () {
+            Navigator.pop(ctx);
+            try {
+              if (song.videoPath != null && song.videoPath!.isNotEmpty) {
+                final f = File(song.videoPath!);
+                if (f.existsSync()) f.deleteSync();
+              }
+              SongManager.registerVideoPath(song.filePath, '');
+            } catch (_) {}
+            _refresh();
+            setState(() {});
           }, child: const Text('删除', style: TextStyle(color: Colors.red))),
         ],
       ),
@@ -576,17 +609,31 @@ class _SongListPageState extends State<SongListPage> {
                       ),
                     )
                   : null)
-              : SizedBox(
-              width: 32, height: 32,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(4),
-                  onTap: () => _showSongMenu(song, isFav),
-                  child: const Icon(Icons.more_vert, color: Colors.grey, size: 20),
-                ),
-              ),
-            ),
+              : Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (song.hasVideo)
+                    SizedBox(
+                      width: 32, height: 32,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(4),
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => VideoDetailPage(song: song))),
+                          child: const Icon(Icons.ondemand_video, color: Colors.grey, size: 20),
+                        ),
+                      ),
+                    ),
+                  SizedBox(
+                    width: 32, height: 32,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(4),
+                        onTap: () => _showSongMenu(song, isFav),
+                        child: const Icon(Icons.more_vert, color: Colors.grey, size: 20),
+                      ),
+                    ),
+                  ),
+                ]),
           ),
         ),
       ),
