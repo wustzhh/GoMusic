@@ -9,6 +9,8 @@ import 'package:gomusic/pages/song_list_page.dart';
 import 'package:gomusic/services/audio_player_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'fakes.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -29,6 +31,7 @@ void main() {
     _tmpDir = Directory.systemTemp.createTempSync('gomusic_drag_');
     Directory.current = _tmpDir;
     SharedPreferences.setMockInitialValues({});
+    injectFakePlayer();
     File('song_groups.json').writeAsStringSync(jsonEncode([]));
     SongGroupService.resetForTest();
   });

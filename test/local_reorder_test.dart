@@ -11,6 +11,8 @@ import 'package:gomusic/services/audio_player_service.dart';
 import 'package:gomusic/services/settings_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'fakes.dart';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -23,6 +25,7 @@ void main() {
     _tmpDir = Directory.systemTemp.createTempSync('gomusic_localre_');
     Directory.current = _tmpDir;
     SharedPreferences.setMockInitialValues({});
+    injectFakePlayer();
     // 音乐目录：本地歌单的下载目录
     _musicDir = Directory('${_tmpDir.path}/music')..createSync(recursive: true);
     // 写入测试歌曲文件（内容非空）

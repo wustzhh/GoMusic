@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import '../models/music_data.dart';
+import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
 import 'video_player_page.dart';
 
@@ -82,9 +83,30 @@ class _VideoPageState extends State<VideoPage> {
                     leading: _cover(v),
                     title: Text(v.title, style: const TextStyle(fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
                     subtitle: Text(v.uploader, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                    trailing: const Icon(Icons.play_circle_outline, color: Colors.deepPurple),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(
+                        icon: const Icon(Icons.play_circle_outline, color: Colors.deepPurple),
+                        onPressed: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => VideoPlayerPage(song: v, videos: _videos, initialIndex: i)));
+                        },
+                      ),
+                      // 竖着的 ⋮ 菜单
+                      PopupMenuButton<String>(
+                        icon: const Icon(Icons.more_vert, color: Colors.grey, size: 20),
+                        onSelected: (val) {
+                          if (val == 'delete') _confirmDeleteVideo(v);
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(value: 'delete', child: Row(children: [
+                            Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                            SizedBox(width: 8),
+                            Text('删除视频', style: TextStyle(color: Colors.red)),
+                          ])),
+                        ],
+                      ),
+                    ]),
                     onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => VideoPlayerPage(song: v)));
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => VideoPlayerPage(song: v, videos: _videos, initialIndex: i)));
                     },
                   ),
                 );
@@ -93,8 +115,33 @@ class _VideoPageState extends State<VideoPage> {
     );
   }
 
-  Widget _cover(Song s) {
-    if (s.coverUrl != null && s.coverUrl!.isNotEmpty) {
+  /// 删除视频文件（保留音频）
+  void _confirmDeleteVideo(Song song) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除视频'),
+        content: Text('确定要删除「${song.title}」的视频文件吗？\n音频保留。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () {
+            Navigator.pop(ctx);
+            try {
+              final f = File(song.filePath);
+              if (f.existsSync()) f.deleteSync();
+              // 清除对应音频的视频关联
+              final audioPath = song.filePath.replaceAll('.mp4', '.m4a');
+              SongManager.registerVideoPath(audioPath, '');
+            } catch (_) {}
+            AudioPlayerService().favoritesChangedNotifier.value++;
+            _load();
+          }, child: const Text('删除', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+  }
+
+  Widget _cover(Song s) {    if (s.coverUrl != null && s.coverUrl!.isNotEmpty) {
       final f = File(s.coverUrl!);
       if (f.existsSync() && f.lengthSync() > 0) {
         return ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(f, width: 44, height: 44, fit: BoxFit.cover));

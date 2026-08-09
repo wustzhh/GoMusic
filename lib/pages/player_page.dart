@@ -4,8 +4,6 @@ import 'dart:io';
 
 import 'dart:math';
 
-import 'package:audioplayers/audioplayers.dart';
-
 import 'package:flutter/material.dart';
 
 import '../models/music_data.dart';
@@ -13,7 +11,6 @@ import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
 
 import 'video_detail_page.dart';
-import '../widgets/song_queue_list.dart';
 import '../widgets/song_queue_list.dart';
 
 

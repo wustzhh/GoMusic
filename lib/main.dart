@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:window_manager/window_manager.dart';
 import 'pages/download_page.dart';
 import 'pages/playlist_page.dart';
 import 'pages/settings_page.dart';
@@ -12,6 +13,8 @@ import 'widgets/mini_player_bar.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  // 初始化窗口管理（Windows 全屏支持）
+  await windowManager.ensureInitialized();
   final service = await SettingsService.getInstance();
   BilibiliApi.cookie = await service.getBilibiliCookie();
   await BilibiliApi.ensureBuvid3();

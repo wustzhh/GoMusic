@@ -1,11 +1,13 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gomusic/models/music_data.dart';
 import 'package:gomusic/services/audio_player_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'fakes.dart';
 
 Song _song(String bvid, String title) => Song(
       id: bvid,
@@ -30,11 +32,8 @@ void main() {
     Directory.current = _tmpDir;
 
     SharedPreferences.setMockInitialValues({});
-    // mock audioplayers 平台通道，避免测试环境 MissingPluginException
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(const MethodChannel('xyz.luan/audioplayers'), (call) async => null);
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(const MethodChannel('xyz.luan/audioplayers.global'), (call) async => null);
+    // 注入假播放内核：测试环境无法加载 libmpv（media_kit 用 FFI）
+    injectFakePlayer();
   });
 
   tearDown(() {
@@ -87,9 +86,9 @@ void main() {
     expect(svc.queue.map((s) => s.bvid).toList(), shuffled1.map((s) => s.bvid).toList());
   });
 
-  test('restoreLastSong 恢复位置，启动后不因 stopped 状态清零（回归）', () async {
+  test('restoreLastSong 不恢复音频进度（从头播放，回归）', () async {
     final svc = AudioPlayerService();
-    // 构造 save_state.json：position=125秒
+    // 构造 save_state.json：position=125秒（旧数据）
     final f = File('save_state.json');
     f.writeAsStringSync(jsonEncode({
       'song': 'C:/x/BV1.m4a', 'title': '歌1', 'uploader': 'u',
@@ -99,8 +98,8 @@ void main() {
     final restored = await svc.restoreLastSong();
     expect(restored, isNotNull);
     expect(restored!.bvid, 'BV1');
-    // 恢复的位置保留（125秒），不会因初始 stopped 状态被清零
-    expect(svc.currentPosition.inMilliseconds, 125000);
+    // 音频不记录/恢复进度：无论旧数据是什么，恢复后位置为 0（从头播）
+    expect(svc.currentPosition.inMilliseconds, 0);
     // 清理测试文件
     try { f.deleteSync(); } catch (_) {}
     try { File('song_groups.json').deleteSync(); } catch (_) {}

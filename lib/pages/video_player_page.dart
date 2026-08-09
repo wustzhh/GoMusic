@@ -2,15 +2,22 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:window_manager/window_manager.dart';
 import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
 
-/// 视频播放器：播放/暂停/进度/倍速/全屏
+/// 视频播放器：播放/暂停/进度/倍速/横屏(全屏)/锁定(沉浸式)/上一个下一个
+/// 与音频互斥：打开视频时暂停音频，退出后恢复
 class VideoPlayerPage extends StatefulWidget {
   final Song song;
-  const VideoPlayerPage({super.key, required this.song});
+  /// 可选：视频列表（用于上一个/下一个），需同时提供 initialIndex
+  final List<Song>? videos;
+  final int? initialIndex;
+  const VideoPlayerPage({super.key, required this.song, this.videos, this.initialIndex});
   @override
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
 }
@@ -23,151 +30,364 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   Duration _duration = Duration.zero;
   bool _playing = false;
   double _speed = 1.0;
-  bool _fullscreen = false;
+  late int _currentIndex;
+  // UI 状态
+  bool _controlsVisible = true;  // 控制栏是否显示
+  bool _fullscreen = false;      // 横屏/全屏
+  bool _locked = false;          // 锁定（沉浸式全屏）
+  Timer? _uiTimer;               // UI 自动隐藏定时器
+  Timer? _unlockHintTimer;       // 解锁按钮显示 5 秒定时器
+  Timer? _saveTimer;             // 视频进度保存定时器
+  bool _showUnlockHint = false;  // 锁定状态下是否显示解锁按钮
+
+  Song get _song => (widget.videos != null && widget.videos!.isNotEmpty)
+      ? widget.videos![_currentIndex.clamp(0, widget.videos!.length - 1)]
+      : widget.song;
+
+  /// 视频进度存储 key（单独存储，与音频进度分开）
+  String get _progressKey => 'video_progress_${_song.bvid.isNotEmpty ? _song.bvid : _song.filePath.split('\\').last.split('/').last.split('.').first}';
 
   @override
   void initState() {
     super.initState();
+    _currentIndex = (widget.initialIndex ?? 0).clamp(0, (widget.videos?.length ?? 1) - 1);
     _controller = VideoController(_player);
-    _playingSub = _player.stream.playing.listen((p) { if (mounted) setState(() => _playing = p); });
-    _posSub = _player.stream.position.listen((p) { if (mounted) setState(() => _position = p); });
+    _playingSub = _player.stream.playing.listen((p) {
+      if (mounted) setState(() => _playing = p);
+    });
+    _posSub = _player.stream.position.listen((p) {
+      if (mounted) setState(() => _position = p);
+    });
     _durSub = _player.stream.duration.listen((d) { if (mounted) setState(() => _duration = d); });
-    _completeSub = _player.stream.completed.listen((_) { if (mounted) setState(() => _playing = false); });
+    _completeSub = _player.stream.completed.listen((_) {
+      if (mounted) setState(() => _playing = false);
+      // 播完清除进度，下次从头
+      _saveProgress(Duration.zero);
+    });
     _open();
+    _scheduleHide();
+    // 与音频互斥：打开视频时若音频在播放则暂停（退出时恢复）
+    _audioWasPlaying = AudioPlayerService().isPlaying;
+    if (_audioWasPlaying) {
+      AudioPlayerService().togglePause(); // isPlaying==true → 暂停
+    }
+    // 每 3 秒保存一次播放进度（seek 完成前跳过，避免 0 覆盖已存进度）
+    _saveTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!_seekDone) return;
+      _saveProgress(_position);
+    });
   }
+
+  // 打开视频前音频是否在播放（退出时恢复）
+  bool _audioWasPlaying = false;
+
+  // 是否已完成恢复 seek（避免在 seek 前用 0 覆盖已存进度）
+  bool _seekDone = false;
 
   Future<void> _open() async {
-    final path = widget.song.videoPath ?? widget.song.filePath;
+    final path = _song.videoPath ?? _song.filePath;
     final f = File(path);
     if (!f.existsSync()) return;
+    // 先读进度，再打开媒体
+    final saved = await _loadProgress();
+    _seekDone = false;
     await _player.open(Media(f.path));
     await _player.setRate(_speed);
+    if (saved != null && saved.inMilliseconds > 0) {
+      // 等媒体真正就绪（duration>0）后再 seek，否则 seek 会被忽略
+      await _waitReady();
+      await _player.seek(saved);
+      if (mounted) setState(() => _position = saved);
+    }
+    _seekDone = true;
   }
 
-  /// 删除本地视频文件并返回
-  void _confirmDeleteVideo(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除视频'),
-        content: Text('确定要删除「${widget.song.title}」的视频文件吗？\n音频保留。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          TextButton(onPressed: () {
-            Navigator.pop(ctx);
-            try {
-              final vp = widget.song.videoPath;
-              if (vp != null && vp.isNotEmpty) {
-                final f = File(vp);
-                if (f.existsSync()) f.deleteSync();
-              }
-              SongManager.registerVideoPath(widget.song.filePath, '');
-            } catch (_) {}
-            // 通知主界面刷新并返回
-            AudioPlayerService().favoritesChangedNotifier.value++;
-            if (Navigator.canPop(context)) Navigator.pop(context);
-          }, child: const Text('删除', style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
+  /// 等待媒体就绪（duration 出现），最多 15 秒
+  Future<void> _waitReady() async {
+    if (_duration.inMilliseconds > 0) return;
+    final completer = Completer<void>();
+    StreamSubscription<Duration>? sub;
+    sub = _player.stream.duration.listen((d) {
+      if (d.inMilliseconds > 0 && !completer.isCompleted) {
+        sub?.cancel();
+        completer.complete();
+      }
+    });
+    Timer(const Duration(seconds: 15), () {
+      sub?.cancel();
+      if (!completer.isCompleted) completer.complete();
+    });
+    await completer.future;
+  }
+
+  /// 读取视频进度（毫秒）
+  Future<Duration?> _loadProgress() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final ms = p.getInt(_progressKey);
+      return ms != null ? Duration(milliseconds: ms) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 保存视频进度
+  Future<void> _saveProgress(Duration pos) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setInt(_progressKey, pos.inMilliseconds);
+    } catch (_) {}
+  }
+
+  /// 切换视频（上一个/下一个）
+  Future<void> _switchTo(int index) async {
+    final len = widget.videos?.length ?? 1;
+    if (len <= 1) return;
+    // 保存当前视频进度
+    await _saveProgress(_position);
+    _currentIndex = (index + len) % len;
+    setState(() { _position = Duration.zero; _duration = Duration.zero; });
+    await _open();
+  }
+
+  /// 隐藏控制 UI（用于自动隐藏）
+  void _scheduleHide() {
+    _uiTimer?.cancel();
+    _uiTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && !_locked) setState(() => _controlsVisible = false);
+    });
+  }
+
+  /// 点击画面：锁定 → 显示解锁按钮5秒；未锁定 → 切换控制栏显隐
+  void _onTapVideo() {
+    if (_locked) {
+      setState(() => _showUnlockHint = true);
+      _unlockHintTimer?.cancel();
+      _unlockHintTimer = Timer(const Duration(seconds: 5), () {
+        if (mounted) setState(() => _showUnlockHint = false);
+      });
+      return;
+    }
+    setState(() => _controlsVisible = !_controlsVisible);
+    if (_controlsVisible) _scheduleHide();
+  }
+
+  /// 进入/退出横屏全屏
+  Future<void> _toggleFullscreen() async {
+    setState(() => _fullscreen = !_fullscreen);
+    if (_fullscreen) {
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        await windowManager.setFullScreen(true);
+      } else {
+        await SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      }
+    } else {
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        await windowManager.setFullScreen(false);
+      } else {
+        await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      }
+    }
+    setState(() {});
+  }
+
+  /// 进入/退出锁定（锁定 = 全屏 + 隐藏所有 UI）
+  Future<void> _toggleLock() async {
+    final entering = !_locked;
+    setState(() {
+      _locked = entering;
+      _showUnlockHint = false;
+      _controlsVisible = !entering;
+    });
+    if (entering) {
+      if (!_fullscreen) {
+        setState(() => _fullscreen = true);
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+          await windowManager.setFullScreen(true);
+        } else {
+          await SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+          await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        }
+      }
+    } else {
+      if (_fullscreen) {
+        setState(() => _fullscreen = false);
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+          await windowManager.setFullScreen(false);
+        } else {
+          await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+          await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        }
+      }
+      _scheduleHide();
+    }
   }
 
   @override
   void dispose() {
+    // 保存最终播放进度（seek 未完成时跳过，避免覆盖已存进度）
+    if (_seekDone) _saveProgress(_position);
     _posSub?.cancel();
     _durSub?.cancel();
     _playingSub?.cancel();
     _completeSub?.cancel();
+    _uiTimer?.cancel();
+    _unlockHintTimer?.cancel();
+    _saveTimer?.cancel();
     _player.dispose();
+    // 与音频互斥：退出视频时恢复之前暂停的音频
+    if (_audioWasPlaying) {
+      AudioPlayerService().resume();
+    }
+    // 退出时恢复竖屏/退出全屏
+    if (_fullscreen) {
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        windowManager.setFullScreen(false);
+      } else {
+        SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      }
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // 锁定态：全屏沉浸式，无 AppBar/无控制栏，只有解锁提示按钮
+    if (_locked) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(children: [
+          Positioned.fill(child: _videoView()),
+          // 透明点击层（在 Video 上层，确保点击屏幕被捕获）
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _onTapVideo,
+              child: const SizedBox.expand(),
+            ),
+          ),
+          // 解锁按钮提示（点击屏幕后显示5秒；位置与右上角锁定按钮一致）
+          if (_showUnlockHint)
+            Positioned(
+              top: 12,
+              right: 8,
+              child: IconButton(
+                icon: const Icon(Icons.lock_open, color: Colors.white, size: 24),
+                onPressed: _toggleLock,
+              ),
+            ),
+        ]),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: Text(widget.song.title, style: const TextStyle(fontSize: 15)), centerTitle: true, actions: [
-        // ⋮ 菜单：删除本地视频文件
-        PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert, size: 20),
-          onSelected: (v) {
-            if (v == 'delete') _confirmDeleteVideo(context);
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'delete', child: Row(children: [
-              Icon(Icons.delete_outline, color: Colors.red, size: 18),
-              SizedBox(width: 8),
-              Text('删除视频', style: TextStyle(color: Colors.red)),
-            ])),
-          ],
-        ),
-        IconButton(icon: const Icon(Icons.fullscreen, size: 20), tooltip: '', onPressed: () => setState(() => _fullscreen = !_fullscreen)),
+      appBar: AppBar(title: Text(_song.title, style: const TextStyle(fontSize: 15)), centerTitle: true, actions: [
+        IconButton(icon: const Icon(Icons.fullscreen, size: 20), onPressed: _toggleFullscreen),
+        IconButton(icon: const Icon(Icons.lock, size: 20), onPressed: _toggleLock),
       ]),
-      body: Column(children: [
-        Expanded(
-          child: Stack(children: [
-            Center(
-              child: _controller == null
-                  ? const CircularProgressIndicator()
-                  : Video(
-                      controller: _controller!,
-                      controls: NoVideoControls,
-                      wakelock: false,
-                    ),
-            ),
-            // 点击切换播放/暂停
-            Center(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {
-                  if (_playing) { _player.pause(); } else { _player.play(); }
-                },
-                child: Icon(
-                  _playing ? Icons.pause_circle : Icons.play_circle,
-                  size: 64,
-                  color: Colors.white.withValues(alpha: 0.7),
-                ),
+      body: Stack(children: [
+        // 视频画面（始终显示）
+        Positioned.fill(child: _videoView()),
+        // 透明点击层（在 Video 上层，点击画面切换控制栏显隐）
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _onTapVideo,
+            child: const SizedBox.expand(),
+          ),
+        ),
+        // 中央播放/暂停图标：仅控制栏可见且暂停时显示（不一直显示）
+        if (_controlsVisible && !_playing)
+          IgnorePointer(
+            child: Center(
+              child: Icon(
+                Icons.play_circle,
+                size: 64,
+                color: Colors.white.withValues(alpha: 0.7),
               ),
             ),
+          ),
+        // 底部：进度条（始终显示）+ 按钮区（随控制栏显隐），上下排列不重叠
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            _buildProgress(),
+            if (_controlsVisible) _buildControls(),
           ]),
         ),
-        // 控制栏
+      ]),
+    );
+  }
+
+  /// 视频画面（统一封装）
+  Widget _videoView() {
+    return Center(
+      child: _controller == null
+          ? const CircularProgressIndicator()
+          : Video(
+              controller: _controller!,
+              controls: NoVideoControls,
+              wakelock: false,
+            ),
+    );
+  }
+
+  /// 进度条（始终显示，独立于按钮区）
+  Widget _buildProgress() {
+    return Container(
+      color: Colors.black.withValues(alpha: 0.6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Slider(
+          value: _duration.inMilliseconds > 0 ? (_position.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0) : 0,
+          onChanged: (v) => _player.seek(Duration(milliseconds: (v * _duration.inMilliseconds).round())),
+        ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Column(children: [
-            Slider(
-              value: _duration.inMilliseconds > 0 ? (_position.inMilliseconds / _duration.inMilliseconds).clamp(0.0, 1.0) : 0,
-              onChanged: (v) => _player.seek(Duration(milliseconds: (v * _duration.inMilliseconds).round())),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Row(children: [
-                Text(_fmt(_position), style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                const Spacer(),
-                Text(_fmt(_duration), style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              ]),
-            ),
-            Row(children: [
-              IconButton(icon: const Icon(Icons.replay_10, size: 24), tooltip: '', onPressed: () => _player.seek(_position - const Duration(seconds: 10))),
-              IconButton(
-                icon: Icon(_playing ? Icons.pause : Icons.play_arrow, size: 36, color: Colors.deepPurple),
-                tooltip: '',
-                onPressed: () { if (_playing) { _player.pause(); } else { _player.play(); } },
-              ),
-              IconButton(icon: const Icon(Icons.forward_10, size: 24), tooltip: '', onPressed: () => _player.seek(_position + const Duration(seconds: 10))),
-              const Spacer(),
-              // 倍速
-              PopupMenuButton<double>(
-                icon: const Icon(Icons.speed, size: 22, color: Colors.grey),
-                onSelected: (s) async { _speed = s; await _player.setRate(s); setState(() {}); },
-                itemBuilder: (_) => [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) => PopupMenuItem(
-                  value: s,
-                  child: Text('${s}x', style: TextStyle(fontWeight: _speed == s ? FontWeight.bold : FontWeight.normal, color: _speed == s ? Colors.deepPurple : null)),
-                )).toList(),
-              ),
-              Text('${_speed}x', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            ]),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Row(children: [
+            Text(_fmt(_position), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            const Spacer(),
+            Text(_fmt(_duration), style: const TextStyle(fontSize: 12, color: Colors.grey)),
           ]),
         ),
+      ]),
+    );
+  }
+
+  /// 底部按钮区（随控制栏显隐）
+  Widget _buildControls() {
+    return Container(
+      color: Colors.black.withValues(alpha: 0.6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Row(children: [
+          IconButton(
+            icon: const Icon(Icons.skip_previous, size: 28, color: Colors.white),
+            onPressed: () => _switchTo(_currentIndex - 1),
+          ),
+          IconButton(
+            icon: Icon(_playing ? Icons.pause : Icons.play_arrow, size: 36, color: Colors.deepPurple),
+            onPressed: () { if (_playing) { _player.pause(); } else { _player.play(); } },
+          ),
+          IconButton(
+            icon: const Icon(Icons.skip_next, size: 28, color: Colors.white),
+            onPressed: () => _switchTo(_currentIndex + 1),
+          ),
+          const Spacer(),
+          // 倍速
+          PopupMenuButton<double>(
+            icon: const Icon(Icons.speed, size: 22, color: Colors.grey),
+            onSelected: (s) async { _speed = s; await _player.setRate(s); setState(() {}); },
+            itemBuilder: (_) => [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) => PopupMenuItem(
+              value: s,
+              child: Text('${s}x', style: TextStyle(fontWeight: _speed == s ? FontWeight.bold : FontWeight.normal, color: _speed == s ? Colors.deepPurple : null)),
+            )).toList(),
+          ),
+          Text('${_speed}x', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        ]),
       ]),
     );
   }

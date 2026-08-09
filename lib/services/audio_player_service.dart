@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/music_data.dart';
@@ -11,28 +11,61 @@ import 'settings_service.dart';
 enum PlayMode { sequential, loopList, loopOne, shuffle }
 
 class AudioPlayerService {
-  static final _instance = AudioPlayerService._();
-  factory AudioPlayerService() => _instance;
+  static AudioPlayerService? _instance;
+  factory AudioPlayerService() => _instance ??= AudioPlayerService._();
   AudioPlayerService._() {
-    _player.onPlayerComplete.listen((_) {
-      // 播完：先复位播放状态，再触发自动切歌（防抖由 _autoNext 处理）
+    WidgetsBinding.instance.addObserver(_AppObserver(_saveState));
+  }
+
+  /// 确保播放内核存在（生产环境首次访问时构造 libmpv Player）
+  Player? _playerRef;
+  bool _playerInitDone = false;
+  void _ensurePlayer() {
+    if (_playerInitDone) return;
+    _playerInitDone = true;
+    if (_playerRef != null) return;
+    _playerRef = Player();
+    _attachPlayerListeners();
+  }
+
+  Player get _player {
+    _ensurePlayer();
+    return _playerRef!;
+  }
+
+  /// 测试专用：重置单例（测试环境无法加载 libmpv，可注入 fake Player）
+  @visibleForTesting
+  static void resetForTest({Player? player}) {
+    _instance?.disposeForTest();
+    _instance = null;
+    if (player != null) {
+      _instance = AudioPlayerService._();
+      _instance!._playerRef = player;
+      _instance!._playerInitDone = true;
+      // 重新挂载 completed/duration 监听与进度轮询
+      _instance!._attachPlayerListeners();
+    }
+  }
+
+  /// 生产构造与测试注入共用：挂载播放器事件监听
+  void _attachPlayerListeners() {
+    _playerRef!.stream.completed.listen((_) {
       _playing = false;
       _autoNext();
     });
-    WidgetsBinding.instance.addObserver(_AppObserver(_saveState));
-    _player.onDurationChanged.listen((d) {
+    _playerRef!.stream.duration.listen((d) {
       if (d.inMilliseconds > 0 && _currentSong != null) {
         SongManager.updateDuration(_currentSong!.filePath, d.inSeconds);
       }
     });
-    // 进度轮询
     int _saveCounter = 0;
     _pollTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
       if (_currentSong != null && _playing) {
-        final p = await _player.getCurrentPosition();
-        if (p != null) { _lastPosition = p; _positionController.add(p); }
+        final p = _playerRef!.state.position;
+        _lastPosition = p;
+        _positionController.add(p);
         _saveCounter++;
-        if (_saveCounter % 4 == 0) _saveState(); // 每2秒保存
+        if (_saveCounter % 4 == 0) _saveState();
       }
     });
   }
@@ -46,7 +79,6 @@ class AudioPlayerService {
     _pollTimer = null;
   }
 
-  final AudioPlayer _player = AudioPlayer();
   bool _sourceLoaded = false;
   final StreamController<Duration> _positionController = StreamController<Duration>.broadcast();
   Duration _lastPosition = Duration.zero;
@@ -68,8 +100,8 @@ class AudioPlayerService {
   Duration get currentPosition => _lastPosition;
   int get queueIndex => _queueIndex;
   Stream<Duration> get onPositionChanged => _positionController.stream;
-  Stream<Duration> get onDurationChanged => _player.onDurationChanged;
-  Stream<bool> get onPlayingChanged => _player.onPlayerStateChanged.map((s) => s == PlayerState.playing);
+  Stream<Duration> get onDurationChanged => _player.stream.duration;
+  Stream<bool> get onPlayingChanged => _player.stream.playing;
 
   // ==================== 播放 ====================
 
@@ -83,18 +115,18 @@ class AudioPlayerService {
     if (idx >= 0) _queueIndex = idx;
     if (_currentSong?.filePath == song.filePath && !forceRestart) {
       final st = _player.state;
-      if (_playing && st != PlayerState.completed && st != PlayerState.stopped) {
+      if (_playing && !st.completed) {
         _player.pause();
         _playing = false;
-      } else if (st == PlayerState.completed) {
+      } else if (st.completed) {
         // 真的播完了：从头播放当前歌
         _lastPosition = Duration.zero;
-        await _player.play(DeviceFileSource(song.filePath));
+        await _playFile(song.filePath);
         _sourceLoaded = true;
         _playing = true;
       } else {
         // 暂停中/初始未加载：从记录位置续播（含启动恢复场景）
-        await _player.play(DeviceFileSource(song.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
+        await _playFile(song.filePath, position: _lastPosition > Duration.zero ? _lastPosition : null);
         _sourceLoaded = true;
         _playing = true;
       }
@@ -104,7 +136,7 @@ class AudioPlayerService {
     _currentSong = song;
     currentSongNotifier.value = song;
     try {
-      await _player.play(DeviceFileSource(song.filePath));
+      await _playFile(song.filePath);
       _sourceLoaded = true;
       _playing = true;
     } catch (e) {
@@ -121,17 +153,15 @@ class AudioPlayerService {
 
   void togglePause() async {
     if (_playing) {
-      final p = await _player.getCurrentPosition();
-      if (p != null) _lastPosition = p;
+      _lastPosition = _player.state.position;
       _player.pause();
       _playing = false;
     } else {
-      final st = _player.state;
-      if (_currentSong != null && st == PlayerState.completed) {
+      if (_currentSong != null && _player.state.completed) {
         // 真的播完了：从头重新播放当前歌
         // （resume/seek 结尾会导致立刻 complete 误切歌）
         _lastPosition = Duration.zero;
-        await _player.play(DeviceFileSource(_currentSong!.filePath));
+        await _playFile(_currentSong!.filePath);
         _sourceLoaded = true;
         _playing = true;
         _saveState();
@@ -140,14 +170,14 @@ class AudioPlayerService {
       }
       if (!_sourceLoaded && _currentSong != null) {
         // 初始未加载（含启动恢复场景）：带恢复进度播放
-        await _player.play(DeviceFileSource(_currentSong!.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
+        await _playFile(_currentSong!.filePath, position: _lastPosition > Duration.zero ? _lastPosition : null);
         _sourceLoaded = true;
       } else {
         if (_lastPosition > Duration.zero && _currentSong != null) {
-          final cur = await _player.getCurrentPosition();
+          final cur = _player.state.position;
           if (cur == null || cur == Duration.zero) await _player.seek(_lastPosition);
         }
-        _player.resume();
+        _player.play();
       }
       _playing = true;
     }
@@ -157,14 +187,14 @@ class AudioPlayerService {
 
   void resume() {
     if (_currentSong == null) return;
-    if (_player.state == PlayerState.completed || _player.state == PlayerState.stopped) {
-      // 已播完/已停止：从记录位置重新播放（如拖动进度条后）
-      _player.play(DeviceFileSource(_currentSong!.filePath), position: _lastPosition > Duration.zero ? _lastPosition : null);
+    if (_player.state.completed) {
+      // 已播完：从记录位置重新播放（如拖动进度条后）
+      _playFile(_currentSong!.filePath, position: _lastPosition > Duration.zero ? _lastPosition : null);
       _sourceLoaded = true;
       _playing = true;
       return;
     }
-    _player.resume();
+    _player.play();
     _playing = true;
   }
 
@@ -215,10 +245,19 @@ class AudioPlayerService {
 
   Future<void> prev() async {
     if (_queue.isEmpty) return;
-    final pos = await _player.getCurrentPosition();
+    final pos = _player.state.position;
     if (pos != null && pos.inSeconds > 3) { await _player.seek(Duration.zero); return; }
     _queueIndex = (_queueIndex - 1 + _queue.length) % _queue.length;
     await playSong(_queue[_queueIndex]);
+  }
+
+  /// media_kit 播放本地文件：open + 可选 seek 定位 + play
+  Future<void> _playFile(String path, {Duration? position}) async {
+    await _player.open(Media(path), play: false);
+    if (position != null && position > Duration.zero) {
+      await _player.seek(position);
+    }
+    await _player.play();
   }
 
   // ==================== 队列 ====================
@@ -357,14 +396,14 @@ class AudioPlayerService {
     final idx = list.indexOf(key);
     if (idx >= 0) { list.removeAt(idx); } else { list.add(key); }
     await p.setStringList(_favKey, list);
-    _instance.favoritesChangedNotifier.value++;
+    _instance?.favoritesChangedNotifier.value++;
   }
 
   /// 重排收藏顺序（我喜欢歌单拖动排序后保存）
   static Future<void> saveFavoritesOrder(List<String> bvids) async {
     final p = await SharedPreferences.getInstance();
     await p.setStringList(_favKey, bvids);
-    _instance.favoritesChangedNotifier.value++;
+    _instance?.favoritesChangedNotifier.value++;
   }
 
   /// 文件名（不含扩展名）作为无BV号歌曲的键
@@ -386,7 +425,8 @@ class AudioPlayerService {
         'duration': _currentSong!.duration.inSeconds,
         'bvid': _currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _currentSong!.filePath.split('\\').last.split('/').last.split('.').first,
         'cover': _currentSong!.coverUrl ?? '',
-        'position': _lastPosition.inMilliseconds,
+        // 音频不记录进度
+        'position': 0,
         'queue': _queue.map((s) => s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)).toList(),
         'queue_index': _queueIndex,
       };
@@ -407,7 +447,8 @@ class AudioPlayerService {
       final data = jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;
       final sm = data['mode'] as int?;
       if (sm != null && sm < PlayMode.values.length) _playMode = PlayMode.values[sm];
-      _lastPosition = Duration(milliseconds: data['position'] as int? ?? 0);
+      // 音频不记录/恢复进度：每次从头播放
+      _lastPosition = Duration.zero;
       final qPaths = List<dynamic>.from(data['queue'] as List? ?? []);
       final qIdx = data['queue_index'] as int? ?? 0;
       if (qPaths.isNotEmpty) {
