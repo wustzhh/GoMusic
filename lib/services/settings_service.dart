@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SettingsService {
   static const _keyDownloadPath = 'download_path';
   static const _keyBilibiliCookie = 'bilibili_cookie';
+  static const _keyThemeMode = 'theme_mode'; // 0:浅色 1:深色 2:跟随系统
 
   static SettingsService? _instance;
   static Future<SettingsService>? _instanceFuture;
@@ -79,5 +80,15 @@ class SettingsService {
 
   Future<void> setBilibiliCookie(String cookie) async {
     await _prefs.setString(_keyBilibiliCookie, cookie);
+  }
+
+  /// 读取主题模式（0:浅色 1:深色 2:跟随系统，默认深色=1）
+  int getThemeMode() {
+    return _prefs.getInt(_keyThemeMode) ?? 1;
+  }
+
+  /// 保存主题模式
+  Future<void> setThemeMode(int mode) async {
+    await _prefs.setInt(_keyThemeMode, mode);
   }
 }

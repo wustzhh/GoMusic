@@ -140,9 +140,13 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
   }
 }
 
+/// 最近一次注入的 fake 播放器（测试可触发 complete 流模拟滞后事件）
+FakeMediaKitPlayer? lastFakePlayer;
+
 /// 注入假播放内核到 AudioPlayerService 单例（测试环境无法加载 libmpv）。
 void injectFakePlayer() {
+  lastFakePlayer = FakeMediaKitPlayer();
   AudioPlayerService.resetForTest(
-    player: mk.Player(platformPlayer: FakeMediaKitPlayer()),
+    player: mk.Player(platformPlayer: lastFakePlayer!),
   );
 }

@@ -129,6 +129,34 @@ class BilibiliApi {
     return m?.group(0);
   }
 
+  /// 解析 b23.tv 短链：跟随重定向返回真实 URL（含 BV 号/合集ID）。
+  /// 非短链直接返回原 URL；失败也返回原 URL（由后续逻辑兜底）。
+  static Future<String> resolveShortUrl(String url) async {
+    final t = url.trim();
+    if (!t.contains('b23.tv')) return t;
+    try {
+      final c = HttpClient();
+      final req = await c.getUrl(Uri.parse(t));
+      req.headers.set('User-Agent', _ua);
+      final resp = await req.close().timeout(const Duration(seconds: 10));
+      // 最终地址：重定向链最后一个（HttpClient 自动跟随重定向）
+      var finalUrl = resp.redirects.isNotEmpty
+          ? resp.redirects.last.location.toString()
+          : t;
+      // location 可能是相对路径（如 /video/BVxxx），补全为完整 URL
+      if (finalUrl.startsWith('/')) {
+        final base = resp.redirects.isNotEmpty ? resp.redirects.first.location : Uri.parse(t);
+        final host = base.host.isEmpty ? Uri.parse(t).host : base.host;
+        finalUrl = 'https://$host$finalUrl';
+      }
+      c.close();
+      await resp.drain<void>();
+      return finalUrl;
+    } catch (_) {
+      return t;
+    }
+  }
+
   // ---- wbi 签名 ----
 
   Future<String> _mixin() async {
@@ -182,7 +210,12 @@ class BilibiliApi {
 
   /// 获取视频信息（含流大小）
   Future<BilibiliVideoInfo?> getVideoInfo(String url) async {
-    final bvid = extractBvid(url);
+    // b23.tv 短链：先解析出真实 URL 再提取 BV 号
+    var bvid = extractBvid(url);
+    if (bvid == null && url.contains('b23.tv')) {
+      final real = await resolveShortUrl(url);
+      bvid = extractBvid(real);
+    }
     if (bvid == null) return null;
 
     try {
@@ -239,75 +272,100 @@ class BilibiliApi {
   Future<void> _fetchStreams(BilibiliVideoInfo info) async {
     if (info.cid == 0) return;
     try {
-      // 第一次请求：fnval=1 → durl 合并流（MP4 自带音轨，视频有声）
+      // 视频与音频分开处理：
+      //  - 视频：durl 合并流（MP4 自带音轨，有声），多个 qn 请求得到多分辨率
+      //  - 音频：DASH 音频流（独立 m4a，小体积）
+      // 分开后：视频拖动进度天然同步（单文件带音轨），音频独立不影响
       final base = {
         'bvid': info.bvid,
         'cid': info.cid.toString(),
         'fnver': '0',
         'fnval': '1',
         'fourk': '1',
-        'qn': '127',
       };
-      var d = await _playUrl(base);
-      if (d != null) {
-        final durls = (d['data']['durl'] as List?) ?? [];
-        if (durls.isNotEmpty) {
-          final u = (durls.first['url'] as String? ?? '').replaceAll('http:', 'https:');
-          if (u.isNotEmpty) {
-            // durl 合并流：音频与视频是同一个带音轨文件
-            info.audioUrl = u;
-            info.audioSize = (durls.first['size'] as int?) ?? 0;
-            info.videoStreams = [
-              VideoStream(
-                id: 0,
-                bandwidth: (durls.first['size'] as int?) ?? 0,
-                width: (durls.first['width'] as int?) ?? 0,
-                height: (durls.first['height'] as int?) ?? 0,
-                codecs: '',
-                baseUrl: u,
-                size: (durls.first['size'] as int?) ?? 0,
-              ),
-            ];
-            return;
-          }
+
+      // 1) 分辨率列表：先用 DASH 响应拿各清晰度元数据（width/height）
+      final pDash = Map<String, String>.from(base)..['fnval'] = '4048';
+      final dDash = await _playUrl(pDash);
+      final dashStreams = <VideoStream>[];
+      if (dDash != null) {
+        final dash = dDash['data']['dash'];
+        if (dash != null) {
+          final videos = (dash['video'] as List?) ?? [];
+          dashStreams.addAll(videos.map((v) => VideoStream(
+            id: (v['id'] as int?) ?? 0,
+            bandwidth: (v['bandwidth'] as int?) ?? 0,
+            width: (v['width'] as int?) ?? 0,
+            height: (v['height'] as int?) ?? 0,
+            codecs: (v['codecs'] as String?) ?? '',
+            baseUrl: ((v['baseUrl'] ?? v['base_url']) as String?)?.replaceAll('http:', 'https:'),
+            size: (v['size'] as int?) ?? 0,
+          )).toList());
         }
       }
 
-      // 降级：fnval=4048 → DASH 分离流（音频小体积；视频纯画面无声，仅 durl 不可用时兜底）
-      final p2 = Map<String, String>.from(base)..['fnval'] = '4048';
-      d = await _playUrl(p2);
-      if (d == null) return;
-      final dash = d['data']['dash'];
-      if (dash == null) return;
-
-      // 音频流：按码率降序取最高质量
-      final audios = (dash['audio'] as List?) ?? [];
-      if (audios.isNotEmpty) {
-        audios.sort((a, b) =>
-            ((b['bandwidth'] as int?) ?? 0).compareTo((a['bandwidth'] as int?) ?? 0));
-        final best = audios.first;
-        info.audioUrl = ((best['baseUrl'] ?? best['base_url']) as String?)?.replaceAll('http:', 'https:');
-        info.audioSize = (best['size'] as int?) ?? 0;
+      // 2) 视频下载地址：每个分辨率用对应 qn 请求 durl（MP4 带音轨，有声）
+      // DASH id（如 16/32/64/80）即 qn，直接用 durl 请求拿到带音轨的单文件
+      final streams = <VideoStream>[];
+      final seen = <String>{};
+      for (final ds in dashStreams) {
+        final qn = ds.id; // DASH id 与 qn 对应
+        final p = Map<String, String>.from(base)..['qn'] = qn.toString();
+        final d = await _playUrl(p);
+        if (d == null) continue;
+        final durls = (d['data']['durl'] as List?) ?? [];
+        if (durls.isEmpty) continue;
+        final u = (durls.first['url'] as String? ?? '').replaceAll('http:', 'https:');
+        if (u.isEmpty) continue;
+        // 用 durl 的 URL（带音轨），保留 DASH 的分辨率信息
+        final s = VideoStream(
+          id: qn,
+          bandwidth: ds.bandwidth,
+          width: ds.width,
+          height: ds.height,
+          codecs: ds.codecs,
+          baseUrl: u,
+          size: (durls.first['size'] as int?) ?? 0,
+        );
+        final k = '${s.width}x${s.height}';
+        if (seen.add(k)) streams.add(s);
+      }
+      // durl 解析失败时兜底：直接用 DASH 视频流（无声但可选分辨率）
+      if (streams.isEmpty) {
+        info.videoStreams = dashStreams;
+      } else {
+        info.videoStreams = streams
+          ..sort((a, b) => (b.width * b.height).compareTo(a.width * a.height));
       }
 
-      // 视频流：全部保存，按码率降序排列
-      final videos = (dash['video'] as List?) ?? [];
-      info.videoStreams = videos.map((v) => VideoStream(
-        id: (v['id'] as int?) ?? 0,
-        bandwidth: (v['bandwidth'] as int?) ?? 0,
-        width: (v['width'] as int?) ?? 0,
-        height: (v['height'] as int?) ?? 0,
-        codecs: (v['codecs'] as String?) ?? '',
-        baseUrl: ((v['baseUrl'] ?? v['base_url']) as String?)?.replaceAll('http:', 'https:'),
-        size: (v['size'] as int?) ?? 0,
-      )).toList()
-        ..sort((a, b) => b.bandwidth.compareTo(a.bandwidth));
+      // 2) 音频：DASH 音频流（独立 m4a）
+      final pAudio = Map<String, String>.from(base)
+        ..['fnval'] = '4048'
+        ..['qn'] = '127';
+      final dAudio = await _playUrl(pAudio);
+      if (dAudio != null) {
+        final dash = dAudio['data']['dash'];
+        if (dash != null) {
+          final audios = (dash['audio'] as List?) ?? [];
+          if (audios.isNotEmpty) {
+            audios.sort((a, b) =>
+                ((b['bandwidth'] as int?) ?? 0).compareTo((a['bandwidth'] as int?) ?? 0));
+            final best = audios.first;
+            info.audioUrl = ((best['baseUrl'] ?? best['base_url']) as String?)?.replaceAll('http:', 'https:');
+            info.audioSize = (best['size'] as int?) ?? 0;
+          }
+        }
+      }
     } catch (_) {}
   }
 
   /// 解析收藏夹/合集链接，返回视频列表
   Future<List<BilibiliVideoInfo>?> getCollectionVideos(String url) async {
     try {
+      // b23.tv 短链：先解析出真实 URL（可能是合集链接）
+      if (url.contains('b23.tv')) {
+        url = await resolveShortUrl(url);
+      }
       // 提取 ml 合集ID / favlist fid / lists合集 season_id
       final mlMatch = RegExp(r'ml(\d+)').firstMatch(url);
       final fidMatch = RegExp(r'[?&]fid=(\d+)').firstMatch(url);
@@ -396,6 +454,7 @@ class StreamDownloader {
     required String url,
     required String savePath,
     required void Function(double progress) onProgress,
+    void Function(int received, int total)? onSize, // 可选：上报已下载/总字节
     ValueNotifier<bool>? cancel,
     int? expectedSize,
   }) async {
@@ -446,8 +505,12 @@ class StreamDownloader {
           }
           received += chunk.length;
           sink.add(chunk);
+          onSize?.call(received, total);
           if (total > 0) {
             onProgress(received / total);
+          } else {
+            // total 未知：按已接收字节数上报（0~1 的近似值，UI 显示容量）
+            onProgress(received > 0 ? 0.5 : 0.0);
           }
         }
         await sink.close();

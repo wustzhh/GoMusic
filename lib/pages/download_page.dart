@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import '../main.dart';
 import '../services/bilibili_api.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
@@ -28,6 +29,7 @@ class _DownloadPageState extends State<DownloadPage> {
   String _downloadingTitle = '';
   int _downloadingSize = 0;
   double _downloadProgress = 0;
+  int _downloadedBytes = 0; // 已下载字节（total 未知时用于容量显示）
 
   BilibiliVideoInfo? _singleInfo;
   VideoStream? _selectedStream;
@@ -75,10 +77,14 @@ class _DownloadPageState extends State<DownloadPage> {
       _alreadyDownloaded = false; _downloadVideo = false;
     });
 
-    if (_isCollectionUrl(url)) {
-      await _parseCollection(url);
+    // b23.tv 短链先解析成真实 URL（含 BV/合集ID），保证后续判断准确
+    final resolved = await BilibiliApi.resolveShortUrl(url);
+    if (!mounted) return;
+
+    if (_isCollectionUrl(resolved)) {
+      await _parseCollection(resolved);
     } else {
-      final info = await _api.getVideoInfo(url);
+      final info = await _api.getVideoInfo(resolved);
       if (!mounted) return;
       if (info != null) {
         await _checkSingleExists(info);
@@ -221,6 +227,17 @@ class _DownloadPageState extends State<DownloadPage> {
               setState(() => _downloadProgress = p * (_downloadVideo ? 0.5 : 1.0));
             }
           },
+          onSize: (received, total) {
+            if (mounted) {
+              _downloadedBytes = received;
+              if (total > 0) _downloadingSize = total;
+              final now2 = DateTime.now();
+              if (now2.difference(lastUi).inMilliseconds >= 400) {
+                lastUi = now2;
+                setState(() {});
+              }
+            }
+          },
           cancel: _cancelNotifier,
           expectedSize: info.audioSize > 0 ? info.audioSize : null,
         );
@@ -247,6 +264,17 @@ class _DownloadPageState extends State<DownloadPage> {
               if (mounted && now.difference(lastUi2).inMilliseconds >= 400) {
                 lastUi2 = now;
                 setState(() => _downloadProgress = 0.5 + p * 0.5);
+              }
+            },
+            onSize: (received, total) {
+              if (mounted) {
+                _downloadedBytes = received;
+                if (total > 0) _downloadingSize = total;
+                final now2 = DateTime.now();
+                if (now2.difference(lastUi2).inMilliseconds >= 400) {
+                  lastUi2 = now2;
+                  setState(() {});
+                }
               }
             },
             cancel: _cancelNotifier,
@@ -278,6 +306,8 @@ class _DownloadPageState extends State<DownloadPage> {
     if (videoOk && _downloadVideo) {
       SongManager.registerVideoPath('$dir/$name.m4a', '$dir/$name.mp4');
     }
+    // 通知其他页面（视频页/歌单页）自动刷新
+    if (audioOk || videoOk) downloadsChangedNotifier.value++;
     if (!mounted) return;
     _cancelNotifier?.value = false;
     if (mounted) {
@@ -368,6 +398,7 @@ class _DownloadPageState extends State<DownloadPage> {
     setState(() => _isDownloading = false);
     // 通知主界面刷新（下载完成后本地歌单/历史记录立即更新）
     AudioPlayerService().favoritesChangedNotifier.value++;
+    downloadsChangedNotifier.value++;
     _snack('批量下载完成: $_batchDone/$_batchTotal');
   }
 
@@ -598,6 +629,13 @@ class _DownloadPageState extends State<DownloadPage> {
     final pct = (_downloadProgress * 100).toStringAsFixed(0);
     final name = _singleInfo != null ? _nameController.text.trim() : '';
     final batch = _batchItems.isNotEmpty ? '${_batchDone}/${_batchTotal}' : '';
+    // 已下载容量（total 未知时按估算字节显示）
+    String sizeText = '';
+    if (_downloadedBytes > 0) {
+      sizeText = _downloadedBytes >= 1048576
+          ? '${(_downloadedBytes / 1048576).toStringAsFixed(1)}MB'
+          : '${(_downloadedBytes / 1024).toStringAsFixed(0)}KB';
+    }
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: Colors.deepPurple.withValues(alpha: 0.12),
@@ -608,6 +646,8 @@ class _DownloadPageState extends State<DownloadPage> {
         Row(children: [
           Expanded(child: LinearProgressIndicator(value: _downloadProgress, minHeight: 6)),
           SizedBox(width: 12),
+          if (sizeText.isNotEmpty) Text(sizeText, style: TextStyle(fontSize: 11, color: Colors.grey)),
+          if (sizeText.isNotEmpty) SizedBox(width: 6),
           Text('$pct%', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
         ]),
       ]),

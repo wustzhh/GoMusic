@@ -244,6 +244,14 @@ class RecentlyPlayedService {
     await prefs.setStringList(_key, list);
   }
 
+  /// 从最近播放记录移除
+  static Future<void> removeBvid(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_key) ?? [];
+    list.remove(key);
+    await prefs.setStringList(_key, list);
+  }
+
   /// 返回 BV号列表（按最近播放时间倒序；自动迁移旧格式数据）
   static Future<List<String>> getRecentBvids() async {
     final prefs = await SharedPreferences.getInstance();

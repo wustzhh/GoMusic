@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../main.dart';
 import '../services/settings_service.dart';
 import 'bilibili_login_page.dart';
 import '../widgets/top_toast.dart';
@@ -28,9 +29,17 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) {
       setState(() {
         _downloadPath = path;
+        _themeMode = service.getThemeMode();
         _loaded = true;
       });
     }
+  }
+
+  Future<void> _setTheme(int mode) async {
+    setState(() => _themeMode = mode);
+    themeModeNotifier.value = mode; // 全局立即生效
+    final service = await SettingsService.getInstance();
+    await service.setThemeMode(mode); // 持久化
   }
 
   Future<void> _changeDownloadPath() async {
@@ -127,11 +136,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      _ThemeOption(label: '浅色', selected: _themeMode == 0, onTap: () => setState(() => _themeMode = 0)),
+                      _ThemeOption(label: '浅色', selected: _themeMode == 0, onTap: () => _setTheme(0)),
                       const SizedBox(width: 12),
-                      _ThemeOption(label: '深色', selected: _themeMode == 1, onTap: () => setState(() => _themeMode = 1)),
+                      _ThemeOption(label: '深色', selected: _themeMode == 1, onTap: () => _setTheme(1)),
                       const SizedBox(width: 12),
-                      _ThemeOption(label: '跟随系统', selected: _themeMode == 2, onTap: () => setState(() => _themeMode = 2)),
+                      _ThemeOption(label: '跟随系统', selected: _themeMode == 2, onTap: () => _setTheme(2)),
                     ],
                   ),
                 ],

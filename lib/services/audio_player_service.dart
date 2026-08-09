@@ -106,6 +106,16 @@ class AudioPlayerService {
   // ==================== 播放 ====================
 
   Future<void> playSong(Song song, {bool forceRestart = false}) async {
+    // 目标文件必须存在，否则不播放：避免 media_kit open 失败时旧歌继续响
+    // 或队列索引被点击目标污染导致 next() 跳错（"点 A 播 B"）。
+    if (song.filePath.isEmpty || !File(song.filePath).existsSync()) {
+      _playing = false;
+      // 定位被点击的无效歌在队列中的位置，从它往后跳（跳过无效歌）
+      final badPos = _queue.indexWhere((s) => (s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)) == (song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath)));
+      if (badPos >= 0) _queueIndex = badPos;
+      Future.delayed(const Duration(milliseconds: 300), () => _skipToValid());
+      return;
+    }
     // 队列为空时兜底：把当前歌设为单曲队列，保证播放列表始终有内容
     if (_queue.isEmpty) {
       _queue.add(song);
@@ -132,6 +142,9 @@ class AudioPlayerService {
       }
       return;
     }
+    // 换源决定：立即标记手动播放时间——open 进行中旧源 complete 就会到达，
+    // 必须在 open 前建立防抖，否则误触发 _autoNext 切到下一首（"点 A 播 B"）
+    _lastManualPlayAt = DateTime.now();
     _lastPosition = Duration.zero;
     _currentSong = song;
     currentSongNotifier.value = song;
@@ -218,11 +231,18 @@ class AudioPlayerService {
   }
 
   /// 播放完成自动触发：单曲循环重播自己，否则切下一首
-  /// 防抖：Windows 端换源时旧源的 complete 事件可能滞后到达，1 秒内忽略重复触发
+  /// 防抖1：Windows 端换源时旧源的 complete 事件可能滞后到达，1 秒内忽略重复触发
+  /// 防抖2：手动切歌/播放后 2 秒内忽略 complete（换源时旧源 complete 滞后到达，
+  ///        会误触发 next() 导致"点 A 播 B"——实际是自动切到了下一首）
   DateTime? _lastCompleteAt;
+  DateTime? _lastManualPlayAt;
   Future<void> _autoNext() async {
     if (_queue.isEmpty) return;
     final now = DateTime.now();
+    // 手动播放/切歌后 2 秒内：旧源 complete 滞后到达，不是真播完，忽略
+    if (_lastManualPlayAt != null && now.difference(_lastManualPlayAt!) < const Duration(seconds: 2)) {
+      return;
+    }
     if (_lastCompleteAt != null && now.difference(_lastCompleteAt!) < const Duration(seconds: 1)) {
       return;
     }
@@ -243,6 +263,20 @@ class AudioPlayerService {
     await playSong(_queue[_queueIndex]);
   }
 
+  /// 从当前 _queueIndex 往后跳，跳过文件无效的歌（点无效歌时用）
+  Future<void> _skipToValid() async {
+    if (_queue.isEmpty) return;
+    for (var i = 0; i < _queue.length; i++) {
+      _queueIndex = (_queueIndex + 1) % _queue.length;
+      final s = _queue[_queueIndex];
+      if (s.filePath.isNotEmpty && File(s.filePath).existsSync()) {
+        await playSong(s);
+        return;
+      }
+    }
+    _playing = false; // 全队列都无效
+  }
+
   Future<void> prev() async {
     if (_queue.isEmpty) return;
     final pos = _player.state.position;
@@ -252,10 +286,19 @@ class AudioPlayerService {
   }
 
   /// media_kit 播放本地文件：open + 可选 seek 定位 + play
+  /// 带序号防竞态：快速连续点击/切歌时，只有最后一次 open 才会真正 play，
+  /// 避免旧 open 异步完成时覆盖新歌（"点 A 播 B"）。
+  int _playSeq = 0;
   Future<void> _playFile(String path, {Duration? position}) async {
+    // 任何实际播放都刷新防抖时间戳：open 期间旧源 complete 到达时，
+    // _autoNext 会因 2 秒内刚播放过而忽略，避免误切到下一首
+    _lastManualPlayAt = DateTime.now();
+    final seq = ++_playSeq;
     await _player.open(Media(path), play: false);
+    if (seq != _playSeq) return; // 已被更新的播放请求取代
     if (position != null && position > Duration.zero) {
       await _player.seek(position);
+      if (seq != _playSeq) return;
     }
     await _player.play();
   }
@@ -295,6 +338,18 @@ class AudioPlayerService {
   }
   void addToQueue(Song s) { _queue.add(s); currentSongNotifier.notifyListeners(); }
   void removeFromQueue(int i) { if (i >= _queue.length) return; _queue.removeAt(i); if (i < _queueIndex) _queueIndex--; if (_queueIndex >= _queue.length) _queueIndex = (_queue.length - 1).clamp(0, 999); currentSongNotifier.notifyListeners(); }
+
+  /// 把指定歌曲移到队列最前（随机模式点击歌曲时使用：该歌必须是第一首）
+  void moveToFront(Song song) {
+    final key = song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath);
+    final idx = _queue.indexWhere((s) => (s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)) == key);
+    if (idx > 0) {
+      final s = _queue.removeAt(idx);
+      _queue.insert(0, s);
+    }
+    _queueIndex = 0;
+    currentSongNotifier.notifyListeners();
+  }
   void setPlayMode(PlayMode m) {
     if (m == PlayMode.shuffle && _playMode != PlayMode.shuffle) {
       _orderedQueue = List<Song>.from(_queue);
@@ -394,9 +449,37 @@ class AudioPlayerService {
     final p = await SharedPreferences.getInstance();
     final list = List<String>.from(p.getStringList(_favKey) ?? []);
     final idx = list.indexOf(key);
-    if (idx >= 0) { list.removeAt(idx); } else { list.add(key); }
+    if (idx >= 0) { list.removeAt(idx); } else { list.insert(0, key); } // 新收藏放最上面
     await p.setStringList(_favKey, list);
     _instance?.favoritesChangedNotifier.value++;
+  }
+
+  /// 纯添加收藏：已在收藏中则跳过（不取消）——批量"添加到我喜欢"用
+  static Future<void> addFavorite(Song song) async {
+    final key = song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath);
+    final p = await SharedPreferences.getInstance();
+    final list = List<String>.from(p.getStringList(_favKey) ?? []);
+    if (!list.contains(key)) {
+      list.insert(0, key); // 新收藏放最上面
+      await p.setStringList(_favKey, list);
+      _instance?.favoritesChangedNotifier.value++;
+    }
+  }
+
+  /// 批量添加收藏（保持选中顺序，整体插到最上面；已在收藏的跳过）
+  static Future<void> addFavoritesBatch(List<Song> songs) async {
+    if (songs.isEmpty) return;
+    final p = await SharedPreferences.getInstance();
+    final list = List<String>.from(p.getStringList(_favKey) ?? []);
+    final newKeys = songs
+        .map((s) => s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath))
+        .where((k) => !list.contains(k))
+        .toList();
+    if (newKeys.isNotEmpty) {
+      list.insertAll(0, newKeys); // 整体插到最前，保持选中顺序
+      await p.setStringList(_favKey, list);
+      _instance?.favoritesChangedNotifier.value++;
+    }
   }
 
   /// 重排收藏顺序（我喜欢歌单拖动排序后保存）

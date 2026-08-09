@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
+import '../services/audio_handler.dart';
 
 /// 视频播放器：播放/暂停/进度/倍速/横屏(全屏)/锁定(沉浸式)/上一个下一个
 /// 与音频互斥：打开视频时暂停音频，退出后恢复
@@ -54,6 +55,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _controller = VideoController(_player);
     _playingSub = _player.stream.playing.listen((p) {
       if (mounted) setState(() => _playing = p);
+      // 同步媒体会话（视频播放/暂停 → 通知栏/锁屏按钮状态）
+      GoMusicAudioHandler.instance?.notifyVideoMedia(
+        id: _song.bvid.isNotEmpty ? _song.bvid : _song.filePath,
+        title: _song.title,
+        artist: _song.uploader,
+        duration: _duration,
+        playing: p,
+        position: _position,
+      );
     });
     _posSub = _player.stream.position.listen((p) {
       if (mounted) setState(() => _position = p);
@@ -193,7 +203,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     setState(() {});
   }
 
-  /// 进入/退出锁定（锁定 = 全屏 + 隐藏所有 UI）
+  /// 进入/退出锁定：锁屏只隐藏所有 UI（不强制横屏/全屏）
+  /// 锁定时沉浸式隐藏系统栏，解锁恢复系统栏（保持当前方向不变）
   Future<void> _toggleLock() async {
     final entering = !_locked;
     setState(() {
@@ -202,24 +213,18 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       _controlsVisible = !entering;
     });
     if (entering) {
-      if (!_fullscreen) {
-        setState(() => _fullscreen = true);
-        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-          await windowManager.setFullScreen(true);
-        } else {
-          await SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
-          await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-        }
+      // 锁屏：仅隐藏系统 UI，不动窗口/方向（全屏与否保持原状）
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        // 桌面：全屏状态由 _fullscreen 独立控制，锁屏只隐藏控制栏
+      } else {
+        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
       }
     } else {
-      if (_fullscreen) {
-        setState(() => _fullscreen = false);
-        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-          await windowManager.setFullScreen(false);
-        } else {
-          await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-          await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-        }
+      // 解锁：恢复系统 UI（方向仍由 _fullscreen 决定，不强制改）
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        // 桌面：无操作
+      } else {
+        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       }
       _scheduleHide();
     }
@@ -266,6 +271,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _onTapVideo,
+              onDoubleTap: () {
+                if (_playing) { _player.pause(); } else { _player.play(); }
+              },
               child: const SizedBox.expand(),
             ),
           ),
@@ -291,11 +299,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       body: Stack(children: [
         // 视频画面（始终显示）
         Positioned.fill(child: _videoView()),
-        // 透明点击层（在 Video 上层，点击画面切换控制栏显隐）
+        // 透明点击层（在 Video 上层，点击画面切换控制栏显隐；双击播放/暂停）
         Positioned.fill(
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: _onTapVideo,
+            onDoubleTap: () {
+              if (_playing) { _player.pause(); } else { _player.play(); }
+            },
             child: const SizedBox.expand(),
           ),
         ),
@@ -310,14 +321,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
               ),
             ),
           ),
-        // 底部：进度条（始终显示）+ 按钮区（随控制栏显隐），上下排列不重叠
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            _buildProgress(),
-            if (_controlsVisible) _buildControls(),
-          ]),
-        ),
+        // 底部：进度条 + 按钮区（随控制栏显隐，UI 隐藏时连进度条一起隐藏）
+        if (_controlsVisible)
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              _buildProgress(),
+              _buildControls(),
+            ]),
+          ),
       ]),
     );
   }
@@ -377,6 +389,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             onPressed: () => _switchTo(_currentIndex + 1),
           ),
           const Spacer(),
+          // 选集：弹出视频列表（全屏显示封面+名字，非全屏只显示名字）
+          if (widget.videos != null && widget.videos!.length > 1)
+            IconButton(
+              icon: const Icon(Icons.video_collection_outlined, size: 24, color: Colors.white),
+              tooltip: '选集',
+              onPressed: _showEpisodeList,
+            ),
           // 倍速
           PopupMenuButton<double>(
             icon: const Icon(Icons.speed, size: 22, color: Colors.grey),
@@ -396,5 +415,100 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     final m = d.inMinutes.toString().padLeft(2, '0');
     final s = (d.inSeconds % 60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  /// 选集：弹出视频列表
+  /// 全屏（横屏）→ 显示封面+名字的横向大卡片；非全屏 → 只显示名字的紧凑列表
+  void _showEpisodeList() {
+    final videos = widget.videos ?? <Song>[];
+    if (videos.length < 2) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text('选集（${videos.length}个视频）', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _fullscreen
+                // 全屏/横屏：横向大卡片，封面+名字
+                ? GridView.builder(
+                    padding: const EdgeInsets.all(12),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3, childAspectRatio: 0.75, crossAxisSpacing: 8, mainAxisSpacing: 8,
+                    ),
+                    itemCount: videos.length,
+                    itemBuilder: (_, i) => _episodeCard(videos[i], i, ctx),
+                  )
+                // 非全屏：紧凑列表，只显示名字
+                : ListView.builder(
+                    itemCount: videos.length,
+                    itemBuilder: (_, i) => _episodeRow(videos[i], i, ctx),
+                  ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// 全屏选集卡片：封面 + 名字
+  Widget _episodeCard(Song v, int i, BuildContext ctx) {
+    final cur = i == _currentIndex;
+    return InkWell(
+      onTap: () {
+        Navigator.pop(ctx);
+        _switchTo(i);
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Stack(fit: StackFit.expand, children: [
+              _episodeCover(v),
+              if (cur)
+                Positioned.fill(
+                  child: Container(color: Colors.black.withValues(alpha: 0.35), child: const Center(child: Icon(Icons.play_arrow, color: Colors.white, size: 32))),
+                ),
+            ]),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(v.title, style: TextStyle(fontSize: 11, color: cur ? Colors.deepPurple : null), maxLines: 2, overflow: TextOverflow.ellipsis),
+      ]),
+    );
+  }
+
+  /// 非全屏选集行：只显示名字
+  Widget _episodeRow(Song v, int i, BuildContext ctx) {
+    final cur = i == _currentIndex;
+    return ListTile(
+      dense: true,
+      leading: Icon(cur ? Icons.play_arrow : Icons.movie_outlined, size: 18, color: cur ? Colors.deepPurple : Colors.grey),
+      title: Text(v.title, style: TextStyle(fontSize: 13, color: cur ? Colors.deepPurple : null), maxLines: 1, overflow: TextOverflow.ellipsis),
+      onTap: () {
+        Navigator.pop(ctx);
+        _switchTo(i);
+      },
+    );
+  }
+
+  /// 选集封面（无封面时用占位）
+  Widget _episodeCover(Song v) {
+    if (v.coverUrl != null && v.coverUrl!.isNotEmpty) {
+      final f = File(v.coverUrl!);
+      if (f.existsSync() && f.lengthSync() > 0) {
+        return Image.file(f, fit: BoxFit.cover);
+      }
+    }
+    return Container(color: Colors.grey[800], child: const Center(child: Icon(Icons.movie, color: Colors.grey, size: 28)));
   }
 }

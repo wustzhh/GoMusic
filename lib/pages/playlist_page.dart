@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../main.dart';
 import '../models/music_data.dart';
 import '../services/settings_service.dart';
 import '../services/audio_player_service.dart';
@@ -19,7 +20,19 @@ class PlaylistPageState extends State<PlaylistPage> {
   void initState() {
     super.initState();
     AudioPlayerService().favoritesChangedNotifier.addListener(() => refresh());
+    downloadsChangedNotifier.addListener(_onDownloadsChanged);
     _loadPlaylists();
+  }
+
+  @override
+  void dispose() {
+    AudioPlayerService().favoritesChangedNotifier.removeListener(() => refresh());
+    downloadsChangedNotifier.removeListener(_onDownloadsChanged);
+    super.dispose();
+  }
+
+  void _onDownloadsChanged() {
+    refresh();
   }
 
   Future<void> refresh() {
@@ -33,16 +46,15 @@ class PlaylistPageState extends State<PlaylistPage> {
     final dir = await service.getDownloadPath();
     final localSongs = await scanLocalAudioFiles(dir);
     final recentBvids = await RecentlyPlayedService.getRecentBvids();
-    final recentSongs = recentBvids
-        .map((bv) => localSongs.where((s) => s.bvid == bv || _fileNameKey(s) == bv).firstOrNull)
-        .whereType<Song>()
-        .toList();
+    final recentSongs = recentBvids.map((bv) {
+      return localSongs.where((s) => s.bvid == bv || _fileNameKey(s) == bv).firstOrNull ??
+          Song(id: bv, title: bv, uploader: '', duration: Duration.zero, bvid: bv, filePath: ''); // 占位：数量保持真实
+    }).toList();
     final favPaths = await AudioPlayerService.getFavorites();
-    final favSongs = favPaths
-        .map((k) => localSongs.where((s) => s.bvid == k || _fileNameKey(s) == k).firstOrNull)
-        .where((s) => s != null)
-        .cast<Song>()
-        .toList();
+    final favSongs = favPaths.map((k) {
+      return localSongs.where((s) => s.bvid == k || _fileNameKey(s) == k).firstOrNull ??
+          Song(id: k, title: k, uploader: '', duration: Duration.zero, bvid: k, filePath: ''); // 占位：数量保持真实
+    }).toList();
     var customPls = await PlaylistService.getPlaylists();
     // 本地歌单：拖动过则应用拖动顺序；否则按添加顺序（mtime 倒序，最后添加的放最上面）
     final localOrder = await SongManager.getLocalOrder();
@@ -180,9 +192,13 @@ class PlaylistPageState extends State<PlaylistPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('播放列表'), centerTitle: true, actions: [
-        IconButton(icon: const Icon(Icons.tune, size: 20), tooltip: '', onPressed: _showSettings),
-      ]),
+      appBar: AppBar(
+        title: Text('播放列表 (${_playlists.fold<int>(0, (sum, pl) => sum + pl.songs.length)}首)'),
+        centerTitle: true,
+        actions: [
+          IconButton(icon: const Icon(Icons.tune, size: 20), tooltip: '', onPressed: _showSettings),
+        ],
+      ),
       body: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _playlists.length + 1,

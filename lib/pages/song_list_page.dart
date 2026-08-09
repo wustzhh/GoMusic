@@ -136,7 +136,7 @@ class _SongListPageState extends State<SongListPage> {
           _songs = scanned..sort((a, b) => _mtimeOf(b.filePath).compareTo(_mtimeOf(a.filePath)));
         }
       } else if (widget.playlist.id == 'fav') {
-        // 我喜欢：按收藏顺序（含拖动排序）排列，用扫描结果补全信息
+        // 我喜欢：只显示收藏的歌（按收藏顺序，含拖动排序），用扫描结果补全信息
         final all = await scanLocalAudioFiles(dir);
         final favs = await AudioPlayerService.getFavorites();
         final byKey = {for (final s in all) _songKey(s): s};
@@ -145,7 +145,7 @@ class _SongListPageState extends State<SongListPage> {
           final s = byKey[k];
           if (s != null) { ordered.add(s); byKey.remove(k); }
         }
-        ordered.addAll(byKey.values);
+        // 不追加未收藏的本地歌（移出后数量立即正确）
         _songs = ordered;
       } else {
       final pls = await PlaylistService.getPlaylists();
@@ -178,7 +178,12 @@ class _SongListPageState extends State<SongListPage> {
 
   void _playSong(Song song) {
     // 队列始终用完整歌单（搜索只是显示筛选，不影响播放列表）
-    _service.setQueue(_songs, startIndex: _songs.indexWhere((s) => _songKey(s) == _songKey(song)), playlistId: widget.playlist.id, keepOrder: true);
+    final idx = _songs.indexWhere((s) => _songKey(s) == _songKey(song));
+    _service.setQueue(_songs, startIndex: idx, playlistId: widget.playlist.id, keepOrder: true);
+    // 随机模式：点击的歌必须放到队列第一首（生成新播放列表后立即播放它）
+    if (_service.playMode == PlayMode.shuffle) {
+      _service.moveToFront(song);
+    }
     _service.playSong(song);
   }
 
@@ -189,6 +194,12 @@ class _SongListPageState extends State<SongListPage> {
 
   void _showAddToList(Song song) async {
     final existing = await PlaylistService.getPlaylists();
+    // 一次性读取所有歌单的在列状态（避免每个歌单一次异步读，卡顿）
+    final key = _songKey(song);
+    final inList = <String, bool>{};
+    for (final pl in existing) {
+      inList[pl.id] = await PlaylistService.isSongInPlaylist(pl.id, key);
+    }
     if (!mounted) return;
     showModalBottomSheet(
       context: context,
@@ -197,15 +208,12 @@ class _SongListPageState extends State<SongListPage> {
         const Text('添加到收藏夹', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 12),
         ListTile(leading: const Icon(Icons.favorite, color: Colors.red, size: 24), title: const Text('我喜欢'),
-          trailing: _favs.contains(_songKey(song)) ? const Icon(Icons.check, color: Colors.green) : null,
+          trailing: _favs.contains(key) ? const Icon(Icons.check, color: Colors.green) : null,
           onTap: () async { Navigator.pop(ctx); await AudioPlayerService.toggleFavorite(song); _loadFavs(); },
         ),
-        ...existing.map((pl) => FutureBuilder<bool>(
-          future: PlaylistService.isSongInPlaylist(pl.id, _songKey(song)),
-          builder: (_, snap) => ListTile(leading: const Icon(Icons.list, color: Colors.grey, size: 22), title: Text(pl.name),
-            trailing: (snap.data == true) ? const Icon(Icons.check, color: Colors.green) : null,
-            onTap: () async { Navigator.pop(ctx); await PlaylistService.addSongToPlaylist(pl.id, _songKey(song)); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}'))); },
-          ),
+        ...existing.map((pl) => ListTile(leading: const Icon(Icons.list, color: Colors.grey, size: 22), title: Text(pl.name),
+          trailing: (inList[pl.id] == true) ? const Icon(Icons.check, color: Colors.green) : null,
+          onTap: () async { Navigator.pop(ctx); await PlaylistService.addSongToPlaylist(pl.id, key); if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}'))); },
         )),
         const Divider(),
         ListTile(leading: const Icon(Icons.add, color: Colors.blue), title: const Text('新建收藏夹'),
@@ -247,6 +255,8 @@ class _SongListPageState extends State<SongListPage> {
         ),
         padding: const EdgeInsets.all(16),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.vertical_align_top, color: Colors.blue), title: const Text('置顶'),
+            onTap: () { Navigator.pop(ctx); _pinSong(song); }),
           ListTile(leading: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? Colors.red : Colors.grey),
             title: Text(isFav ? '取消收藏' : '添加到我喜欢'),
             onTap: () { Navigator.pop(ctx); AudioPlayerService.toggleFavorite(song); _loadFavs(); }),
@@ -258,14 +268,69 @@ class _SongListPageState extends State<SongListPage> {
                 Navigator.pop(ctx);
                 _confirmDeleteVideo(song);
               }),
-          ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('删除歌曲', style: TextStyle(color: Colors.red)),
-            onTap: () {
-              Navigator.pop(ctx);
-              _confirmDelete(song);
-            }),
+          if (widget.playlist.id == 'local')
+            // 本地歌单：直接删除文件
+            ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('删除歌曲', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDelete(song);
+              })
+          else ...[
+            // 其他歌单（我喜欢/自定义/最近播放）：移出歌单 + 移出并删除
+            ListTile(leading: const Icon(Icons.playlist_remove, color: Colors.orange), title: const Text('移出歌单', style: TextStyle(color: Colors.orange)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _removeFromPlaylist(song);
+              }),
+            ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('移出并删除', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmRemoveAndDelete(song);
+              }),
+          ],
         ]),
       ),
     );
+  }
+
+  /// 单曲移出歌单（我喜欢=取消收藏；自定义=从存储移除；最近播放=从记录移除）
+  Future<void> _removeFromPlaylist(Song song) async {
+    final key = _songKey(song);
+    if (widget.playlist.id == 'fav') {
+      await AudioPlayerService.toggleFavorite(song);
+      _refresh(); // 重建列表：移出的歌立即消失
+    } else if (widget.playlist.id == 'recent') {
+      RecentlyPlayedService.removeBvid(key);
+      _refresh();
+    } else {
+      await PlaylistService.removeSongFromPlaylist(widget.playlist.id, key);
+      _refresh();
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已移出歌单'), duration: Duration(seconds: 1)));
+    }
+  }
+
+  /// 移出并删除：先从歌单移除，再删本地文件
+  Future<void> _confirmRemoveAndDelete(Song song) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('移出并删除'),
+        content: Text('确定将「${song.title}」移出歌单并删除本地文件吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _removeFromPlaylist(song);
+    _deleteSong(song);
   }
 
   void _confirmDelete(Song song) {
@@ -320,13 +385,81 @@ class _SongListPageState extends State<SongListPage> {
     _refresh();
   }
 
+  /// 反转歌单：完全倒序并持久化（recent 由播放记录派生，不保存）
+  void _reversePlaylist() {
+    setState(() {
+      _songs = _songs.reversed.toList();
+      final newKeys = _songs.map((s) => s.bvid.isNotEmpty ? s.bvid : _songKey(s)).toList();
+      if (widget.playlist.id == 'local') {
+        SongManager.saveLocalOrder(newKeys);
+      } else if (widget.playlist.id == 'fav') {
+        AudioPlayerService.saveFavoritesOrder(newKeys);
+      } else if (widget.playlist.id != 'recent') {
+        PlaylistService.reorderSongsInPlaylist(widget.playlist.id, newKeys);
+      }
+    });
+    // 同步播放队列顺序（非随机模式）
+    if (_service.playMode != PlayMode.shuffle) {
+      final curIdx = _songs.indexWhere((s) => _songKey(s) == (_service.currentSong != null ? _songKey(_service.currentSong!) : ""));
+      _service.setQueue(_songs, startIndex: _songs.isEmpty ? 0 : curIdx.clamp(0, _songs.length - 1), playlistId: widget.playlist.id, keepOrder: true);
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('歌单已反转'), duration: Duration(seconds: 1)));
+    }
+  }
+
+  /// 置顶：把歌曲移到列表最前并持久化（recent 由播放记录派生，不保存）
+  void _pinSong(Song song) {
+    final key = _songKey(song);
+    setState(() {
+      _songs.removeWhere((s) => _songKey(s) == key);
+      _songs.insert(0, song);
+      final newKeys = _songs.map((s) => s.bvid.isNotEmpty ? s.bvid : _songKey(s)).toList();
+      if (widget.playlist.id == 'local') {
+        SongManager.saveLocalOrder(newKeys);
+      } else if (widget.playlist.id == 'fav') {
+        AudioPlayerService.saveFavoritesOrder(newKeys);
+      } else if (widget.playlist.id != 'recent') {
+        PlaylistService.reorderSongsInPlaylist(widget.playlist.id, newKeys);
+      }
+    });
+    // 同步播放队列顺序（非随机模式）
+    if (_service.playMode != PlayMode.shuffle) {
+      final curIdx = _songs.indexWhere((s) => _songKey(s) == (_service.currentSong != null ? _songKey(_service.currentSong!) : ""));
+      _service.setQueue(_songs, startIndex: _songs.isEmpty ? 0 : curIdx.clamp(0, _songs.length - 1), playlistId: widget.playlist.id, keepOrder: true);
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已置顶'), duration: Duration(seconds: 1)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _getFiltered();
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.playlist.name), centerTitle: true, actions: [
-        IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh, tooltip: '刷新'),
-      ]),
+    return PopScope(
+      // 批量模式下返回键 = 取消批量，不退出页面
+      canPop: !_batchMode,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _batchMode) {
+          setState(() { _batchMode = false; _selectedPaths.clear(); });
+        }
+      },
+      child: Scaffold(
+      appBar: AppBar(
+        title: Text('${widget.playlist.name} (${_songs.length}首)'),
+        centerTitle: true,
+        leading: _batchMode
+            // 批量模式：返回箭头 = 取消批量（与系统返回键行为一致）
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: '取消批量',
+                onPressed: () => setState(() { _batchMode = false; _selectedPaths.clear(); }),
+              )
+            : null,
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _refresh, tooltip: '刷新'),
+        ],
+      ),
       body: Column(children: [
         if (widget.playlist.id != 'recent') ...[
         Padding(padding: const EdgeInsets.fromLTRB(8, 6, 8, 0), child: TextField(
@@ -374,12 +507,6 @@ class _SongListPageState extends State<SongListPage> {
                 icon: const Icon(Icons.select_all, size: 16),
                 label: Text(_getFiltered().isNotEmpty && _getFiltered().every((s) => _selectedPaths.contains(_songKey(s))) ? '全消' : '全选', style: const TextStyle(fontSize: 11)),
               ),
-              TextButton.icon(onPressed: _batchAddTo, icon: const Icon(Icons.playlist_add, size: 16), label: const Text('添加到', style: TextStyle(fontSize: 11))),
-              if (widget.playlist.id != 'local')
-                TextButton.icon(onPressed: _batchRemove, icon: const Icon(Icons.playlist_remove, size: 16), label: const Text('移出', style: TextStyle(fontSize: 11))),
-              TextButton.icon(onPressed: _batchGroup, icon: const Icon(Icons.group_add, size: 16), label: const Text('组队', style: TextStyle(fontSize: 11))),
-              if (widget.playlist.id == 'local')
-                TextButton.icon(onPressed: _batchDelete, icon: const Icon(Icons.delete, size: 16, color: Colors.red), label: const Text('删除', style: TextStyle(fontSize: 11, color: Colors.red))),
             ],
             TextButton.icon(
               onPressed: () {
@@ -395,6 +522,20 @@ class _SongListPageState extends State<SongListPage> {
             ),
           ]),
         ),
+        // 批量操作栏：Wrap 换行，按钮永不消失/溢出
+        if (_batchMode)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+            child: Wrap(spacing: 2, runSpacing: 2, children: [
+              _batchBtn(Icons.playlist_add, '添加到', _batchAddTo),
+              if (widget.playlist.id != 'local')
+                _batchBtn(Icons.playlist_remove, '移出', _batchRemove),
+              _batchBtn(Icons.group_add, '组队', _batchGroup),
+              _batchBtn(Icons.swap_vert, '反转', _reversePlaylist),
+              if (widget.playlist.id == 'local')
+                _batchBtn(Icons.delete, '删除', _batchDelete, red: true),
+            ]),
+          ),
         const Divider(height: 1),
         ],
         Expanded(child: filtered.isEmpty
@@ -447,6 +588,7 @@ class _SongListPageState extends State<SongListPage> {
             })),
         _buildBottomBar(),
       ]),
+      ),
     );
   }
 
@@ -852,6 +994,20 @@ class _SongListPageState extends State<SongListPage> {
     );
   }
 
+  /// 批量操作按钮（底部操作栏用，Wrap 换行）
+  Widget _batchBtn(IconData icon, String label, VoidCallback onTap, {bool red = false}) {
+    return TextButton.icon(
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      onPressed: onTap,
+      icon: Icon(icon, size: 16, color: red ? Colors.red : Colors.deepPurple),
+      label: Text(label, style: TextStyle(fontSize: 11, color: red ? Colors.red : null)),
+    );
+  }
+
 
   String _songKey(Song s) {
     if (s.bvid.isNotEmpty) return s.bvid;
@@ -889,7 +1045,7 @@ class _SongListPageState extends State<SongListPage> {
           leading: const Icon(Icons.favorite, color: Colors.red, size: 20),
           title: const Text('我喜欢', style: TextStyle(fontSize: 14)),
           onTap: () async {
-            for (final s in sel) await AudioPlayerService.toggleFavorite(s);
+            await AudioPlayerService.addFavoritesBatch(sel);
             Navigator.pop(ctx);
             if (mounted) { _exitBatchMode(); _loadFavs(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已添加到我喜欢'))); }
           },
@@ -919,8 +1075,16 @@ class _SongListPageState extends State<SongListPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(onPressed: () async {
-            for (final s in sel) {
-              await PlaylistService.removeSongFromPlaylist(widget.playlist.id, _songKey(s));
+            if (widget.playlist.id == 'fav') {
+              // "我喜欢"：移出 = 取消收藏
+              for (final s in sel) {
+                await AudioPlayerService.toggleFavorite(s);
+              }
+            } else {
+              // 自定义歌单：从歌单存储中移除
+              for (final s in sel) {
+                await PlaylistService.removeSongFromPlaylist(widget.playlist.id, _songKey(s));
+              }
             }
             Navigator.pop(ctx);
             _refresh();

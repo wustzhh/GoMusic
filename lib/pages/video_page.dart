@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import '../main.dart';
 import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
@@ -20,6 +21,18 @@ class _VideoPageState extends State<VideoPage> {
   @override
   void initState() {
     super.initState();
+    _load();
+    // 下载完成自动刷新（无需手动点刷新）
+    downloadsChangedNotifier.addListener(_onDownloadsChanged);
+  }
+
+  @override
+  void dispose() {
+    downloadsChangedNotifier.removeListener(_onDownloadsChanged);
+    super.dispose();
+  }
+
+  void _onDownloadsChanged() {
     _load();
   }
 

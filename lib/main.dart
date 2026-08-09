@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:audio_service/audio_service.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'pages/download_page.dart';
 import 'pages/playlist_page.dart';
 import 'pages/settings_page.dart';
@@ -8,13 +12,29 @@ import 'pages/video_page.dart';
 import 'services/settings_service.dart';
 import 'services/bilibili_api.dart';
 import 'services/audio_player_service.dart';
+import 'services/audio_handler.dart';
 import 'widgets/mini_player_bar.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
-  // 初始化窗口管理（Windows 全屏支持）
-  await windowManager.ensureInitialized();
+  // 初始化窗口管理（仅 Windows 支持；Android 无此插件实现）
+  if (Platform.isWindows) {
+    await windowManager.ensureInitialized();
+  }
+  // 初始化媒体会话（Android：耳机键/通知栏/锁屏媒体控制；桌面端不启用）
+  if (Platform.isAndroid) {
+    // Android 13+ 通知权限（媒体通知/锁屏控制需要）
+    await Permission.notification.request();
+    await AudioService.init(
+      builder: () => GoMusicAudioHandler(),
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'com.gomusic.channel.playback',
+        androidNotificationChannelName: 'GoMusic 播放控制',
+        androidNotificationOngoing: true,
+      ),
+    );
+  }
   final service = await SettingsService.getInstance();
   BilibiliApi.cookie = await service.getBilibiliCookie();
   await BilibiliApi.ensureBuvid3();
@@ -26,30 +46,70 @@ void main() async {
   runApp(const GoMusicApp());
 }
 
-class GoMusicApp extends StatelessWidget {
+class GoMusicApp extends StatefulWidget {
   const GoMusicApp({super.key});
 
   @override
+  State<GoMusicApp> createState() => _GoMusicAppState();
+}
+
+/// 全局主题模式通知（0:浅色 1:深色 2:跟随系统）；设置页切换时更新
+final themeModeNotifier = ValueNotifier<int>(1);
+
+/// 全局"下载完成"通知：下载页下载完触发，视频页/歌单页监听后自动刷新
+final downloadsChangedNotifier = ValueNotifier<int>(0);
+
+class _GoMusicAppState extends State<GoMusicApp> {
+  @override
+  void initState() {
+    super.initState();
+    // 启动时从存储读取主题模式
+    SettingsService.getInstance().then((s) {
+      themeModeNotifier.value = s.getThemeMode();
+    });
+  }
+
+  @override
+  void dispose() {
+    themeModeNotifier.dispose();
+    super.dispose();
+  }
+
+  ThemeMode _resolveThemeMode(int m) {
+    switch (m) {
+      case 0: return ThemeMode.light;
+      case 2: return ThemeMode.system;
+      default: return ThemeMode.dark;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'GoMusic',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple, brightness: Brightness.light), useMaterial3: true,
-        pageTransitionsTheme: const PageTransitionsTheme(builders: {
-          TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.iOS: FadeUpwardsPageTransitionsBuilder(),
-        }),
-      ),
-      darkTheme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple, brightness: Brightness.dark), useMaterial3: true,
-        pageTransitionsTheme: const PageTransitionsTheme(builders: {
-          TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
-          TargetPlatform.iOS: FadeUpwardsPageTransitionsBuilder(),
-        }),
-      ),
-      themeMode: ThemeMode.dark,
-      home: const MainScreen(),
+    return ValueListenableBuilder<int>(
+      valueListenable: themeModeNotifier,
+      builder: (context, mode, _) {
+        final themeMode = _resolveThemeMode(mode);
+        return MaterialApp(
+          title: 'GoMusic',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple, brightness: Brightness.light), useMaterial3: true,
+            pageTransitionsTheme: const PageTransitionsTheme(builders: {
+              TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+              TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+              TargetPlatform.iOS: FadeUpwardsPageTransitionsBuilder(),
+            }),
+          ),
+          darkTheme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple, brightness: Brightness.dark), useMaterial3: true,
+            pageTransitionsTheme: const PageTransitionsTheme(builders: {
+              TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+              TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
+              TargetPlatform.iOS: FadeUpwardsPageTransitionsBuilder(),
+            }),
+          ),
+          themeMode: themeMode,
+          home: const MainScreen(),
+        );
+      },
     );
   }
 }
