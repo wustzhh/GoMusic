@@ -146,9 +146,8 @@ class AudioPlayerService {
     if (_currentSong?.filePath == song.filePath && !forceRestart) {
       final st = _player.state;
       if (_playing && !st.completed) {
-        _player.pause();
-        _playing = false;
-        _releaseAudioFocus();
+        // 用户要求：点击正在播放的歌曲不暂停（保持播放，仅进入播放界面）
+        _requestAudioFocus();
       } else if (st.completed) {
         // 真的播完了：从头播放当前歌
         _lastPosition = Duration.zero;
