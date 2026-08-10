@@ -69,8 +69,15 @@ class _DownloadPageState extends State<DownloadPage> {
   // ==================== 解析 ====================
 
   Future<void> _parseUrl() async {
-    final url = _urlController.text.trim();
+    var url = _urlController.text.trim();
     if (url.isEmpty) return;
+    // 从分享文本中提取 URL（B站分享文本含中文标题）
+    final urlMatch = RegExp(r'https?://\S+').firstMatch(url);
+    if (urlMatch != null) {
+      url = urlMatch.group(0)!;
+      // 去掉 URL 尾部可能带上的中文标点
+      url = url.replaceFirst(RegExp(r'[^A-Za-z0-9/:_?=&.%-]+$'), '');
+    }
 
     setState(() {
       _isParsing = true; _singleInfo = null; _batchItems = [];
@@ -448,13 +455,37 @@ class _DownloadPageState extends State<DownloadPage> {
           child: TextField(
             controller: _urlController,
             decoration: InputDecoration(
-              hintText: '粘贴B站视频链接或收藏夹链接...',
+              hintText: '粘贴B站分享链接或视频/收藏夹链接...',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
               prefixIcon: const Icon(Icons.link, size: 20),
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.close, size: 18, color: Colors.grey),
+                tooltip: '',
+                onPressed: () => setState(() => _urlController.clear()),
+              ),
               contentPadding: const EdgeInsets.symmetric(vertical: 10),
             ),
             style: const TextStyle(fontSize: 13),
             onSubmitted: (_) => _parseUrl(),
+            contextMenuBuilder: (ctx, editableTextState) {
+              final items = editableTextState.contextMenuButtonItems;
+              // 翻译成中文
+              final names = {
+                ContextMenuButtonType.copy: '复制',
+                ContextMenuButtonType.paste: '粘贴',
+                ContextMenuButtonType.cut: '剪切',
+                ContextMenuButtonType.selectAll: '全选',
+                ContextMenuButtonType.delete: '删除',
+              };
+              return AdaptiveTextSelectionToolbar.buttonItems(
+                anchors: editableTextState.contextMenuAnchors,
+                buttonItems: items.map((item) => ContextMenuButtonItem(
+                  type: item.type,
+                  label: names[item.type] ?? item.label,
+                  onPressed: item.onPressed,
+                )).toList(),
+              );
+            },
           ),
         ),
         const SizedBox(width: 8),
