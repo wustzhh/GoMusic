@@ -22,19 +22,6 @@ void main() async {
   if (Platform.isWindows) {
     await windowManager.ensureInitialized();
   }
-  // 初始化媒体会话（Android：耳机键/通知栏/锁屏媒体控制；桌面端不启用）
-  if (Platform.isAndroid) {
-    // Android 13+ 通知权限（媒体通知/锁屏控制需要）
-    await Permission.notification.request();
-    await AudioService.init(
-      builder: () => GoMusicAudioHandler(),
-      config: const AudioServiceConfig(
-        androidNotificationChannelId: 'com.gomusic.channel.playback',
-        androidNotificationChannelName: 'GoMusic 播放控制',
-        androidNotificationOngoing: true,
-      ),
-    );
-  }
   final service = await SettingsService.getInstance();
   BilibiliApi.cookie = await service.getBilibiliCookie();
   await BilibiliApi.ensureBuvid3();
@@ -44,6 +31,30 @@ void main() async {
   await audioService.restoreLastSong();
 
   runApp(const GoMusicApp());
+
+  // 媒体会话（Android：耳机键/通知栏/锁屏控制）——延迟到界面显示后初始化，
+  // 不阻塞启动（权限弹窗/audio_service 初始化失败都不影响首屏）
+  if (Platform.isAndroid) {
+    _initMediaSession();
+  }
+}
+
+/// 初始化媒体会话（异步，不阻塞启动；失败静默）
+Future<void> _initMediaSession() async {
+  try {
+    // Android 13+ 通知权限（媒体通知/锁屏控制需要；不强制等待）
+    await Permission.notification.request();
+    await AudioService.init(
+      builder: () => GoMusicAudioHandler(),
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'com.gomusic.channel.playback',
+        androidNotificationChannelName: 'GoMusic 播放控制',
+        androidNotificationOngoing: true,
+      ),
+    );
+  } catch (_) {
+    // 媒体会话失败不影响正常使用
+  }
 }
 
 class GoMusicApp extends StatefulWidget {

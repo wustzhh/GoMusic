@@ -193,7 +193,8 @@ class PlaylistPageState extends State<PlaylistPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('播放列表 (${_playlists.fold<int>(0, (sum, pl) => sum + pl.songs.length)}首)'),
+        // 不显示合计数量：同一首歌可在多个歌单，简单相加会重复计数
+        title: const Text('播放列表'),
         centerTitle: true,
         actions: [
           IconButton(icon: const Icon(Icons.tune, size: 20), tooltip: '', onPressed: _showSettings),
