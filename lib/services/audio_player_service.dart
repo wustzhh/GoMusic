@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:media_kit/media_kit.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/music_data.dart';
@@ -26,6 +27,25 @@ class AudioPlayerService {
     if (_playerRef != null) return;
     _playerRef = Player();
     _attachPlayerListeners();
+  }
+
+  /// 请求音频焦点（与其他音乐/视频 app 互斥）
+  Future<void> _requestAudioFocus() async {
+    try {
+      final session = await AudioSession.instance;
+      if (!session.isConfigured) {
+        await session.configure(const AudioSessionConfiguration.music());
+      }
+      await session.setActive(true);
+    } catch (_) {}
+  }
+
+  /// 放弃音频焦点（暂停时）
+  Future<void> _releaseAudioFocus() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.setActive(false);
+    } catch (_) {}
   }
 
   Player get _player {
@@ -128,6 +148,7 @@ class AudioPlayerService {
       if (_playing && !st.completed) {
         _player.pause();
         _playing = false;
+        _releaseAudioFocus();
       } else if (st.completed) {
         // 真的播完了：从头播放当前歌
         _lastPosition = Duration.zero;
@@ -135,10 +156,22 @@ class AudioPlayerService {
         _sourceLoaded = true;
         _playing = true;
       } else {
-        // 暂停中/初始未加载：从记录位置续播（含启动恢复场景）
-        await _playFile(song.filePath, position: _lastPosition > Duration.zero ? _lastPosition : null);
-        _sourceLoaded = true;
-        _playing = true;
+        // 暂停中：优先 resume 续播（不重新加载、不回 0）
+        _requestAudioFocus();
+        try {
+          if (_player.state.completed) {
+            _lastPosition = Duration.zero;
+            await _playFile(song.filePath);
+          } else {
+            _player.play();
+          }
+          _sourceLoaded = true;
+          _playing = true;
+        } catch (_) {
+          await _playFile(song.filePath, position: _lastPosition > Duration.zero ? _lastPosition : null);
+          _sourceLoaded = true;
+          _playing = true;
+        }
       }
       return;
     }
@@ -148,6 +181,7 @@ class AudioPlayerService {
     _lastPosition = Duration.zero;
     _currentSong = song;
     currentSongNotifier.value = song;
+    _requestAudioFocus();
     try {
       await _playFile(song.filePath);
       _sourceLoaded = true;
