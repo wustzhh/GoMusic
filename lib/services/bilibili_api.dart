@@ -480,7 +480,8 @@ class BilibiliApi {
           coverUrl: (v['cover'] as String? ?? '').replaceAll('http:', 'https:'),
           durationSeconds: v['duration'] as int? ?? 0,
           url: baseUrl,
-          cid: v['cid'] as int? ?? 0,
+          // 收藏夹 API 的 cid 在 ugc.first_cid 里（v['cid'] 不存在）
+          cid: (v['ugc'] as Map?)?['first_cid'] as int? ?? 0,
         );
       }).toList();
     } catch (_) {
