@@ -26,6 +26,7 @@ class _DownloadPageState extends State<DownloadPage> {
   bool _downloadAudio = true;
   bool _isParsing = false;
   bool _isDownloading = false;
+  bool _cancelling = false; // 点击取消后的即时反馈
   ValueNotifier<bool>? _cancelNotifier;
   String _downloadingTitle = '';
   int _downloadingSize = 0;
@@ -295,7 +296,7 @@ class _DownloadPageState extends State<DownloadPage> {
       coverFailed = true;
     }
     if (coverFailed) {
-      setState(() { _isDownloading = false; _downloadingTitle = ''; });
+      setState(() { _isDownloading = false; _cancelling = false; _downloadingTitle = ''; });
       _snack('下载失败：封面下载失败');
       return;
     }
@@ -404,7 +405,7 @@ class _DownloadPageState extends State<DownloadPage> {
         if (!needVideo) File('$dir/$name.mp4').deleteSync();
         if (!needCover) File('$dir/$name.jpg').deleteSync();
       } catch (_) {}
-      setState(() { _isDownloading = false; _downloadingTitle = ''; });
+      setState(() { _isDownloading = false; _cancelling = false; _downloadingTitle = ''; });
       _snack('下载失败：文件不完整（${needCover ? "" : "封面"}${needAudio ? "" : "音频"}${needVideo ? "" : "视频"}缺失）');
       return;
     }
@@ -548,7 +549,7 @@ class _DownloadPageState extends State<DownloadPage> {
     }
 
     if (!mounted) return;
-    setState(() => _isDownloading = false);
+    setState(() { _isDownloading = false; _cancelling = false; });
     // 通知主界面刷新（下载完成后本地歌单/历史记录立即更新）
     AudioPlayerService().favoritesChangedNotifier.value++;
     downloadsChangedNotifier.value++;
@@ -868,7 +869,7 @@ class _DownloadPageState extends State<DownloadPage> {
         dense: true,
         leading: Icon(icon, color: color, size: 20),
         title: Text(item.info.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-        subtitle: Text('${item.info.author} · ${item.info.durationText}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        subtitle: Text('${item.info.author} · ${item.info.durationText} · 音频${item.info.audioSizeText}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
           if (item.status == _BatchStatus.failed)
             Padding(
@@ -991,9 +992,12 @@ class _DownloadPageState extends State<DownloadPage> {
               SizedBox(
                 width: double.infinity, height: 36,
                 child: OutlinedButton.icon(
-                  onPressed: () => _cancelNotifier?.value = true,
+                  onPressed: _cancelling ? null : () {
+                    _cancelNotifier?.value = true;
+                    setState(() => _cancelling = true); // 立即反馈
+                  },
                   icon: const Icon(Icons.close, color: Colors.red, size: 16),
-                  label: const Text('取消下载', style: TextStyle(fontSize: 13, color: Colors.red)),
+                  label: Text(_cancelling ? '正在取消...' : '取消下载', style: const TextStyle(fontSize: 13, color: Colors.red)),
                   style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                 ),
               ),

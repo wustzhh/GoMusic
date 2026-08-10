@@ -522,6 +522,12 @@ class StreamDownloader {
         });
 
         final streamed = await request.send();
+        // send 返回后立即响应取消（不等下一个 chunk）
+        if (cancel?.value == true) {
+          streamed.stream.drain<void>();
+          try { if (partFile.existsSync()) partFile.deleteSync(); } catch (_) {}
+          return false;
+        }
         try {
           File('${saveFile.parent.path}/debug.log').writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] dl status=${streamed.statusCode} len=${streamed.contentLength} range=$existing part=${partFile.path}\n', mode: FileMode.append);
         } catch (_) {}
