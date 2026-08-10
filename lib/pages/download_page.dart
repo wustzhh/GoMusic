@@ -452,6 +452,7 @@ class _DownloadPageState extends State<DownloadPage> {
 
     for (final item in toDownload) {
       if (!mounted) return;
+      if (_cancelNotifier?.value == true) { setState(() {}); break; }
       setState(() => item.status = _BatchStatus.downloading);
 
       final full = await _api.getVideoInfo(item.info.url);
@@ -464,7 +465,7 @@ class _DownloadPageState extends State<DownloadPage> {
       // 封面（失败 = 该项下载失败）
       var coverOk = true;
       if (full!.coverUrl.isNotEmpty) {
-        coverOk = await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {});
+        coverOk = await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {}, cancel: _cancelNotifier);
       } else {
         coverOk = false;
       }
@@ -481,6 +482,7 @@ class _DownloadPageState extends State<DownloadPage> {
           url: full.audioUrl!, savePath: '${_downloadDir}/${item.name}.m4a',
           onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
           onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? (received / total) * 0.5 : item.progress; }); },
+          cancel: _cancelNotifier,
         );
       }
       // 视频（勾选才下载）
@@ -500,6 +502,7 @@ class _DownloadPageState extends State<DownloadPage> {
             expectedSize: best.size > 0 ? best.size : null,
             onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
             onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; }); },
+            cancel: _cancelNotifier,
           );
         }
       }
@@ -510,6 +513,11 @@ class _DownloadPageState extends State<DownloadPage> {
       final needCover = File('${_downloadDir}/${item.name}.jpg').existsSync() && File('${_downloadDir}/${item.name}.jpg').lengthSync() > 0;
       final ok = audioOk && videoOk && needAudio && needVideo && needCover;
       if (!ok) {
+        if (_cancelNotifier?.value == true) {
+          if (mounted) setState(() => item.status = _BatchStatus.waiting);
+          _batchDone++;
+          continue;
+        }
         // 清理残留
         try {
           if (!needAudio) File('${_downloadDir}/${item.name}.m4a').deleteSync();
@@ -904,7 +912,7 @@ class _DownloadPageState extends State<DownloadPage> {
     // 封面（失败 = 该项下载失败）
     var coverOk = true;
     if (full!.coverUrl.isNotEmpty) {
-      coverOk = await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {});
+      coverOk = await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {}, cancel: _cancelNotifier);
     } else {
       coverOk = false;
     }
@@ -916,6 +924,7 @@ class _DownloadPageState extends State<DownloadPage> {
         url: full.audioUrl!, savePath: '${_downloadDir}/${item.name}.m4a',
         onProgress: (_) {},
         onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? (received / total) * 0.5 : item.progress; }); },
+        cancel: _cancelNotifier,
       );
     }
     // 视频（勾选才下载）
@@ -931,6 +940,7 @@ class _DownloadPageState extends State<DownloadPage> {
           expectedSize: best.size > 0 ? best.size : null,
           onProgress: (_) {},
           onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; }); },
+          cancel: _cancelNotifier,
         );
       }
     }
