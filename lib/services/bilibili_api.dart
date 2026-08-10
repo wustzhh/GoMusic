@@ -365,7 +365,7 @@ class BilibiliApi {
         try {
           final req = http.Request('GET', Uri.parse(url));
           req.headers.addAll(probeHeaders);
-          final r = await req.send();
+          final r = await req.send().timeout(const Duration(seconds: 5));
           final cr = r.headers['content-range'];
           if (cr != null && cr.contains('/')) {
             final len = int.tryParse(cr.split('/').last);

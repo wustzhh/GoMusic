@@ -455,7 +455,7 @@ class _DownloadPageState extends State<DownloadPage> {
       final batch = items.skip(i).take(concurrency).toList();
       await Future.wait(batch.map((item) async {
         try {
-          final full = await _api.getVideoInfo(item.info.url);
+          final full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 10));
           if (full != null && full.audioSize > 0 && mounted) {
             setState(() => item.info.audioSize = full.audioSize);
           }
