@@ -445,6 +445,7 @@ class _DownloadPageState extends State<DownloadPage> {
   // ==================== 批量下载 ====================
 
   Future<void> _startBatch() async {
+    _cancelNotifier = ValueNotifier(false);
     setState(() { _isDownloading = true; _batchTotal = 0; _batchDone = 0; });
     SongManager.init(_downloadDir!);
 
@@ -990,10 +991,7 @@ class _DownloadPageState extends State<DownloadPage> {
               SizedBox(
                 width: double.infinity, height: 36,
                 child: OutlinedButton.icon(
-                  onPressed: () {
-                    _cancelNotifier?.value = true;
-                    setState(() => _isDownloading = false);
-                  },
+                  onPressed: () => _cancelNotifier?.value = true,
                   icon: const Icon(Icons.close, color: Colors.red, size: 16),
                   label: const Text('取消下载', style: TextStyle(fontSize: 13, color: Colors.red)),
                   style: OutlinedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),

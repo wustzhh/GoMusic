@@ -542,7 +542,9 @@ class StreamDownloader {
         await for (final chunk in streamed.stream) {
           if (cancel?.value == true) {
             await sink.close();
-            return false; // 保留缓存区 .part，下次断点续传
+            // 取消 = 删除缓存区部分文件（不留残余）
+            try { if (partFile.existsSync()) partFile.deleteSync(); } catch (_) {}
+            return false;
           }
           received += chunk.length;
           sink.add(chunk);
