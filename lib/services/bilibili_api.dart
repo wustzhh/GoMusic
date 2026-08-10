@@ -490,9 +490,16 @@ class BilibiliApi {
 
   /// 快速探测音频大小（收藏夹/合集条目已有 cid，省去 view API）
   Future<int> probeAudioSizeQuick(String bvid, int cid) async {
+    void log(String msg) {
+      try {
+        File('${Directory.systemTemp.path}/gomusic_debug.log')
+            .writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] [probe] $msg\n', mode: FileMode.append);
+      } catch (_) {}
+    }
     try {
       final d = await _playUrl({'bvid': bvid, 'cid': '$cid', 'fnval': '4048', 'qn': '127'});
       final audios = (d?['data']?['dash']?['audio'] as List?) ?? [];
+      log('$bvid cid=$cid code=${d?['code']} audios=${audios.length}');
       if (audios.isEmpty) return 0;
       audios.sort((a, b) => ((b['bandwidth'] as int?) ?? 0).compareTo((a['bandwidth'] as int?) ?? 0));
       final best = audios.first;

@@ -479,7 +479,9 @@ class _DownloadPageState extends State<DownloadPage> {
       if (_cancelNotifier?.value == true) { setState(() {}); break; }
       setState(() => item.status = _BatchStatus.downloading);
 
-      final full = await _api.getVideoInfo(item.info.url);
+      // 取消响应：getVideoInfo 最多等 4 秒，取消后立即停止后续
+      final full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 4));
+      if (_cancelNotifier?.value == true) { setState(() => item.status = _BatchStatus.waiting); break; }
       if (full?.audioUrl == null) {
         setState(() => item.status = _BatchStatus.failed);
         _batchDone++;
@@ -930,7 +932,8 @@ class _DownloadPageState extends State<DownloadPage> {
     setState(() { item.status = _BatchStatus.downloading; item.exists = false; item.progress = 0; item.speed = 0; });
     SongManager.init(_downloadDir!);
 
-    final full = await _api.getVideoInfo(item.info.url);
+    final full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 4));
+    if (_cancelNotifier?.value == true) { setState(() => item.status = _BatchStatus.waiting); return; }
     if (full?.audioUrl == null) { setState(() => item.status = _BatchStatus.failed); return; }
 
     // 封面（失败 = 该项下载失败）
