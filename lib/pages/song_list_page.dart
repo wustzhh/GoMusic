@@ -185,6 +185,10 @@ class _SongListPageState extends State<SongListPage> {
       _service.moveToFront(song);
     }
     _service.playSong(song);
+    // 点击歌曲直接进入播放界面
+    if (mounted) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const PlayerPage()));
+    }
   }
 
   List<Song> _getFiltered() {
