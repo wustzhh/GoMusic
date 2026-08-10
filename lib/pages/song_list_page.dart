@@ -336,7 +336,7 @@ class _SongListPageState extends State<SongListPage> {
     );
     if (confirmed != true || !mounted) return;
     await _removeFromPlaylist(song);
-    _deleteSong(song);
+    await _deleteSong(song);
   }
 
   void _confirmDelete(Song song) {
@@ -347,9 +347,9 @@ class _SongListPageState extends State<SongListPage> {
         content: Text('确定要删除「${song.title}」吗？\n本地文件也将被删除。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          TextButton(onPressed: () {
+          TextButton(onPressed: () async {
             Navigator.pop(ctx);
-            _deleteSong(song);
+            await _deleteSong(song);
           }, child: const Text('删除', style: TextStyle(color: Colors.red))),
         ],
       ),
@@ -382,7 +382,7 @@ class _SongListPageState extends State<SongListPage> {
     );
   }
 
-  void _deleteSong(Song song) {
+  Future<void> _deleteSong(Song song) async {
     final key = _songKey(song);
     try {
       File(song.filePath).deleteSync();
@@ -390,25 +390,20 @@ class _SongListPageState extends State<SongListPage> {
       if (song.videoPath != null && File(song.videoPath!).existsSync()) File(song.videoPath!).deleteSync();
       SongManager.unregisterSong(song.filePath);
     } catch (_) {}
-    // 清理所有歌单里的记录：自定义歌单
+    // 清理所有歌单里的记录：自定义歌单（await，确保完成）
     try {
-      final pls = PlaylistService.getPlaylists();
-      pls.then((list) {
-        for (final pl in list) {
-          PlaylistService.removeSongFromPlaylist(pl.id, key);
-        }
-      });
-    } catch (_) {}
-    // 清理"我喜欢"
-    try {
-      if (_favs.contains(key)) {
-        final s = Song(id: key, title: song.title, uploader: '', duration: Duration.zero, filePath: song.filePath, bvid: song.bvid);
-        AudioPlayerService.toggleFavorite(s);
+      final pls = await PlaylistService.getPlaylists();
+      for (final pl in pls) {
+        await PlaylistService.removeSongFromPlaylist(pl.id, key);
       }
+    } catch (_) {}
+    // 清理"我喜欢"（无条件移除，不依赖本地缓存状态）
+    try {
+      await AudioPlayerService.removeFavorite(key);
     } catch (_) {}
     // 清理最近播放
     try {
-      RecentlyPlayedService.removeSong(key);
+      await RecentlyPlayedService.removeSong(key);
     } catch (_) {}
     // 清理组（从所有组中移除该歌曲）
     try {
@@ -1167,9 +1162,9 @@ class _SongListPageState extends State<SongListPage> {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () {
+            onPressed: () async {
               for (final s in sel) {
-                _deleteSong(s);
+                await _deleteSong(s);
               }
               Navigator.pop(ctx);
               _refresh();

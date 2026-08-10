@@ -83,11 +83,9 @@ void main() {
     // 时长已更新
     var songs = SongManager.scanLocalSongs();
     expect(songs.first.duration.inSeconds, 999);
-    // 注销登记后：文件仍在但元数据已删，标题回退为文件名（无 BV 信息）
+    // 注销登记后：BV 命名且无元数据 → 视为下载残留，扫描跳过
     SongManager.unregisterSong(path);
     songs = SongManager.scanLocalSongs();
-    expect(songs.length, 1);
-    expect(songs.first.bvid, isEmpty);
-    expect(songs.first.title, 'BV1update0002');
+    expect(songs.length, 0, reason: 'BV命名且无元数据的文件被视为下载残留，跳过');
   });
 }

@@ -525,6 +525,7 @@ class AudioPlayerService {
     if (migrated.join('|') != list.join('|')) await p.setStringList(_favKey, migrated);
     return migrated;
   }
+  /// 切换收藏（单曲菜单用）：在则取消、不在则添加到最上
   static Future<void> toggleFavorite(Song song) async {
     final key = song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath);
     final p = await SharedPreferences.getInstance();
@@ -533,6 +534,16 @@ class AudioPlayerService {
     if (idx >= 0) { list.removeAt(idx); } else { list.insert(0, key); } // 新收藏放最上面
     await p.setStringList(_favKey, list);
     _instance?.favoritesChangedNotifier.value++;
+  }
+
+  /// 无条件移除收藏（删除本地歌曲时清理"我喜欢"用，不依赖缓存状态）
+  static Future<void> removeFavorite(String key) async {
+    final p = await SharedPreferences.getInstance();
+    final list = List<String>.from(p.getStringList(_favKey) ?? []);
+    if (list.remove(key)) {
+      await p.setStringList(_favKey, list);
+      _instance?.favoritesChangedNotifier.value++;
+    }
   }
 
   /// 纯添加收藏：已在收藏中则跳过（不取消）——批量"添加到我喜欢"用
