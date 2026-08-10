@@ -12,6 +12,20 @@ class GoMusicAudioHandler extends BaseAudioHandler {
     // 监听音乐播放器状态变化，同步媒体会话
     AudioPlayerService().currentSongNotifier.addListener(_syncFromPlayer);
     AudioPlayerService().onPlayingChanged.listen((_) => _syncFromPlayer());
+    // 进度实时同步（播放中每 500ms 一次）
+    AudioPlayerService().onPositionChanged.listen((p) {
+      final svc = AudioPlayerService();
+      final song = svc.currentSong;
+      if (song == null) return;
+      playbackState.add(playbackState.value.copyWith(updatePosition: p));
+    });
+    // 时长变化同步到 mediaItem
+    AudioPlayerService().onDurationChanged.listen((d) {
+      final svc = AudioPlayerService();
+      final song = svc.currentSong;
+      if (song == null || d.inMilliseconds <= 0) return;
+      mediaItem.add(mediaItem.value?.copyWith(duration: d));
+    });
   }
 
   void _syncFromPlayer() {
@@ -79,7 +93,16 @@ class GoMusicAudioHandler extends BaseAudioHandler {
   Future<void> play() async {
     final svc = AudioPlayerService();
     if (svc.currentSong != null) {
-      svc.resume();
+      if (svc.isPlaying) {
+        // 已在播放：什么都不做
+      } else if (svc.currentPosition >= const Duration(seconds: 1) &&
+          svc.currentSong!.duration.inMilliseconds > 0 &&
+          svc.currentPosition >= svc.currentSong!.duration - const Duration(seconds: 1)) {
+        // 播完了：从头播放
+        await svc.playSong(svc.currentSong!, forceRestart: true);
+      } else {
+        svc.resume();
+      }
     }
     _syncFromPlayer();
   }
