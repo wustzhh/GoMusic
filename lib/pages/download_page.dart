@@ -8,7 +8,6 @@ import '../services/bilibili_api.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
 import '../widgets/top_toast.dart';
-import '../services/download_queue.dart';
 import '../models/music_data.dart';
 
 class DownloadPage extends StatefulWidget {
@@ -29,13 +28,9 @@ class _DownloadPageState extends State<DownloadPage> {
   bool _isDownloading = false;
   ValueNotifier<bool>? _cancelNotifier;
   String _downloadingTitle = '';
-  bool _viewQueue = false;
   int _downloadingSize = 0;
   double _downloadProgress = 0;
   int _downloadedBytes = 0; // 已下载字节（total 未知时用于容量显示）
-  double _downloadSpeed = 0; // 字节/秒
-  DateTime? _lastSizeTime;
-  int _lastSizeBytes = 0;
 
   BilibiliVideoInfo? _singleInfo;
   VideoStream? _selectedStream;
@@ -217,79 +212,6 @@ class _DownloadPageState extends State<DownloadPage> {
   }
   static String get _now => DateTime.now().toIso8601String().substring(11, 19);
 
-  /// 批量解析结果 → 全部入队
-  void _enqueueBatch() {
-    if (_batchItems.isEmpty) return;
-    final count = _batchItems.length;
-    for (final item in _batchItems) {
-      DownloadQueueService.add(
-        bvid: item.info.bvid,
-        title: item.info.title,
-        uploader: item.info.author,
-        coverUrl: item.info.coverUrl,
-        audio: _downloadAudio,
-        video: _downloadVideo,
-      );
-    }
-    setState(() => _batchItems = []);
-    _snack('已加入下载队列：$count 个任务');
-  }
-
-  /// 下载队列视图
-  Widget _buildQueueView() {
-    DownloadQueueService.ensureLoaded();
-    return ValueListenableBuilder<int>(
-      valueListenable: DownloadQueueService.changed,
-      builder: (_, __, ___) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(children: [
-          const Text('下载队列', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-          const Spacer(),
-          Text('${DownloadQueueService.tasks.where((t) => t.status == DownloadTaskStatus.done).length}/${DownloadQueueService.tasks.length} 完成',
-              style: const TextStyle(fontSize: 11, color: Colors.grey)),
-        ]),
-      ),
-      if (DownloadQueueService.tasks.isEmpty)
-        const Padding(padding: EdgeInsets.all(20), child: Center(child: Text('暂无下载任务', style: TextStyle(color: Colors.grey))))
-      else
-        ...DownloadQueueService.tasks.asMap().entries.map((e) {
-          final i = e.key;
-          final t = e.value;
-          final color = switch (t.status) {
-            DownloadTaskStatus.done => Colors.green,
-            DownloadTaskStatus.failed => Colors.red,
-            DownloadTaskStatus.downloading => Colors.orange,
-            DownloadTaskStatus.waiting => Colors.grey,
-          };
-          return ListTile(
-            dense: true,
-            leading: Icon(switch (t.status) {
-              DownloadTaskStatus.done => Icons.check_circle,
-              DownloadTaskStatus.failed => Icons.error,
-              DownloadTaskStatus.downloading => Icons.downloading,
-              DownloadTaskStatus.waiting => Icons.schedule,
-            }, color: color, size: 20),
-            title: Text(t.title, style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: t.status == DownloadTaskStatus.downloading
-                ? ClipRRect(borderRadius: BorderRadius.circular(3), child: LinearProgressIndicator(value: t.progress.clamp(0.0, 1.0), minHeight: 4, backgroundColor: Colors.grey.withValues(alpha: 0.2), color: Colors.orange))
-                : Text(t.paused ? '已暂停' : (t.status == DownloadTaskStatus.failed ? '失败: ${t.error}' : (t.audio ? '音频' : '') + (t.video ? '+视频' : '')), style: TextStyle(fontSize: 10, color: color)),
-            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-              if (t.status == DownloadTaskStatus.downloading)
-                IconButton(icon: const Icon(Icons.pause_circle_outline, size: 18), tooltip: '', onPressed: () => DownloadQueueService.pause(t)),
-              if (t.paused || (t.status == DownloadTaskStatus.waiting && !t.paused))
-                IconButton(icon: const Icon(Icons.play_circle_outline, size: 18), tooltip: '', onPressed: () => DownloadQueueService.resume(t)),
-              if (t.status == DownloadTaskStatus.failed)
-                IconButton(icon: const Icon(Icons.refresh, size: 16), tooltip: '', onPressed: () => DownloadQueueService.retry(i)),
-              IconButton(icon: const Icon(Icons.close, size: 16), tooltip: '', onPressed: () => DownloadQueueService.remove(i)),
-            ]),
-          );
-        }),
-      const Divider(height: 1),
-      ]),
-    );
-  }
-
   void _snack(String msg) {
     if (mounted) showTopToast(context, msg);
   }
@@ -389,18 +311,6 @@ class _DownloadPageState extends State<DownloadPage> {
             }
           },
           onSize: (received, total) {
-            final now = DateTime.now();
-            if (_lastSizeTime != null) {
-              final dt = now.difference(_lastSizeTime!).inMilliseconds;
-              if (dt >= 500) {
-                _downloadSpeed = ((received - _lastSizeBytes) * 1000 / dt).clamp(0, double.infinity);
-                _lastSizeTime = now;
-                _lastSizeBytes = received;
-              }
-            } else {
-              _lastSizeTime = now;
-              _lastSizeBytes = received;
-            }
             if (mounted) {
               _downloadedBytes = received;
               if (total > 0) _downloadingSize = total;
@@ -633,29 +543,8 @@ class _DownloadPageState extends State<DownloadPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('下载'), centerTitle: true, actions: [
-        ValueListenableBuilder<int>(
-          valueListenable: DownloadQueueService.changed,
-          builder: (_, __, ___) {
-            final active = DownloadQueueService.tasks.any((t) => t.status == DownloadTaskStatus.downloading || t.status == DownloadTaskStatus.waiting);
-            return Badge(
-              isLabelVisible: active,
-              smallSize: 8,
-              backgroundColor: Colors.red,
-              child: IconButton(
-                icon: Icon(_viewQueue ? Icons.download : Icons.queue_music, size: 20),
-                tooltip: '',
-                onPressed: () => setState(() => _viewQueue = !_viewQueue),
-              ),
-            );
-          },
-        ),
-      ]),
-      body: _viewQueue
-          ? ListView(children: [
-              _buildQueueView(),
-            ])
-          : Column(children: [
+      appBar: AppBar(title: const Text('下载'), centerTitle: true),
+      body: Column(children: [
         _buildUrlInput(),
         // 下载进度固定在顶部
         if (_isDownloading) _buildProgressBar(),
@@ -700,6 +589,25 @@ class _DownloadPageState extends State<DownloadPage> {
             ),
             style: const TextStyle(fontSize: 13),
             onSubmitted: (_) => _parseUrl(),
+            contextMenuBuilder: (ctx, editableTextState) {
+              final items = editableTextState.contextMenuButtonItems;
+              // 翻译成中文
+              final names = {
+                ContextMenuButtonType.copy: '复制',
+                ContextMenuButtonType.paste: '粘贴',
+                ContextMenuButtonType.cut: '剪切',
+                ContextMenuButtonType.selectAll: '全选',
+                ContextMenuButtonType.delete: '删除',
+              };
+              return AdaptiveTextSelectionToolbar.buttonItems(
+                anchors: editableTextState.contextMenuAnchors,
+                buttonItems: items.map((item) => ContextMenuButtonItem(
+                  type: item.type,
+                  label: names[item.type] ?? item.label,
+                  onPressed: item.onPressed,
+                )).toList(),
+              );
+            },
           ),
         ),
         const SizedBox(width: 8),
@@ -1020,12 +928,7 @@ class _DownloadPageState extends State<DownloadPage> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Text(_downloadedBytes > 0
-                  ? '${(_downloadedBytes / 1048576).toStringAsFixed(1)}/${_downloadingSize > 0 ? (_downloadingSize / 1048576).toStringAsFixed(1) : '?'}MB (${(_downloadProgress * 100).clamp(0, 100).toStringAsFixed(0)}%)'
-                  : '${(_downloadProgress * 100).clamp(0, 100).toStringAsFixed(0)}%',
-                  style: const TextStyle(fontSize: 11)),
-                const SizedBox(width: 4),
-                Text(_fmtSpeed(_downloadSpeed), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                Text('${(_downloadProgress * 100).clamp(0, 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 12)),
               ]),
               const SizedBox(height: 8),
               SizedBox(
@@ -1044,19 +947,7 @@ class _DownloadPageState extends State<DownloadPage> {
           : SizedBox(
               width: double.infinity, height: 44,
               child: ElevatedButton.icon(
-                onPressed: _batchItems.isNotEmpty ? _enqueueBatch : () {
-                  final info = _singleInfo;
-                  if (info == null) return;
-                  DownloadQueueService.add(
-                    bvid: info.bvid,
-                    title: _nameController.text.trim().isNotEmpty ? _nameController.text.trim() : info.title,
-                    uploader: _authorController.text.trim().isNotEmpty ? _authorController.text.trim() : info.author,
-                    coverUrl: info.coverUrl,
-                    audio: _downloadAudio,
-                    video: _downloadVideo,
-                  );
-                  _snack('已加入下载队列');
-                },
+                onPressed: _batchItems.isNotEmpty ? _startBatch : _startSingle,
                 icon: const Icon(Icons.download),
                 label: Text(
                   _batchItems.isNotEmpty
