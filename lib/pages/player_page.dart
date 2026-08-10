@@ -344,11 +344,25 @@ class _PlayerPageState extends State<PlayerPage> {
 
           SliderTheme(data: SliderTheme.of(context).copyWith(trackHeight: 3, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6)),
 
-            child: Slider(value: progress, onChanged: (v) {
-              _service.seek(dur * v);
-              _service.resume();
-              setState(() => _isPlaying = true);
-            })),
+            child: Slider(
+              value: progress,
+              onChangeStart: (_) {
+                // 拖动中暂停，避免出声
+                if (_service.isPlaying) {
+                  _service.pause();
+                }
+              },
+              onChanged: (v) {
+                // 拖动中只更新 UI，不 seek 不出声
+                setState(() => _position = dur * v);
+              },
+              onChangeEnd: (v) {
+                // 拖动结束：seek 到目标位置并开始播放
+                _service.seek(dur * v);
+                _service.resume();
+                setState(() => _isPlaying = true);
+              },
+            )),
 
           Padding(padding: const EdgeInsets.symmetric(horizontal: 8),
 
@@ -555,7 +569,12 @@ class _QueueSheetState extends State<_QueueSheet> {
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text(widget.player.playModeLabel, style: TextStyle(fontSize: 13, color: Colors.grey[600])),
             const SizedBox(width: 6),
-            const Icon(Icons.swap_horiz, color: Colors.grey, size: 18),
+            Icon(switch (widget.player.playMode) {
+              PlayMode.loopList => Icons.repeat,
+              PlayMode.loopOne => Icons.repeat_one,
+              PlayMode.sequential => Icons.playlist_play,
+              PlayMode.shuffle => Icons.shuffle,
+            }, color: Colors.grey, size: 16),
           ]),
         ),
 

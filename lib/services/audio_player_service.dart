@@ -198,6 +198,8 @@ class AudioPlayerService {
     currentSongNotifier.notifyListeners(); // 强制刷新UI
   }
 
+  void pause() { _player.pause(); _playing = false; }
+
   void resume() {
     if (_currentSong == null) return;
     if (_player.state.completed) {
