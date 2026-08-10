@@ -28,6 +28,8 @@ void showTopToast(BuildContext context, String msg) {
   );
   overlay.insert(entry);
   Timer(const Duration(milliseconds: 1500), () {
-    if (entry.mounted) entry.remove();
+    try {
+      entry.remove();
+    } catch (_) {}
   });
 }
