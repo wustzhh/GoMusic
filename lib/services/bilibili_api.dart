@@ -480,12 +480,35 @@ class BilibiliApi {
           coverUrl: (v['cover'] as String? ?? '').replaceAll('http:', 'https:'),
           durationSeconds: v['duration'] as int? ?? 0,
           url: baseUrl,
-          cid: 0,
+          cid: v['cid'] as int? ?? 0,
         );
       }).toList();
     } catch (_) {
       return null;
     }
+}
+
+  /// 快速探测音频大小（收藏夹/合集条目已有 cid，省去 view API）
+  Future<int> probeAudioSizeQuick(String bvid, int cid) async {
+    try {
+      final d = await _playUrl({'bvid': bvid, 'cid': '$cid', 'fnval': '4048', 'qn': '127'});
+      final audios = (d?['data']?['dash']?['audio'] as List?) ?? [];
+      if (audios.isEmpty) return 0;
+      audios.sort((a, b) => ((b['bandwidth'] as int?) ?? 0).compareTo((a['bandwidth'] as int?) ?? 0));
+      final best = audios.first;
+      final u = ((best['baseUrl'] ?? best['base_url']) as String?)?.replaceAll('http:', 'https:');
+      if (u == null || u.isEmpty) return 0;
+      final req = http.Request('GET', Uri.parse(u));
+      req.headers.addAll({'User-Agent': _ua, 'Referer': 'https://www.bilibili.com/', 'Range': 'bytes=0-0'});
+      final r = await req.send().timeout(const Duration(seconds: 5));
+      final cr = r.headers['content-range'];
+      r.stream.drain<void>();
+      if (cr != null && cr.contains('/')) {
+        final len = int.tryParse(cr.split('/').last);
+        if (len != null && len > 0) return len;
+      }
+    } catch (_) {}
+    return 0;
   }
 }
 
@@ -501,7 +524,6 @@ class StreamDownloader {
   }) async {
     try {
       // 缓存区：下载到独立临时目录，完成后才移动到目标目录并命名
-      // 目标目录出现的文件永远是完整正确的
       final saveFile = File(savePath);
       final tmpDir = Directory('${saveFile.parent.path}${Platform.pathSeparator}.tmp');
       tmpDir.createSync(recursive: true);
@@ -511,65 +533,84 @@ class StreamDownloader {
       var attempt = 0;
       while (attempt < 2) {
         attempt++;
-        final request = http.Request('GET', Uri.parse(url));
-        request.headers.addAll({
-          'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Referer': 'https://www.bilibili.com/',
-          if (existing > 0) 'Range': 'bytes=$existing-',
-          if (BilibiliApi.cookie != null && BilibiliApi.cookie!.isNotEmpty)
-            'Cookie': BilibiliApi.cookie!,
-        });
-
-        final streamed = await request.send();
-        // send 返回后立即响应取消（不等下一个 chunk）
-        if (cancel?.value == true) {
-          streamed.stream.drain<void>();
-          try { if (partFile.existsSync()) partFile.deleteSync(); } catch (_) {}
-          return false;
-        }
+        final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
         try {
-          File('${saveFile.parent.path}/debug.log').writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] dl status=${streamed.statusCode} len=${streamed.contentLength} range=$existing part=${partFile.path}\n', mode: FileMode.append);
-        } catch (_) {}
-        if (streamed.statusCode == 416) {
-          // Range 越界：缓存损坏，删除后从头重下
-          if (partFile.existsSync()) partFile.deleteSync();
-          existing = 0;
-          continue;
-        }
-        // 206=续传成功；200=服务器不支持 Range 或需重头下
-        final append = (streamed.statusCode == 206) && existing > 0;
-        if (streamed.statusCode != 200 && streamed.statusCode != 206) return false;
-
-        final total = (streamed.contentLength ?? expectedSize ?? 0) + (append ? existing : 0);
-        var received = append ? existing : 0;
-
-        final sink = partFile.openWrite(mode: append ? FileMode.append : FileMode.write);
-        await for (final chunk in streamed.stream) {
+          final uri = Uri.parse(url);
+          final request = await client.getUrl(uri);
+          request.headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+          request.headers.set('Referer', 'https://www.bilibili.com/');
+          if (existing > 0) request.headers.set('Range', 'bytes=$existing-');
+          if (BilibiliApi.cookie != null && BilibiliApi.cookie!.isNotEmpty) {
+            request.headers.set('Cookie', BilibiliApi.cookie!);
+          }
+          // cancel 触发瞬间立即断开连接（不等下一个数据块）
+          void onCancel() {
+            if (cancel?.value == true) client.close(force: true);
+          }
+          cancel?.addListener(onCancel);
+          final streamed = await request.close().timeout(const Duration(seconds: 30));
           if (cancel?.value == true) {
-            await sink.close();
-            // 取消 = 删除缓存区部分文件（不留残余）
             try { if (partFile.existsSync()) partFile.deleteSync(); } catch (_) {}
             return false;
           }
-          received += chunk.length;
-          sink.add(chunk);
-          onSize?.call(received, total);
-          if (total > 0) {
-            onProgress(received / total);
-          } else {
-            // total 未知：按已接收字节数上报（0~1 的近似值，UI 显示容量）
-            onProgress(received > 0 ? 0.5 : 0.0);
+          try {
+            File('${saveFile.parent.path}/debug.log').writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] dl status=${streamed.statusCode} len=${streamed.contentLength} range=$existing part=${partFile.path}\n', mode: FileMode.append);
+          } catch (_) {}
+          if (streamed.statusCode == 416) {
+            // Range 越界：缓存损坏，删除后从头重下
+            cancel?.removeListener(onCancel);
+            if (partFile.existsSync()) partFile.deleteSync();
+            existing = 0;
+            continue;
           }
+          // 206=续传成功；200=服务器不支持 Range 或需重头下
+          final append = (streamed.statusCode == 206) && existing > 0;
+          if (streamed.statusCode != 200 && streamed.statusCode != 206) {
+            cancel?.removeListener(onCancel);
+            return false;
+          }
+          final total = (streamed.contentLength ?? expectedSize ?? 0) + (append ? existing : 0);
+          var received = append ? existing : 0;
+
+          final sink = partFile.openWrite(mode: append ? FileMode.append : FileMode.write);
+          try {
+            await for (final chunk in streamed) {
+              if (cancel?.value == true) {
+                await sink.close();
+                try { if (partFile.existsSync()) partFile.deleteSync(); } catch (_) {}
+                return false;
+              }
+              sink.add(chunk);
+              received += chunk.length;
+              onSize?.call(received, total);
+              if (total > 0) {
+                onProgress(received / total);
+              } else {
+                onProgress(received > 0 ? 0.5 : 0.0);
+              }
+            }
+          } finally {
+            cancel?.removeListener(onCancel);
+          }
+          await sink.close();
+          if (cancel?.value == true) {
+            try { if (partFile.existsSync()) partFile.deleteSync(); } catch (_) {}
+            return false;
+          }
+          if (total > 0 && received < total) {
+            // 连接中断但文件不完整：重试续传
+            existing = received;
+            continue;
+          }
+          // 下载完成：移动到正式目录并命名
+          onProgress(1.0);
+          if (saveFile.existsSync()) saveFile.deleteSync();
+          await saveFile.parent.create(recursive: true);
+          await partFile.rename(savePath);
+          return true;
+        } finally {
+          client.close(force: true);
         }
-        await sink.close();
-        // 下载完整：强制进度 100%（total 未知时也更新）
-        onProgress(1.0);
-        // 移动缓存文件到目标目录并命名
-        if (saveFile.existsSync()) saveFile.deleteSync();
-        await saveFile.parent.create(recursive: true);
-        await partFile.rename(savePath);
-        return true;
       }
       return false;
     } catch (_) {

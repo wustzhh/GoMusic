@@ -446,18 +446,20 @@ class _DownloadPageState extends State<DownloadPage> {
 
   // ==================== 批量下载 ====================
 
-  /// 批量解析后逐首探测音频大小（并发6，完成即刷新显示）
+  /// 批量解析后逐首快速探测音频大小（并发12，仅playurl+Range两请求）
   Future<void> _probeBatchSizes() async {
     final items = _batchItems.where((b) => b.info.audioSize <= 0).toList();
     if (items.isEmpty) return;
-    const concurrency = 6;
+    const concurrency = 12;
     for (var i = 0; i < items.length; i += concurrency) {
       final batch = items.skip(i).take(concurrency).toList();
       await Future.wait(batch.map((item) async {
         try {
-          final full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 10));
-          if (full != null && full.audioSize > 0 && mounted) {
-            setState(() => item.info.audioSize = full.audioSize);
+          final size = await _api
+              .probeAudioSizeQuick(item.info.bvid, item.info.cid)
+              .timeout(const Duration(seconds: 6));
+          if (size > 0 && mounted) {
+            setState(() => item.info.audioSize = size);
           }
         } catch (_) {}
       }));
