@@ -581,8 +581,7 @@ class AudioPlayerService {
         'duration': _currentSong!.duration.inSeconds,
         'bvid': _currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _currentSong!.filePath.split('\\').last.split('/').last.split('.').first,
         'cover': _currentSong!.coverUrl ?? '',
-        // 音频不记录进度
-        'position': 0,
+        'position': _lastPosition.inMilliseconds,
         'queue': _queue.map((s) => s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)).toList(),
         'queue_index': _queueIndex,
       };

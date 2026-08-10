@@ -278,6 +278,14 @@ class _DownloadPageState extends State<DownloadPage> {
     if (info.coverUrl.isNotEmpty) {
       final ok = await StreamDownloader.download(url: info.coverUrl, savePath: '$dir/$name.jpg', onProgress: (_) {});
       coverFailed = !ok;
+    } else {
+      // 没有封面 URL 也视为缺封面
+      coverFailed = true;
+    }
+    if (coverFailed) {
+      setState(() { _isDownloading = false; _downloadingTitle = ''; });
+      _snack('下载失败：封面下载失败');
+      return;
     }
     // 音频（勾选才下载；已存在跳过）
     var audioOk = true;
@@ -426,9 +434,17 @@ class _DownloadPageState extends State<DownloadPage> {
         continue;
       }
 
-      // 封面
+      // 封面（失败 = 该项下载失败）
+      var coverOk = true;
       if (full!.coverUrl.isNotEmpty) {
-        await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {});
+        coverOk = await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {});
+      } else {
+        coverOk = false;
+      }
+      if (!coverOk) {
+        if (mounted) setState(() => item.status = _BatchStatus.failed);
+        _batchDone++;
+        continue;
       }
       // 音频（勾选才下载）
       var audioOk = true;
