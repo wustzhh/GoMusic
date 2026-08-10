@@ -108,7 +108,7 @@ class _DownloadPageState extends State<DownloadPage> {
         final videos = await _api.getCollectionVideos(resolved);
         if (videos != null && videos.isNotEmpty) {
           setState(() {
-            _batchItems.addAll(videos.map((v) => _BatchItem(info: v, name: _safeName(v.title), exists: _fileExists(v.bvid))));
+            _batchItems.addAll(videos.map((v) => _BatchItem(info: v, name: _safeName(v.title), exists: _fileExists(v.bvid, _safeName(v.title)))));
           });
           gotAny = true;
         } else {
@@ -119,7 +119,7 @@ class _DownloadPageState extends State<DownloadPage> {
         if (!mounted) return;
         if (info != null) {
           setState(() {
-            _batchItems.add(_BatchItem(info: info, name: _safeName(info.title), exists: _fileExists(info.bvid)));
+            _batchItems.add(_BatchItem(info: info, name: _safeName(info.title), exists: _fileExists(info.bvid, _safeName(info.title))));
           });
           gotAny = true;
         } else {
@@ -152,10 +152,12 @@ class _DownloadPageState extends State<DownloadPage> {
     }
   }
 
-  bool _fileExists(String bvid) {
+  bool _fileExists(String bvid, String titleName) {
     try {
       final dir = _downloadDir ?? '';
-      return File('$dir/$bvid.m4a').existsSync() && File('$dir/$bvid.m4a').lengthSync() > 0;
+      bool has(String n) => File('$dir/$n.m4a').existsSync() && File('$dir/$n.m4a').lengthSync() > 0;
+      // 同时匹配 BV号命名（旧版本）与标题命名（当前版本）的下载文件
+      return has(bvid) || has(titleName);
     } catch (_) { return false; }
   }
 
@@ -190,8 +192,7 @@ class _DownloadPageState extends State<DownloadPage> {
     setState(() {
       _batchItems = videos.map((v) {
         final name = v.bvid;
-        final exists = File('$dir/$name.m4a').existsSync();
-        return _BatchItem(info: v, exists: exists, name: name);
+        return _BatchItem(info: v, exists: _fileExists(v.bvid, v.title), name: name);
       }).toList();
       _isParsing = false;
     });
