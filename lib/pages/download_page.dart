@@ -150,6 +150,7 @@ class _DownloadPageState extends State<DownloadPage> {
     } else {
       setState(() => _isParsing = false);
       _snack('解析完成：${_batchItems.length} 个音视频');
+      _probeBatchSizes();
     }
   }
 
@@ -444,6 +445,24 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   // ==================== 批量下载 ====================
+
+  /// 批量解析后逐首探测音频大小（并发6，完成即刷新显示）
+  Future<void> _probeBatchSizes() async {
+    final items = _batchItems.where((b) => b.info.audioSize <= 0).toList();
+    if (items.isEmpty) return;
+    const concurrency = 6;
+    for (var i = 0; i < items.length; i += concurrency) {
+      final batch = items.skip(i).take(concurrency).toList();
+      await Future.wait(batch.map((item) async {
+        try {
+          final full = await _api.getVideoInfo(item.info.url);
+          if (full != null && full.audioSize > 0 && mounted) {
+            setState(() => item.info.audioSize = full.audioSize);
+          }
+        } catch (_) {}
+      }));
+    }
+  }
 
   Future<void> _startBatch() async {
     _cancelNotifier = ValueNotifier(false);
