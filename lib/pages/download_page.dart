@@ -108,7 +108,7 @@ class _DownloadPageState extends State<DownloadPage> {
         final videos = await _api.getCollectionVideos(resolved);
         if (videos != null && videos.isNotEmpty) {
           setState(() {
-            _batchItems.addAll(videos.map((v) => _BatchItem(info: v, name: _safeName(v.title), exists: _fileExists(v.bvid, _safeName(v.title)))));
+            _batchItems.addAll(videos.map((v) => _BatchItem(info: v, name: v.bvid, exists: _fileExists(v.bvid, _safeName(v.title)))));
           });
           gotAny = true;
         } else {
@@ -119,7 +119,7 @@ class _DownloadPageState extends State<DownloadPage> {
         if (!mounted) return;
         if (info != null) {
           setState(() {
-            _batchItems.add(_BatchItem(info: info, name: _safeName(info.title), exists: _fileExists(info.bvid, _safeName(info.title))));
+            _batchItems.add(_BatchItem(info: info, name: info.bvid, exists: _fileExists(info.bvid, _safeName(info.title))));
           });
           gotAny = true;
         } else {
@@ -142,7 +142,7 @@ class _DownloadPageState extends State<DownloadPage> {
         _singleInfo = info;
         _batchItems = [];
         _isParsing = false;
-        _nameController.text = info.title;
+        _nameController.text = info.bvid;
         _authorController.text = info.author;
         _selectedStream = info.videoStreams.isNotEmpty ? info.videoStreams.first : null;
       });
@@ -177,7 +177,7 @@ class _DownloadPageState extends State<DownloadPage> {
         await _checkSingleExists(info);
         setState(() {
           _singleInfo = info; _isParsing = false;
-          _nameController.text = info.title;
+          _nameController.text = info.bvid;
           _authorController.text = info.author;
           _selectedStream = info.videoStreams.isNotEmpty ? info.videoStreams.first : null;
         });
