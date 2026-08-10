@@ -185,8 +185,14 @@ class SongManager {
     final songs = <Song>[];
     for (final f in dir.listSync()) {
       if (f is File) {
+        // 跳过缓存区（.tmp 目录）与 .part 下载中文件
+        if (f.path.contains('${Platform.pathSeparator}.tmp${Platform.pathSeparator}') || f.path.endsWith('.part')) continue;
         final ext = f.path.split('.').last.toLowerCase();
         if (ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav') {
+          // 跳过下载残留：BV 格式命名但未登记的 m4a（下载中断窗口期产物）
+          final fname = f.path.split(Platform.pathSeparator).last;
+          final isBvName = RegExp(r'^BV\w{10}\.m4a$').hasMatch(fname);
+          if (isBvName && map[_normKey(f.absolute.path)] == null) continue;
           // 从注册表中查元数据
           final meta = map[_normKey(f.absolute.path)] as Map<String, dynamic>?;
           final title = meta?['title'] as String? ?? f.path.split(Platform.pathSeparator).last.split('.').first;
