@@ -244,7 +244,27 @@ class _DownloadPageState extends State<DownloadPage> {
     setState(() { _isDownloading = true; _downloadProgress = 0; _downloadingTitle = info.title; });
     _cancelNotifier = ValueNotifier(false);
     if (Platform.isAndroid) {
-      await Permission.notification.request();
+      final notif = await Permission.notification.request();
+      if (notif.isDenied || notif.isPermanentlyDenied) {
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('需要通知权限'),
+              content: const Text('后台下载需要通知权限（显示下载进度）。请在设置中开启通知。'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消下载')),
+                FilledButton(onPressed: () {
+                  Navigator.pop(ctx);
+                  openAppSettings();
+                }, child: const Text('去设置开启')),
+              ],
+            ),
+          );
+        }
+        setState(() => _isDownloading = false);
+        return;
+      }
       FlutterForegroundTask.startService(
         serviceId: 100,
         notificationTitle: 'GoMusic 下载中',

@@ -26,6 +26,8 @@ class GoMusicAudioHandler extends BaseAudioHandler {
       if (song == null || d.inMilliseconds <= 0) return;
       mediaItem.add(mediaItem.value?.copyWith(duration: d));
     });
+    // 立即同步一次当前状态（启动恢复的歌曲/播放状态）
+    _syncFromPlayer();
   }
 
   void _syncFromPlayer() {

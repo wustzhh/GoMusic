@@ -16,6 +16,13 @@ import 'services/audio_player_service.dart';
 import 'services/audio_handler.dart';
 import 'widgets/mini_player_bar.dart';
 
+void _logMs(String msg) {
+  try {
+    final tmp = Directory.systemTemp;
+    File('${tmp.path}${Platform.pathSeparator}gomusic_ms.log').writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] $msg\n', mode: FileMode.append);
+  } catch (_) {}
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
@@ -58,6 +65,7 @@ void main() async {
 /// 初始化媒体会话（异步，不阻塞启动；失败静默）
 Future<void> _initMediaSession() async {
   try {
+    _logMs('media session init start');
     // Android 13+ 通知权限（媒体通知/锁屏控制需要；不强制等待）
     await Permission.notification.request();
     await AudioService.init(
@@ -68,6 +76,7 @@ Future<void> _initMediaSession() async {
         androidNotificationOngoing: true,
       ),
     );
+    _logMs('media session init ok');
   } catch (_) {
     // 媒体会话失败不影响正常使用
   }
