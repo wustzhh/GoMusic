@@ -13,9 +13,9 @@ class VideoStream {
   final int height;
   final String codecs;
   final String? baseUrl;
-  final int size;
+  int size;
 
-  const VideoStream({
+  VideoStream({
     required this.id,
     required this.bandwidth,
     required this.width,
@@ -353,6 +353,42 @@ class BilibiliApi {
             final best = audios.first;
             info.audioUrl = ((best['baseUrl'] ?? best['base_url']) as String?)?.replaceAll('http:', 'https:');
             info.audioSize = (best['size'] as int?) ?? 0;
+      // 探测音视频真实体积（Range bytes=0-0 读 Content-Range）
+      final probeHeaders = {
+        'User-Agent': _ua,
+        'Referer': 'https://www.bilibili.com/',
+        'Range': 'bytes=0-0',
+        if (cookie != null && cookie!.isNotEmpty) 'Cookie': cookie!,
+      };
+      Future<void> probe(String? url, void Function(int) setSize) async {
+        if (url == null || url.isEmpty) return;
+        try {
+          final req = http.Request('GET', Uri.parse(url));
+          req.headers.addAll(probeHeaders);
+          final r = await req.send();
+          final cr = r.headers['content-range'];
+          if (cr != null && cr.contains('/')) {
+            final len = int.tryParse(cr.split('/').last);
+            if (len != null && len > 0) setSize(len);
+          }
+          r.stream.drain<void>();
+        } catch (_) {}
+      }
+      final probes = <Future<void>>[
+        probe(info.audioUrl, (v) => info.audioSize = v),
+        ...info.videoStreams.map((vs) => probe(vs.baseUrl, (v) => vs.size = v)),
+      ];
+      await Future.wait(probes);
+      // 探测失败：用码率×时长估算
+      if (info.audioSize <= 0 && info.durationSeconds > 0) {
+        final bw = best['bandwidth'] as int? ?? 0;
+        if (bw > 0) info.audioSize = (bw ~/ 8) * info.durationSeconds;
+      }
+      for (final vs in info.videoStreams) {
+        if (vs.size <= 0 && info.durationSeconds > 0 && vs.bandwidth > 0) {
+          vs.size = (vs.bandwidth ~/ 8) * info.durationSeconds;
+        }
+      }
           }
         }
       }
