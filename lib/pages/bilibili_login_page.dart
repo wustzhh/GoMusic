@@ -59,13 +59,17 @@ class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
             },
             onLoadStop: (_, url) {
               if (mounted) setState(() => _loading = false);
+              // Android 的 shouldInterceptRequest 拿不到 Cookie 头（内核管理），
+              // 必须从 CookieManager 读取完整 cookie（含 httpOnly）
+              _captureFromCookieManager();
             },
             onProgressChanged: (_, p) {
               if (mounted) setState(() => _progress = p / 100);
             },
-            // 核心：拦截请求头，捕获 Cookie
+            // 拦截请求头作为辅助（Windows 可用）；Android 主靠 CookieManager
             shouldInterceptRequest: (_, request) {
               _tryCaptureCookie(request.headers);
+              _captureFromCookieManager();
               return Future.value(null);
             },
           ),
@@ -99,6 +103,28 @@ class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
     if (cookie.contains('SESSDATA') && cookie.contains('DedeUserID')) {
       _capturedCookie = cookie;
       setState(() => _status = '已捕获登录Cookie ✅');
+    }
+  }
+
+  /// 从 WebView CookieManager 读取完整 cookie（含 httpOnly）。
+  /// Android 的 shouldInterceptRequest 拿不到 Cookie 头，必须走这里；
+  /// 登录成功后 .bilibili.com 域下会出现 SESSDATA/DedeUserID。
+  Future<void> _captureFromCookieManager() async {
+    if (_capturedCookie != null) return;
+    try {
+      final cookies = await CookieManager.instance()
+          .getCookies(url: WebUri('https://www.bilibili.com'));
+      if (cookies.isEmpty) return;
+      final cookieStr = cookies.map((c) => '${c.name}=${c.value}').join('; ');
+      if (cookieStr.contains('SESSDATA') && cookieStr.contains('DedeUserID')) {
+        if (!mounted) return;
+        setState(() {
+          _capturedCookie = cookieStr;
+          _status = '已捕获登录Cookie ✅';
+        });
+      }
+    } catch (_) {
+      // CookieManager 不可用时静默（仍可走 shouldInterceptRequest 捕获）
     }
   }
 
