@@ -480,7 +480,15 @@ class _DownloadPageState extends State<DownloadPage> {
       setState(() => item.status = _BatchStatus.downloading);
 
       // 取消响应：getVideoInfo 最多等 4 秒，取消后立即停止后续
-      final full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 4));
+      BilibiliVideoInfo? full;
+      try {
+        full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 4));
+      } catch (_) {
+        if (_cancelNotifier?.value == true) { setState(() => item.status = _BatchStatus.waiting); break; }
+        setState(() => item.status = _BatchStatus.failed);
+        _batchDone++;
+        continue;
+      }
       if (_cancelNotifier?.value == true) { setState(() => item.status = _BatchStatus.waiting); break; }
       if (full?.audioUrl == null) {
         setState(() => item.status = _BatchStatus.failed);
@@ -932,7 +940,14 @@ class _DownloadPageState extends State<DownloadPage> {
     setState(() { item.status = _BatchStatus.downloading; item.exists = false; item.progress = 0; item.speed = 0; });
     SongManager.init(_downloadDir!);
 
-    final full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 4));
+    BilibiliVideoInfo? full;
+    try {
+      full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 4));
+    } catch (_) {
+      if (_cancelNotifier?.value == true) { setState(() => item.status = _BatchStatus.waiting); return; }
+      setState(() => item.status = _BatchStatus.failed);
+      return;
+    }
     if (_cancelNotifier?.value == true) { setState(() => item.status = _BatchStatus.waiting); return; }
     if (full?.audioUrl == null) { setState(() => item.status = _BatchStatus.failed); return; }
 

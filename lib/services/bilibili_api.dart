@@ -166,7 +166,7 @@ class BilibiliApi {
       final r = await http.get(
         Uri.parse('https://api.bilibili.com/x/web-interface/nav'),
         headers: _headers,
-      );
+      ).timeout(const Duration(seconds: 5));
       if (r.statusCode == 200) {
         final d = jsonDecode(r.body);
         final w = d['data']['wbi_img'] ?? {};
@@ -253,12 +253,12 @@ class BilibiliApi {
       final p = await _signed(params);
       var uri = Uri.parse('https://api.bilibili.com/x/player/wbi/playurl')
           .replace(queryParameters: p);
-      var r = await http.get(uri, headers: _headers);
+      var r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 8));
       if (r.statusCode != 200) {
         final p2 = Map<String, String>.from(p)..remove('w_rid')..remove('wts');
         uri = Uri.parse('https://api.bilibili.com/x/player/playurl')
             .replace(queryParameters: p2);
-        r = await http.get(uri, headers: _headers);
+        r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 8));
       }
       if (r.statusCode != 200) return null;
       final d = jsonDecode(r.body);
@@ -497,22 +497,13 @@ class BilibiliApi {
       } catch (_) {}
     }
     try {
-      final d = await _playUrl({'bvid': bvid, 'cid': '$cid', 'fnval': '4048', 'qn': '127'});
-      final audios = (d?['data']?['dash']?['audio'] as List?) ?? [];
-      log('$bvid cid=$cid code=${d?['code']} audios=${audios.length}');
-      if (audios.isEmpty) return 0;
-      audios.sort((a, b) => ((b['bandwidth'] as int?) ?? 0).compareTo((a['bandwidth'] as int?) ?? 0));
-      final best = audios.first;
-      final u = ((best['baseUrl'] ?? best['base_url']) as String?)?.replaceAll('http:', 'https:');
-      if (u == null || u.isEmpty) return 0;
-      final req = http.Request('GET', Uri.parse(u));
-      req.headers.addAll({'User-Agent': _ua, 'Referer': 'https://www.bilibili.com/', 'Range': 'bytes=0-0'});
-      final r = await req.send().timeout(const Duration(seconds: 5));
-      final cr = r.headers['content-range'];
-      r.stream.drain<void>();
-      if (cr != null && cr.contains('/')) {
-        final len = int.tryParse(cr.split('/').last);
-        if (len != null && len > 0) return len;
+      // durl 模式：一次请求直接返回 size（带音轨的视频文件大小，即歌曲总体积）
+      final d = await _playUrl({'bvid': bvid, 'cid': '$cid', 'qn': '64'});
+      final durls = (d?['data']?['durl'] as List?) ?? [];
+      log('$bvid cid=$cid code=${d?['code']} durls=${durls.length}');
+      if (durls.isNotEmpty) {
+        final size = (durls.first['size'] as int?) ?? 0;
+        if (size > 0) return size;
       }
     } catch (_) {}
     return 0;
