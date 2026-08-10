@@ -290,9 +290,16 @@ class _DownloadPageState extends State<DownloadPage> {
           url: info.audioUrl!, savePath: '$dir/$name.m4a',
           onProgress: (p) {
             final now = DateTime.now();
-            if (mounted && now.difference(lastUi).inMilliseconds >= 400) {
+            if (now.difference(lastUi).inMilliseconds >= 400) {
               lastUi = now;
-              setState(() => _downloadProgress = p * (_downloadVideo ? 0.5 : 1.0));
+              final prog = p * (_downloadVideo ? 0.5 : 1.0);
+              if (Platform.isAndroid) {
+                FlutterForegroundTask.updateService(
+                  notificationTitle: 'GoMusic 下载中',
+                  notificationText: '${info.title} ${(prog * 100).toStringAsFixed(0)}%',
+                );
+              }
+              if (mounted) setState(() => _downloadProgress = prog);
             }
           },
           onSize: (received, total) {
@@ -329,9 +336,16 @@ class _DownloadPageState extends State<DownloadPage> {
             url: _selectedStream!.baseUrl!, savePath: '$dir/$name.mp4',
             onProgress: (p) {
               final now = DateTime.now();
-              if (mounted && now.difference(lastUi2).inMilliseconds >= 400) {
+              if (now.difference(lastUi2).inMilliseconds >= 400) {
                 lastUi2 = now;
-                setState(() => _downloadProgress = 0.5 + p * 0.5);
+                final prog = 0.5 + p * 0.5;
+                if (Platform.isAndroid) {
+                  FlutterForegroundTask.updateService(
+                    notificationTitle: 'GoMusic 下载中',
+                    notificationText: '${info.title} ${(prog * 100).toStringAsFixed(0)}%',
+                  );
+                }
+                if (mounted) setState(() => _downloadProgress = prog);
               }
             },
             onSize: (received, total) {

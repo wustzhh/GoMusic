@@ -19,7 +19,7 @@ import 'widgets/mini_player_bar.dart';
 void _logMs(String msg) {
   try {
     final tmp = Directory.systemTemp;
-    File('${tmp.path}${Platform.pathSeparator}gomusic_ms.log').writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] $msg\n', mode: FileMode.append);
+    File('${tmp.path}${Platform.pathSeparator}gomusic_debug.log').writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] [MS] $msg\n', mode: FileMode.append);
   } catch (_) {}
 }
 
