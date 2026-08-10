@@ -1169,11 +1169,7 @@ class _SongListPageState extends State<SongListPage> {
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
               for (final s in sel) {
-                try {
-                  File(s.filePath).deleteSync();
-                  if (s.coverUrl != null) File(s.coverUrl!).deleteSync();
-                  SongManager.unregisterSong(s.filePath);
-                } catch (_) {}
+                _deleteSong(s);
               }
               Navigator.pop(ctx);
               _refresh();

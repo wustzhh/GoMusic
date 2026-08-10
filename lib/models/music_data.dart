@@ -429,6 +429,7 @@ class PlaylistService {
         try { paths = (jsonDecode(parts[3]) as List).map((x) => x.toString()).where((x) => x.isNotEmpty).toList(); }
         catch (_) { paths = parts[3].split(',').where((s) => s.isNotEmpty).toList(); }
         // 迁移旧格式：filePath 条目转成 bvid 后比较
+        final before = paths.length;
         paths.removeWhere((x) {
           var k = x;
           if (k.contains('\\') || k.contains('/')) {
@@ -438,10 +439,13 @@ class PlaylistService {
           }
           return k == bvid;
         });
-        parts[3] = jsonEncode(paths);
-        while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
-        list[i] = parts.join('|||');
-        await p.setStringList(_key, list);
+        // 仅在确实删除了条目时才写回，避免无谓重写损坏数据
+        if (paths.length != before) {
+          parts[3] = jsonEncode(paths);
+          while (parts.length > 3 && parts.last.isEmpty) parts.removeLast();
+          list[i] = parts.join('|||');
+          await p.setStringList(_key, list);
+        }
         return;
       }
     }
