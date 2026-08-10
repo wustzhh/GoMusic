@@ -11,6 +11,7 @@ import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
 
 import 'video_detail_page.dart';
+import 'video_player_page.dart';
 import '../widgets/song_queue_list.dart';
 
 
@@ -313,7 +314,7 @@ class _PlayerPageState extends State<PlayerPage> {
 
       appBar: AppBar(title: const Text(''), actions: [
 
-        if (_song!.hasVideo) IconButton(icon: const Icon(Icons.ondemand_video, size: 20, color: Colors.grey), onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (_) => VideoDetailPage(song: _song!))); }, tooltip: ''),
+        if (_song!.hasVideo) IconButton(icon: const Icon(Icons.ondemand_video, size: 20, color: Colors.grey), onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (_) => VideoPlayerPage(song: _song!))); }, tooltip: ''),
 
       ]),
 

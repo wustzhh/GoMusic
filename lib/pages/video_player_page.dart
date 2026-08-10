@@ -46,6 +46,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       : widget.song;
 
   /// 视频进度存储 key（单独存储，与音频进度分开）
+  void _vlog(String msg) {
+    try {
+      final tmp = Directory.systemTemp;
+      File('${tmp.path}${Platform.pathSeparator}gomusic_video.log').writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] $msg\n', mode: FileMode.append);
+    } catch (_) {}
+  }
+
   String get _progressKey => 'video_progress_${_song.bvid.isNotEmpty ? _song.bvid : _song.filePath.split('\\').last.split('/').last.split('.').first}';
 
   @override
@@ -100,6 +107,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     if (!f.existsSync()) return;
     // 先读进度，再打开媒体
     final saved = await _loadProgress();
+    _vlog('open ${_song.bvid} saved=${saved?.inMilliseconds ?? -1}');
     _seekDone = false;
     await _player.open(Media(f.path));
     await _player.setRate(_speed);
@@ -107,6 +115,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       // 等媒体真正就绪（duration>0）后再 seek，否则 seek 会被忽略
       await _waitReady();
       await _player.seek(saved);
+      _vlog('seek done -> ${saved.inMilliseconds}');
       if (mounted) setState(() => _position = saved);
     }
     _seekDone = true;

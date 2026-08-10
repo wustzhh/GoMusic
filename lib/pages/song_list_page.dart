@@ -489,6 +489,31 @@ class _SongListPageState extends State<SongListPage> {
                   if (ctx != null) Scrollable.ensureVisible(ctx, alignment: 0.5, duration: Duration.zero);
                 });
               }),
+              // 播放模式：点击循环切换
+              GestureDetector(
+                onTap: () {
+                  final modes = PlayMode.values;
+                  final next = (modes.indexOf(_service.playMode) + 1) % modes.length;
+                  _service.setPlayMode(modes[next]);
+                  setState(() {});
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(
+                      switch (_service.playMode) {
+                        PlayMode.loopList => Icons.repeat,
+                        PlayMode.loopOne => Icons.repeat_one,
+                        PlayMode.sequential => Icons.playlist_play,
+                        PlayMode.shuffle => Icons.shuffle,
+                      },
+                      size: 18,
+                      color: Colors.deepPurple,
+                    ),
+                    Text(_service.playModeLabel, style: const TextStyle(fontSize: 9)),
+                  ]),
+                ),
+              ),
             ],
             const Spacer(),
             if (_batchMode) ...[

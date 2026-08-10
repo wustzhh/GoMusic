@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -18,6 +19,21 @@ import 'widgets/mini_player_bar.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  FlutterForegroundTask.init(
+    androidNotificationOptions: AndroidNotificationOptions(
+      channelId: 'gomusic_download',
+      channelName: '下载通知',
+      channelDescription: 'GoMusic 下载进度',
+      channelImportance: NotificationChannelImportance.LOW,
+      priority: NotificationPriority.LOW,
+    ),
+    iosNotificationOptions: const IOSNotificationOptions(),
+    foregroundTaskOptions: ForegroundTaskOptions(
+      eventAction: ForegroundTaskEventAction.nothing(),
+      autoRunOnBoot: false,
+      allowWifiLock: true,
+    ),
+  );
   // 初始化窗口管理（仅 Windows 支持；Android 无此插件实现）
   if (Platform.isWindows) {
     await windowManager.ensureInitialized();
