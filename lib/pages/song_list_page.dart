@@ -383,11 +383,39 @@ class _SongListPageState extends State<SongListPage> {
   }
 
   void _deleteSong(Song song) {
+    final key = _songKey(song);
     try {
       File(song.filePath).deleteSync();
       if (song.coverUrl != null) File(song.coverUrl!).deleteSync();
+      if (song.videoPath != null && File(song.videoPath!).existsSync()) File(song.videoPath!).deleteSync();
       SongManager.unregisterSong(song.filePath);
     } catch (_) {}
+    // 清理所有歌单里的记录：自定义歌单
+    try {
+      final pls = PlaylistService.getPlaylists();
+      pls.then((list) {
+        for (final pl in list) {
+          PlaylistService.removeSongFromPlaylist(pl.id, key);
+        }
+      });
+    } catch (_) {}
+    // 清理"我喜欢"
+    try {
+      if (_favs.contains(key)) {
+        final s = Song(id: key, title: song.title, uploader: '', duration: Duration.zero, filePath: song.filePath, bvid: song.bvid);
+        AudioPlayerService.toggleFavorite(s);
+      }
+    } catch (_) {}
+    // 清理最近播放
+    try {
+      RecentlyPlayedService.removeSong(key);
+    } catch (_) {}
+    // 清理组（从所有组中移除该歌曲）
+    try {
+      SongGroupService.removeSongFromGroups(key);
+    } catch (_) {}
+    // 清理播放队列
+    _service.removeFromQueueByKey(key);
     _refresh();
   }
 

@@ -252,6 +252,16 @@ class RecentlyPlayedService {
     await prefs.setStringList(_key, list);
   }
 
+  /// 移除某首歌的播放记录
+  static Future<void> removeSong(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_key) ?? [];
+    list.remove(key);
+    // 兼容旧格式（含分隔符的记录也删）
+    list.removeWhere((e) => e.startsWith('$key|'));
+    await prefs.setStringList(_key, list);
+  }
+
   /// 返回 BV号列表（按最近播放时间倒序；自动迁移旧格式数据）
   static Future<List<String>> getRecentBvids() async {
     final prefs = await SharedPreferences.getInstance();
@@ -532,6 +542,17 @@ class SongGroupService {
       name: first.title.isNotEmpty ? first.title : first.filePath.split('\\').last.split('/').last.split('.').first,
       songPaths: involved.toList(),
     ));
+    _save();
+  }
+
+  /// 从所有组中移除歌曲（成员少于2时自动解散组）
+  static void removeSongFromGroups(String key) {
+    _ensureLoaded();
+    for (final g in List<SongGroup>.from(_cache)) {
+      if (g.songPaths.remove(key)) {
+        if (g.songPaths.length < 2) _cache.remove(g);
+      }
+    }
     _save();
   }
 

@@ -234,6 +234,14 @@ class AudioPlayerService {
 
   void pause() { _player.pause(); _playing = false; }
 
+  /// 从队列移除歌曲（按 BV号键）
+  void removeFromQueueByKey(String key) {
+    _queue.removeWhere((s) => (s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)) == key);
+    if (_queueIndex >= _queue.length) _queueIndex = _queue.isEmpty ? 0 : _queue.length - 1;
+    _saveState();
+    currentSongNotifier.notifyListeners();
+  }
+
   /// 下一首播放：目标歌曲放入当前歌曲（或所在组）之后
   void playNext(Song song) {
     final key = song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath);
