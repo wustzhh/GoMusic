@@ -446,18 +446,23 @@ class BilibiliApi {
         // 收藏夹: https://api.bilibili.com/x/v3/fav/resource/list?media_id=xxx&ps=20
         final fid = fidMatch.group(1)!;
         var pn = 1;
+        var fails = 0;
         while (true) {
-          final uri = Uri.parse('https://api.bilibili.com/x/v3/fav/resource/list')
-              .replace(queryParameters: {'media_id': fid, 'ps': '20', 'pn': pn.toString()});
-          final r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 15));
-          if (r.statusCode != 200) break;
-          final d = jsonDecode(r.body);
-          if (d['code'] != 0) break;
-          final medias = d['data']['medias'] as List?;
-          if (medias == null || medias.isEmpty) break;
-          videoList.addAll(medias);
-          if (!(d['data']['has_more'] as bool? ?? false)) break;
-          pn++;
+          try {
+            final uri = Uri.parse('https://api.bilibili.com/x/v3/fav/resource/list')
+                .replace(queryParameters: {'media_id': fid, 'ps': '20', 'pn': pn.toString()});
+            final r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 20));
+            if (r.statusCode != 200) { if (++fails >= 3) break; continue; }
+            final d = jsonDecode(r.body);
+            if (d['code'] != 0) { if (++fails >= 3) break; continue; }
+            final medias = d['data']['medias'] as List?;
+            if (medias != null && medias.isNotEmpty) videoList.addAll(medias);
+            fails = 0;
+            if (!(d['data']['has_more'] as bool? ?? false)) break;
+            pn++;
+          } catch (_) {
+            if (++fails >= 3) break;
+          }
         }
       }
 
