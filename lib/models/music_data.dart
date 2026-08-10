@@ -189,12 +189,19 @@ class SongManager {
         if (f.path.contains('${Platform.pathSeparator}.tmp${Platform.pathSeparator}') || f.path.endsWith('.part')) continue;
         final ext = f.path.split('.').last.toLowerCase();
         if (ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav') {
-          // 跳过下载残留：BV 格式命名但未登记的 m4a（下载中断窗口期产物）
+          // 从注册表查元数据：先按路径，路径不一致时按 BV号 兜底（bvid 唯一键）
+          var meta = map[_normKey(f.absolute.path)] as Map<String, dynamic>?;
           final fname = f.path.split(Platform.pathSeparator).last;
-          final isBvName = RegExp(r'^BV\w{10}\.m4a$').hasMatch(fname);
-          if (isBvName && map[_normKey(f.absolute.path)] == null) continue;
-          // 从注册表中查元数据
-          final meta = map[_normKey(f.absolute.path)] as Map<String, dynamic>?;
+          final bvMatch = RegExp(r'^BV\w{10}').firstMatch(fname);
+          String? fbv;
+          if (meta == null && bvMatch != null) {
+            fbv = bvMatch.group(0);
+            for (final v in map.values) {
+              if (v is Map && v['bvid'] == fbv) { meta = Map<String, dynamic>.from(v); break; }
+            }
+          }
+          // 跳过下载残留：BV 格式命名、路径和 bvid 都查不到的 m4a（下载中断窗口期产物）
+          if (bvMatch != null && meta == null) continue;
           final title = meta?['title'] as String? ?? f.path.split(Platform.pathSeparator).last.split('.').first;
           final uploader = meta?['uploader'] as String? ?? '';
           final duration = Duration(seconds: meta?['duration'] as int? ?? 0);
@@ -530,6 +537,17 @@ class SongGroupService {
     return null;
   }
 
+  /// 清理缺失歌曲：从所有组中移除本地不存在的歌，不足2首的组解散
+  static void removeMissing(Set<String> existing) {
+    _ensureLoaded();
+    final before = _cache.length;
+    for (final g in _cache) {
+      g.songPaths.removeWhere((p) => !existing.contains(p));
+    }
+    _cache.removeWhere((g) => g.songPaths.length < 2);
+    if (_cache.length != before) _save();
+  }
+
   /// 组队：把选中歌曲合并为一个组（各自原有组合并后生成新组）
   static void groupSongs(List<Song> songs, {required String playlistId}) {
     _ensureLoaded();
@@ -615,7 +633,39 @@ class SongGroupService {
 // ============================================================
 // 本地歌单扫描（兼容旧接口）
 // ============================================================
+/// 清理所有歌单/收藏/最近播放/组中已不存在的歌曲记录
+Future<void> purgeMissingSongs(Set<String> existing) async {
+  final p = await SharedPreferences.getInstance();
+  // 我喜欢
+  final fav = (p.getStringList('favorites') ?? []).where(existing.contains).toList();
+  await p.setStringList('favorites', fav);
+  // 最近播放
+  final rec = (p.getStringList('recently_played') ?? []).where(existing.contains).toList();
+  await p.setStringList('recently_played', rec);
+  // 自定义歌单
+  final pls = p.getStringList('custom_playlists') ?? [];
+  var changed = false;
+  for (var i = 0; i < pls.length; i++) {
+    final parts = pls[i].split('|||');
+    List<dynamic> paths = [];
+    try { paths = jsonDecode(parts.length > 3 ? parts[3] : '[]'); } catch (_) {}
+    final kept = paths.where((x) => existing.contains(x.toString())).toList();
+    if (kept.length != paths.length) {
+      parts[3] = jsonEncode(kept);
+      pls[i] = parts.join('|||');
+      changed = true;
+    }
+  }
+  if (changed) await p.setStringList('custom_playlists', pls);
+  // 组
+  SongGroupService.removeMissing(existing);
+}
+
 Future<List<Song>> scanLocalAudioFiles(String dirPath) async {
   SongManager.init(dirPath);
-  return SongManager.scanLocalSongs();
+  final songs = SongManager.scanLocalSongs();
+  // 扫描后净化：本地不存在的歌从所有歌单/收藏/最近播放/组中清除
+  final existing = songs.map((s) => s.bvid.isNotEmpty ? s.bvid : s.filePath.replaceAll('\\', '/').split('/').last.split('.').first).toSet();
+  purgeMissingSongs(existing);
+  return songs;
 }
