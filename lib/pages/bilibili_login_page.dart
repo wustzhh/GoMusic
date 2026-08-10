@@ -15,10 +15,25 @@ class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
   double _progress = 0;
   String _status = '请在页面中登录B站';
   String? _capturedCookie;
+  bool _saved = false;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // 用户可能不点"保存并关闭"直接返回：捕获到 Cookie 时自动保存并返回成功
+    return PopScope(
+      canPop: _capturedCookie == null || _saved,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_capturedCookie != null && !_saved) {
+          final service = await SettingsService.getInstance();
+          await service.setBilibiliCookie(_capturedCookie!);
+          BilibiliApi.cookie = _capturedCookie;
+          if (!mounted) return;
+          setState(() => _saved = true);
+          Navigator.pop(context, true);
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('B站登录'),
         centerTitle: true,
@@ -72,6 +87,7 @@ class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
           ),
         ),
       ),
+      ),
     );
   }
 
@@ -89,17 +105,13 @@ class _BilibiliLoginPageState extends State<BilibiliLoginPage> {
   Future<void> _saveAndClose() async {
     if (_capturedCookie == null) return;
 
-    final messenger = ScaffoldMessenger.of(context);
-    final navigator = Navigator.of(context);
-
     final service = await SettingsService.getInstance();
     await service.setBilibiliCookie(_capturedCookie!);
     BilibiliApi.cookie = _capturedCookie;
 
     if (!mounted) return;
-    messenger.showSnackBar(
-      const SnackBar(content: Text('登录成功！Cookie已保存'), backgroundColor: Colors.green),
-    );
-    navigator.pop(true);
+    setState(() => _saved = true);
+    // 提示由调用方（设置页）显示，避免重复
+    Navigator.pop(context, true);
   }
 }

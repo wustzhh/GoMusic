@@ -102,7 +102,17 @@ class AudioPlayerService {
   bool _sourceLoaded = false;
   final StreamController<Duration> _positionController = StreamController<Duration>.broadcast();
   Duration _lastPosition = Duration.zero;
-  bool _playing = false;
+  /// 播放状态流：不依赖 media_kit 底层 playing 事件（首次播放不可靠），
+  /// 由 _playing setter 主动发出，UI/媒体会话据此同步按钮与通知栏。
+  final StreamController<bool> _playingController = StreamController<bool>.broadcast();
+  bool _playingState = false;
+  bool get _playing => _playingState;
+  set _playing(bool v) {
+    if (_playingState != v) {
+      _playingState = v;
+      if (!_playingController.isClosed) _playingController.add(v);
+    }
+  }
   Song? _currentSong;
   final List<Song> _queue = [];
   List<Song>? _orderedQueue;
@@ -121,7 +131,7 @@ class AudioPlayerService {
   int get queueIndex => _queueIndex;
   Stream<Duration> get onPositionChanged => _positionController.stream;
   Stream<Duration> get onDurationChanged => _player.stream.duration;
-  Stream<bool> get onPlayingChanged => _player.stream.playing;
+  Stream<bool> get onPlayingChanged => _playingController.stream;
 
   // ==================== 播放 ====================
 
