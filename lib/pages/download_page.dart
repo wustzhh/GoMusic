@@ -630,10 +630,21 @@ class _DownloadPageState extends State<DownloadPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('下载'), centerTitle: true, actions: [
-        IconButton(
-          icon: Icon(_viewQueue ? Icons.download : Icons.queue_music, size: 20),
-          tooltip: '',
-          onPressed: () => setState(() => _viewQueue = !_viewQueue),
+        ValueListenableBuilder<int>(
+          valueListenable: DownloadQueueService.changed,
+          builder: (_, __, ___) {
+            final active = DownloadQueueService.tasks.any((t) => t.status == DownloadTaskStatus.downloading || t.status == DownloadTaskStatus.waiting);
+            return Badge(
+              isLabelVisible: active,
+              smallSize: 8,
+              backgroundColor: Colors.red,
+              child: IconButton(
+                icon: Icon(_viewQueue ? Icons.download : Icons.queue_music, size: 20),
+                tooltip: '',
+                onPressed: () => setState(() => _viewQueue = !_viewQueue),
+              ),
+            );
+          },
         ),
       ]),
       body: _viewQueue

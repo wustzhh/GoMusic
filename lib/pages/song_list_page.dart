@@ -5,6 +5,7 @@ import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
 import 'player_page.dart';
+import '../services/download_queue.dart';
 import 'video_detail_page.dart';
 import '../widgets/song_queue_list.dart';
 
@@ -30,8 +31,21 @@ class _SongListPageState extends State<SongListPage> {
   final GlobalKey _playingRowKey = GlobalKey();
 
   @override
+  String? _dlStatus(Song song) {
+    final key = _songKey(song);
+    for (final t in DownloadQueueService.tasks) {
+      if (t.bvid == key) {
+        if (t.status == DownloadTaskStatus.downloading) return '下载中';
+        if (t.status == DownloadTaskStatus.waiting) return '队列中';
+      }
+    }
+    return null;
+  }
+
   void initState() {
     super.initState();
+    DownloadQueueService.ensureLoaded();
+    DownloadQueueService.changed.addListener(_onQueueChanged);
     _songs = List.from(widget.playlist.songs);
     // 从存储读取最新顺序（拖动排序持久化后重进歌单仍保持）：
     // local 读本地拖动顺序，自定义歌单读存储顺序；无保存顺序则用传入列表
@@ -95,8 +109,11 @@ class _SongListPageState extends State<SongListPage> {
     } catch (_) {}
   }
 
+  void _onQueueChanged() { if (mounted) setState(() {}); }
+
   @override
   void dispose() {
+    DownloadQueueService.changed.removeListener(_onQueueChanged);
     _service.currentSongNotifier.removeListener(_onSongChanged);
     super.dispose();
   }
@@ -799,7 +816,13 @@ class _SongListPageState extends State<SongListPage> {
                   ],
                 ),
             title: Text(song.title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isPlaying ? Colors.red : null), maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            subtitle: Row(children: [
+              if (_dlStatus(song) != null) ...[
+                Text(_dlStatus(song)!, style: TextStyle(fontSize: 10, color: _dlStatus(song) == '下载中' ? Colors.orange : Colors.blue)),
+                const SizedBox(width: 6),
+              ],
+              Expanded(child: Text(song.uploader.isNotEmpty ? song.uploader : (_service.isPlaying && isPlaying ? '正在播放' : ''), style: const TextStyle(fontSize: 11, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis)),
+            ]),
             trailing: _batchMode
               ? (showDragHandle && dragIndex != null
                   ? ReorderableDragStartListener(
