@@ -890,28 +890,72 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   Future<void> _retryItem(_BatchItem item) async {
-    setState(() { item.status = _BatchStatus.downloading; item.exists = false; });
+    // 并发防护：有下载任务进行中时不允许重试，避免多首同时下载
+    if (_isDownloading) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('有下载任务进行中，请等待当前下载完成'), duration: Duration(seconds: 2)));
+      return;
+    }
+    setState(() { item.status = _BatchStatus.downloading; item.exists = false; item.progress = 0; item.speed = 0; });
     SongManager.init(_downloadDir!);
 
     final full = await _api.getVideoInfo(item.info.url);
     if (full?.audioUrl == null) { setState(() => item.status = _BatchStatus.failed); return; }
 
+    // 封面（失败 = 该项下载失败）
+    var coverOk = true;
     if (full!.coverUrl.isNotEmpty) {
-      await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {});
+      coverOk = await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {});
+    } else {
+      coverOk = false;
     }
-    final ok = await StreamDownloader.download(
-      url: full.audioUrl!, savePath: '${_downloadDir}/${item.name}.m4a',
-      onProgress: (_) {},
-    );
+    // 音频（勾选才下载）
+    var audioOk = true;
+    if (_downloadAudio) {
+      _speedLastBytes = 0; _speedLastTime = DateTime.now();
+      audioOk = await StreamDownloader.download(
+        url: full.audioUrl!, savePath: '${_downloadDir}/${item.name}.m4a',
+        onProgress: (_) {},
+        onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? (received / total) * 0.5 : item.progress; }); },
+      );
+    }
+    // 视频（勾选才下载）
+    var videoOk = true;
+    if (_downloadVideo && full.videoStreams.isNotEmpty) {
+      final best = full.videoStreams.first;
+      final audioFile = File('${_downloadDir}/${item.name}.m4a');
+      if (full.audioUrl != null && best.baseUrl == full.audioUrl && audioFile.existsSync()) {
+        try { audioFile.copySync('${_downloadDir}/${item.name}.mp4'); videoOk = true; } catch (_) { videoOk = false; }
+      } else {
+        videoOk = await StreamDownloader.download(
+          url: best.baseUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
+          expectedSize: best.size > 0 ? best.size : null,
+          onProgress: (_) {},
+          onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; }); },
+        );
+      }
+    }
+    // 最终校验
+    final needAudio = _downloadAudio ? (File('${_downloadDir}/${item.name}.m4a').existsSync() && File('${_downloadDir}/${item.name}.m4a').lengthSync() > 0) : true;
+    final needVideo = _downloadVideo ? (File('${_downloadDir}/${item.name}.mp4').existsSync() && File('${_downloadDir}/${item.name}.mp4').lengthSync() > 0) : true;
+    final needCover = File('${_downloadDir}/${item.name}.jpg').existsSync() && File('${_downloadDir}/${item.name}.jpg').lengthSync() > 0;
+    final ok = audioOk && videoOk && needAudio && needVideo && needCover;
+    if (!ok) {
+      try {
+        if (!needAudio) File('${_downloadDir}/${item.name}.m4a').deleteSync();
+        if (!needVideo) File('${_downloadDir}/${item.name}.mp4').deleteSync();
+        if (!needCover) File('${_downloadDir}/${item.name}.jpg').deleteSync();
+      } catch (_) {}
+    }
     if (ok) {
       SongManager.registerSong(
         filePath: '${_downloadDir}/${item.name}.m4a',
         title: full.title, uploader: full.author, durationSec: full.durationSeconds,
         bvid: full.bvid, url: full.url,
         coverPath: '${_downloadDir}/${item.name}.jpg',
+        videoPath: _downloadVideo ? '${_downloadDir}/${item.name}.mp4' : null,
       );
     }
-    setState(() { item.status = ok ? _BatchStatus.done : _BatchStatus.failed; if (ok) item.exists = true; });
+    setState(() { item.status = ok ? _BatchStatus.done : _BatchStatus.failed; if (ok) item.exists = true; item.progress = ok ? 1.0 : 0; item.speed = 0; });
   }
 
   // ---- 固定底部按钮 ----
