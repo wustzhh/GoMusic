@@ -33,6 +33,9 @@ class _DownloadPageState extends State<DownloadPage> {
   int _downloadingSize = 0;
   double _downloadProgress = 0;
   int _downloadedBytes = 0; // 已下载字节（total 未知时用于容量显示）
+  double _downloadSpeed = 0; // 字节/秒
+  DateTime? _lastSizeTime;
+  int _lastSizeBytes = 0;
 
   BilibiliVideoInfo? _singleInfo;
   VideoStream? _selectedStream;
@@ -235,7 +238,9 @@ class _DownloadPageState extends State<DownloadPage> {
   /// 下载队列视图
   Widget _buildQueueView() {
     DownloadQueueService.ensureLoaded();
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return ValueListenableBuilder<int>(
+      valueListenable: DownloadQueueService.changed,
+      builder: (_, __, ___) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(children: [
@@ -277,7 +282,8 @@ class _DownloadPageState extends State<DownloadPage> {
           );
         }),
       const Divider(height: 1),
-    ]);
+      ]),
+    );
   }
 
   void _snack(String msg) {
@@ -379,6 +385,18 @@ class _DownloadPageState extends State<DownloadPage> {
             }
           },
           onSize: (received, total) {
+            final now = DateTime.now();
+            if (_lastSizeTime != null) {
+              final dt = now.difference(_lastSizeTime!).inMilliseconds;
+              if (dt >= 500) {
+                _downloadSpeed = ((received - _lastSizeBytes) * 1000 / dt).clamp(0, double.infinity);
+                _lastSizeTime = now;
+                _lastSizeBytes = received;
+              }
+            } else {
+              _lastSizeTime = now;
+              _lastSizeBytes = received;
+            }
             if (mounted) {
               _downloadedBytes = received;
               if (total > 0) _downloadingSize = total;
@@ -987,7 +1005,12 @@ class _DownloadPageState extends State<DownloadPage> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Text('${(_downloadProgress * 100).clamp(0, 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 12)),
+                Text(_downloadedBytes > 0
+                  ? '${(_downloadedBytes / 1048576).toStringAsFixed(1)}/${_downloadingSize > 0 ? (_downloadingSize / 1048576).toStringAsFixed(1) : '?'}MB (${(_downloadProgress * 100).clamp(0, 100).toStringAsFixed(0)}%)'
+                  : '${(_downloadProgress * 100).clamp(0, 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(fontSize: 11)),
+                const SizedBox(width: 4),
+                Text(_fmtSpeed(_downloadSpeed), style: const TextStyle(fontSize: 11, color: Colors.grey)),
               ]),
               const SizedBox(height: 8),
               SizedBox(
