@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../main.dart';
 import '../services/bilibili_api.dart';
 import '../services/audio_player_service.dart';
@@ -71,41 +72,80 @@ class _DownloadPageState extends State<DownloadPage> {
   Future<void> _parseUrl() async {
     var url = _urlController.text.trim();
     if (url.isEmpty) return;
-    // 从分享文本中提取 URL（B站分享文本含中文标题）
-    final urlMatch = RegExp(r'https?://\S+').firstMatch(url);
-    if (urlMatch != null) {
-      url = urlMatch.group(0)!;
+    // 从分享文本中提取所有 URL（可多个链接）
+    final urls = RegExp(r'https?://\S+').allMatches(url).map((m) {
+      var u = m.group(0)!;
       // 去掉 URL 尾部可能带上的中文标点
-      url = url.replaceFirst(RegExp(r'[^A-Za-z0-9/:_?=&.%-]+$'), '');
-    }
+      return u.replaceFirst(RegExp(r'[^A-Za-z0-9/:_?=&.%-]+$'), '');
+    }).toList();
+    if (urls.isEmpty) return;
 
     setState(() {
       _isParsing = true; _singleInfo = null; _batchItems = [];
       _alreadyDownloaded = false; _downloadVideo = false;
     });
 
-    // b23.tv 短链先解析成真实 URL（含 BV/合集ID），保证后续判断准确
-    final resolved = await BilibiliApi.resolveShortUrl(url);
-    if (!mounted) return;
-
-    if (_isCollectionUrl(resolved)) {
-      await _parseCollection(resolved);
-    } else {
-      final info = await _api.getVideoInfo(resolved);
+    // 逐个链接解析，结果合并到批量列表
+    var gotAny = false;
+    var failedCount = 0;
+    for (var raw in urls) {
+      // b23.tv 短链先解析成真实 URL
+      final resolved = await BilibiliApi.resolveShortUrl(raw);
       if (!mounted) return;
-      if (info != null) {
-        await _checkSingleExists(info);
-        setState(() {
-          _singleInfo = info; _isParsing = false;
-          _nameController.text = info.title;
-          _authorController.text = info.author;
-          _selectedStream = info.videoStreams.isNotEmpty ? info.videoStreams.first : null;
-        });
+
+      if (_isCollectionUrl(resolved)) {
+        final videos = await _api.getCollectionVideos(resolved);
+        if (videos != null && videos.isNotEmpty) {
+          setState(() {
+            _batchItems.addAll(videos.map((v) => _BatchItem(info: v, name: _safeName(v.title), exists: _fileExists(v.bvid))));
+          });
+          gotAny = true;
+        } else {
+          failedCount++;
+        }
       } else {
-        setState(() => _isParsing = false);
-        _snack('解析失败，请检查URL');
+        final info = await _api.getVideoInfo(resolved);
+        if (!mounted) return;
+        if (info != null) {
+          setState(() {
+            _batchItems.add(_BatchItem(info: info, name: _safeName(info.title), exists: _fileExists(info.bvid)));
+          });
+          gotAny = true;
+        } else {
+          failedCount++;
+        }
       }
     }
+
+    if (!mounted) return;
+    if (!gotAny) {
+      setState(() => _isParsing = false);
+      _snack(failedCount > 0 ? '解析失败：$failedCount 个链接无法解析' : '未找到可解析的链接');
+      return;
+    }
+    if (_batchItems.length == 1 && !_isCollectionUrl(urls.length == 1 ? urls.first : '')) {
+      // 单个普通视频：走单曲详情
+      final info = _batchItems.first.info;
+      await _checkSingleExists(info);
+      setState(() {
+        _singleInfo = info;
+        _batchItems = [];
+        _isParsing = false;
+        _nameController.text = info.title;
+        _authorController.text = info.author;
+        _selectedStream = info.videoStreams.isNotEmpty ? info.videoStreams.first : null;
+      });
+    } else {
+      setState(() => _isParsing = false);
+      _snack('解析完成：${_batchItems.length} 个音视频');
+    }
+  }
+
+  bool _fileExists(String bvid) {
+    try {
+      final dir = _downloadDir ?? '';
+      return File('$dir/$bvid.m4a').existsSync() && File('$dir/$bvid.m4a').lengthSync() > 0;
+    } catch (_) { return false; }
   }
 
   bool _isCollectionUrl(String url) =>
@@ -204,6 +244,7 @@ class _DownloadPageState extends State<DownloadPage> {
     setState(() { _isDownloading = true; _downloadProgress = 0; _downloadingTitle = info.title; });
     _cancelNotifier = ValueNotifier(false);
     if (Platform.isAndroid) {
+      await Permission.notification.request();
       FlutterForegroundTask.startService(
         serviceId: 100,
         notificationTitle: 'GoMusic 下载中',
