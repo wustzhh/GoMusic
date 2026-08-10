@@ -86,9 +86,9 @@ void main() {
     expect(svc.queue.map((s) => s.bvid).toList(), shuffled1.map((s) => s.bvid).toList());
   });
 
-  test('restoreLastSong 不恢复音频进度（从头播放，回归）', () async {
+  test('restoreLastSong 恢复上次播放进度（杀进程后续播，回归）', () async {
     final svc = AudioPlayerService();
-    // 构造 save_state.json：position=125秒（旧数据）
+    // 构造 save_state.json：position=125秒
     final f = File('save_state.json');
     f.writeAsStringSync(jsonEncode({
       'song': 'C:/x/BV1.m4a', 'title': '歌1', 'uploader': 'u',
@@ -98,8 +98,8 @@ void main() {
     final restored = await svc.restoreLastSong();
     expect(restored, isNotNull);
     expect(restored!.bvid, 'BV1');
-    // 音频不记录/恢复进度：无论旧数据是什么，恢复后位置为 0（从头播）
-    expect(svc.currentPosition.inMilliseconds, 0);
+    // 恢复上次保存的进度：125 秒（用户要求杀进程/退出后从上次位置续播）
+    expect(svc.currentPosition.inMilliseconds, 125000);
     // 清理测试文件
     try { f.deleteSync(); } catch (_) {}
     try { File('song_groups.json').deleteSync(); } catch (_) {}

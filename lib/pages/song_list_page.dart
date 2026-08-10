@@ -61,7 +61,10 @@ class _SongListPageState extends State<SongListPage> {
           final s = byKey[k];
           if (s != null) { ordered.add(s); byKey.remove(k); }
         }
-        ordered.addAll(byKey.values);
+        // 未记录的新歌（如刚下载的）：按添加顺序（mtime 倒序）插到最前
+        final rest = byKey.values.toList()
+          ..sort((a, b) => _mtimeOf(b.filePath).compareTo(_mtimeOf(a.filePath)));
+        ordered.insertAll(0, rest);
         _songs = ordered;
       } else if (widget.playlist.id == 'fav') {
         // 我喜欢：按收藏顺序（拖动排序已写入 favorites）排列
@@ -130,7 +133,10 @@ class _SongListPageState extends State<SongListPage> {
             final s = byKey[k];
             if (s != null) { ordered.add(s); byKey.remove(k); }
           }
-          ordered.addAll(byKey.values);
+          // 未记录的新歌（如刚下载的）：按添加顺序（mtime 倒序）插到最前
+          final rest = byKey.values.toList()
+            ..sort((a, b) => _mtimeOf(b.filePath).compareTo(_mtimeOf(a.filePath)));
+          ordered.insertAll(0, rest);
           _songs = ordered;
         } else {
           _songs = scanned..sort((a, b) => _mtimeOf(b.filePath).compareTo(_mtimeOf(a.filePath)));

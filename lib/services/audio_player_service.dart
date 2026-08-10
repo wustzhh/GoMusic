@@ -620,8 +620,9 @@ class AudioPlayerService {
       final data = jsonDecode(f.readAsStringSync()) as Map<String, dynamic>;
       final sm = data['mode'] as int?;
       if (sm != null && sm < PlayMode.values.length) _playMode = PlayMode.values[sm];
-      // 音频不记录/恢复进度：每次从头播放
-      _lastPosition = Duration.zero;
+      // 恢复上次播放进度（杀进程/退出后从上次位置续播）
+      _lastPosition = Duration(milliseconds: data['position'] as int? ?? 0);
+      if (_lastPosition < Duration.zero) _lastPosition = Duration.zero;
       final qPaths = List<dynamic>.from(data['queue'] as List? ?? []);
       final qIdx = data['queue_index'] as int? ?? 0;
       if (qPaths.isNotEmpty) {
