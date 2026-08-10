@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:audio_service/audio_service.dart';
 import 'audio_player_service.dart';
 
@@ -39,6 +41,9 @@ class GoMusicAudioHandler extends BaseAudioHandler {
       title: song.title,
       artist: song.uploader,
       duration: song.duration,
+      artUri: (song.coverUrl != null && song.coverUrl!.isNotEmpty && File(song.coverUrl!).existsSync())
+          ? Uri.file(song.coverUrl!)
+          : null,
     ));
     playbackState.add(playbackState.value.copyWith(
       controls: [
@@ -66,12 +71,16 @@ class GoMusicAudioHandler extends BaseAudioHandler {
     required Duration duration,
     required bool playing,
     required Duration position,
+    String? coverUrl,
   }) {
     mediaItem.add(MediaItem(
       id: id,
       title: title,
       artist: artist,
       duration: duration,
+      artUri: (coverUrl != null && coverUrl.isNotEmpty && File(coverUrl).existsSync())
+          ? Uri.file(coverUrl)
+          : null,
     ));
     playbackState.add(playbackState.value.copyWith(
       controls: [
