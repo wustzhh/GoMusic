@@ -23,6 +23,9 @@ class DownloadTask {
   DownloadTaskStatus status;
   double progress; // 0~1
   String error;
+  bool paused = false;      // 用户暂停
+  ValueNotifier<bool>? cancel; // 下载取消标志（暂停时触发）
+  ValueNotifier<int>? internalChanged; // 单个任务进度刷新
 
   DownloadTask({
     required this.bvid,
@@ -39,7 +42,7 @@ class DownloadTask {
   Map<String, dynamic> toJson() => {
         'bvid': bvid, 'title': title, 'uploader': uploader, 'coverUrl': coverUrl,
         'audio': audio, 'video': video,
-        'status': status.index, 'progress': progress, 'error': error,
+        'status': status.index, 'progress': progress, 'error': error, 'paused': paused,
       };
 
   static DownloadTask fromJson(Map<String, dynamic> m) => DownloadTask(
@@ -52,7 +55,7 @@ class DownloadTask {
         status: DownloadTaskStatus.values[m['status'] as int? ?? 0],
         progress: (m['progress'] as num? ?? 0).toDouble(),
         error: m['error'] as String? ?? '',
-      );
+      )..paused = m['paused'] as bool? ?? false;
 }
 
 /// 下载队列：独立于解析结果，任务持久化、逐个执行
@@ -108,12 +111,47 @@ class DownloadQueueService {
     process();
   }
 
-  /// 移除任务
+  /// 移除任务（同时删除缓存区的部分下载文件）
   static Future<void> remove(int index) async {
     if (index < 0 || index >= tasks.length) return;
+    final t = tasks[index];
+    // 取消进行中的下载
+    t.cancel?.value = true;
+    // 删除缓存区（.tmp）中该任务的部分文件
+    try {
+      final svc = await SettingsService.getInstance();
+      final dir = await svc.getDownloadPath();
+      final tmpDir = Directory('$dir/.tmp');
+      if (tmpDir.existsSync()) {
+        for (final f in tmpDir.listSync()) {
+          if (f is File && f.path.contains(t.bvid)) {
+            try { f.deleteSync(); } catch (_) {}
+          }
+        }
+      }
+    } catch (_) {}
     tasks.removeAt(index);
     await _persist();
     changed.value++;
+  }
+
+  /// 暂停下载（保留 .part，支持续传）
+  static void pause(DownloadTask task) {
+    task.paused = true;
+    task.cancel?.value = true; // 中断当前下载
+    task.status = DownloadTaskStatus.waiting;
+    changed.value++;
+    _persist();
+  }
+
+  /// 继续下载（断点续传）
+  static void resume(DownloadTask task) {
+    task.paused = false;
+    task.cancel?.value = false;
+    task.status = DownloadTaskStatus.waiting;
+    changed.value++;
+    _persist();
+    process();
   }
 
   /// 重试失败任务
@@ -141,15 +179,17 @@ class DownloadQueueService {
       final svc = await SettingsService.getInstance();
       final dir = await svc.getDownloadPath();
       while (true) {
-        // 找下一个等待任务
+        // 找下一个等待任务（跳过暂停的）
         DownloadTask? task;
         for (final t in tasks) {
-          if (t.status == DownloadTaskStatus.waiting) { task = t; break; }
+          if (t.status == DownloadTaskStatus.waiting && !t.paused) { task = t; break; }
         }
         if (task == null) break;
 
         task.status = DownloadTaskStatus.downloading;
         task.progress = 0;
+        task.cancel = ValueNotifier(false);
+        task.internalChanged = ValueNotifier(0);
         changed.value++;
         await _persist();
 
@@ -166,6 +206,13 @@ class DownloadQueueService {
           }
 
           var fail = false;
+          if (task.paused) {
+            // 暂停：恢复等待状态，保留 .part（断点续传）
+            task.status = DownloadTaskStatus.waiting;
+            changed.value++;
+            await _persist();
+            continue;
+          }
           // 封面
           if (info.coverUrl.isNotEmpty) {
             final ok = await StreamDownloader.download(url: info.coverUrl, savePath: '$dir/$name.jpg', onProgress: (_) {});
@@ -180,7 +227,8 @@ class DownloadQueueService {
             } else {
               final ok = await StreamDownloader.download(
                 url: info.audioUrl!, savePath: '$dir/$name.m4a',
-                onProgress: (p) { task!.progress = p * 0.5; changed.value++; },
+                onProgress: (p) { task!.progress = p * 0.5; task!.internalChanged?.value++; },
+                cancel: task.cancel,
                 expectedSize: info.audioSize > 0 ? info.audioSize : null,
               );
               if (!ok) fail = true;
@@ -194,7 +242,8 @@ class DownloadQueueService {
               final best = info.videoStreams.first;
               final ok = await StreamDownloader.download(
                 url: best.baseUrl!, savePath: '$dir/$name.mp4',
-                onProgress: (p) { task!.progress = 0.5 + p * 0.5; changed.value++; },
+                onProgress: (p) { task!.progress = 0.5 + p * 0.5; task!.internalChanged?.value++; },
+                cancel: task.cancel,
                 expectedSize: best.size > 0 ? best.size : null,
               );
               if (!ok) fail = true;
@@ -217,9 +266,7 @@ class DownloadQueueService {
             task.status = DownloadTaskStatus.failed;
             task.error = '下载不完整';
           } else {
-            task.status = DownloadTaskStatus.done;
-            task.progress = 1.0;
-            // 登记数据管理器
+            // 完成：登记数据管理器
             SongManager.registerSong(
               filePath: '$dir/$name.m4a',
               title: task.title.isNotEmpty ? task.title : info.title,
@@ -230,6 +277,8 @@ class DownloadQueueService {
               coverPath: '$dir/$name.jpg',
               videoPath: task.video ? '$dir/$name.mp4' : null,
             );
+            // 完成后从队列清除
+            tasks.remove(task);
           }
         } catch (e) {
           task.status = DownloadTaskStatus.failed;

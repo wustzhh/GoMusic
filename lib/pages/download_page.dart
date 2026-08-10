@@ -273,8 +273,12 @@ class _DownloadPageState extends State<DownloadPage> {
             title: Text(t.title, style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: t.status == DownloadTaskStatus.downloading
                 ? ClipRRect(borderRadius: BorderRadius.circular(3), child: LinearProgressIndicator(value: t.progress.clamp(0.0, 1.0), minHeight: 4, backgroundColor: Colors.grey.withValues(alpha: 0.2), color: Colors.orange))
-                : Text(t.status == DownloadTaskStatus.failed ? '失败: ${t.error}' : (t.audio ? '音频' : '') + (t.video ? '+视频' : ''), style: TextStyle(fontSize: 10, color: color)),
+                : Text(t.paused ? '已暂停' : (t.status == DownloadTaskStatus.failed ? '失败: ${t.error}' : (t.audio ? '音频' : '') + (t.video ? '+视频' : '')), style: TextStyle(fontSize: 10, color: color)),
             trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (t.status == DownloadTaskStatus.downloading)
+                IconButton(icon: const Icon(Icons.pause_circle_outline, size: 18), tooltip: '', onPressed: () => DownloadQueueService.pause(t)),
+              if (t.paused || (t.status == DownloadTaskStatus.waiting && !t.paused))
+                IconButton(icon: const Icon(Icons.play_circle_outline, size: 18), tooltip: '', onPressed: () => DownloadQueueService.resume(t)),
               if (t.status == DownloadTaskStatus.failed)
                 IconButton(icon: const Icon(Icons.refresh, size: 16), tooltip: '', onPressed: () => DownloadQueueService.retry(i)),
               IconButton(icon: const Icon(Icons.close, size: 16), tooltip: '', onPressed: () => DownloadQueueService.remove(i)),
