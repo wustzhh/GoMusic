@@ -255,6 +255,8 @@ class _SongListPageState extends State<SongListPage> {
         ),
         padding: const EdgeInsets.all(16),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(leading: const Icon(Icons.playlist_play, color: Colors.deepPurple), title: const Text('下一首播放'),
+            onTap: () { Navigator.pop(ctx); _service.playNext(song); }),
           ListTile(leading: const Icon(Icons.vertical_align_top, color: Colors.blue), title: const Text('置顶'),
             onTap: () { Navigator.pop(ctx); _pinSong(song); }),
           ListTile(leading: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? Colors.red : Colors.grey),

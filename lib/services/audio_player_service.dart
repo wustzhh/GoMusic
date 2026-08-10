@@ -200,6 +200,43 @@ class AudioPlayerService {
 
   void pause() { _player.pause(); _playing = false; }
 
+  /// 下一首播放：目标歌曲放入当前歌曲（或所在组）之后
+  void playNext(Song song) {
+    final key = song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath);
+    // 移除已存在的目标（存在则放到下一位）
+    final existIdx = _queue.indexWhere((s) => (s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)) == key);
+    if (existIdx >= 0) {
+      _queue.removeAt(existIdx);
+      if (existIdx < _queueIndex) _queueIndex--;
+    }
+    // 计算插入位置
+    int insertAt;
+    final curSong = _currentSong;
+    if (curSong != null) {
+      final g = SongGroupService.groupOf(curSong, playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId);
+      if (g != null) {
+        // 当前在组内：插到组的最后一个成员之后
+        var lastMemberIdx = _queueIndex;
+        for (var i = 0; i < _queue.length; i++) {
+          final s = _queue[i];
+          if (g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath))) {
+            lastMemberIdx = i;
+          }
+        }
+        insertAt = lastMemberIdx + 1;
+      } else {
+        insertAt = _queueIndex + 1;
+      }
+    } else {
+      insertAt = _queue.isEmpty ? 0 : _queueIndex + 1;
+    }
+    if (insertAt < 0) insertAt = 0;
+    if (insertAt > _queue.length) insertAt = _queue.length;
+    _queue.insert(insertAt, song);
+    _saveState();
+    currentSongNotifier.notifyListeners();
+  }
+
   void resume() {
     if (_currentSong == null) return;
     if (_player.state.completed) {
