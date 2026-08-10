@@ -31,6 +31,17 @@ class _DownloadPageState extends State<DownloadPage> {
   int _downloadingSize = 0;
   double _downloadProgress = 0;
   int _downloadedBytes = 0; // 已下载字节（total 未知时用于容量显示）
+  int _speedLastBytes = 0; // 速度计算：上次字节
+  DateTime _speedLastTime = DateTime.now(); // 速度计算：上次时间
+
+  void _updateItemSpeed(_BatchItem item, int received) {
+    final now = DateTime.now();
+    final dt = now.difference(_speedLastTime).inMilliseconds;
+    if (_speedLastBytes > 0 && dt > 400) {
+      item.speed = (received - _speedLastBytes) / (dt / 1000);
+    }
+    _speedLastBytes = received; _speedLastTime = now;
+  }
 
   BilibiliVideoInfo? _singleInfo;
   VideoStream? _selectedStream;
@@ -465,9 +476,11 @@ class _DownloadPageState extends State<DownloadPage> {
       // 音频（勾选才下载）
       var audioOk = true;
       if (_downloadAudio) {
+        _speedLastBytes = 0; _speedLastTime = DateTime.now();
         audioOk = await StreamDownloader.download(
           url: full.audioUrl!, savePath: '${_downloadDir}/${item.name}.m4a',
           onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
+          onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? (received / total) * 0.5 : item.progress; }); },
         );
       }
       // 视频（勾选才下载）
@@ -486,6 +499,7 @@ class _DownloadPageState extends State<DownloadPage> {
             url: best.baseUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
             expectedSize: best.size > 0 ? best.size : null,
             onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
+            onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; }); },
           );
         }
       }
@@ -918,19 +932,6 @@ class _DownloadPageState extends State<DownloadPage> {
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text('正在下载：$_downloadingTitle${_downloadingSize > 0 ? ' (${(_downloadingSize / 1048576).toStringAsFixed(1)}MB)' : ''}', style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
                 ),
-              Row(children: [
-                Expanded(
-                  child: LinearProgressIndicator(
-                    value: _downloadProgress.clamp(0.0, 1.0),
-                    minHeight: 6,
-                    backgroundColor: Colors.grey.withValues(alpha: 0.2),
-                    color: Colors.deepPurple,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text('${(_downloadProgress * 100).clamp(0, 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 12)),
-              ]),
-              const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity, height: 36,
                 child: OutlinedButton.icon(
