@@ -345,8 +345,14 @@ class _DownloadPageState extends State<DownloadPage> {
     if (_downloadVideo) {
       if (_selectedStream?.baseUrl != null) {
         final audioFile = File('$dir/$name.m4a');
+        // 解析期拿的是 DASH 流（无声）；下载时按需取带音轨的 durl 合并流
+        String? videoUrl = _selectedStream!.baseUrl;
+        try {
+          final durl = await _api.resolveVideoDurl(info.bvid, info.cid, _selectedStream!.id);
+          if (durl != null) videoUrl = durl;
+        } catch (_) {}
         // durl 合并流场景：音频流 URL 与视频流相同（MP4 自带音轨），直接拷贝避免重复下载
-        if (info.audioUrl != null && _selectedStream!.baseUrl == info.audioUrl && audioFile.existsSync()) {
+        if (info.audioUrl != null && videoUrl == info.audioUrl && audioFile.existsSync()) {
           try {
             audioFile.copySync('$dir/$name.mp4');
             videoOk = true;
@@ -355,7 +361,7 @@ class _DownloadPageState extends State<DownloadPage> {
           _downloadingSize = _selectedStream!.size;
           var lastUi2 = DateTime.now();
           videoOk = await StreamDownloader.download(
-            url: _selectedStream!.baseUrl!, savePath: '$dir/$name.mp4',
+            url: videoUrl!, savePath: '$dir/$name.mp4',
             onProgress: (p) {
               final now = DateTime.now();
               if (now.difference(lastUi2).inMilliseconds >= 400) {
@@ -482,15 +488,18 @@ class _DownloadPageState extends State<DownloadPage> {
       // 取消响应：getVideoInfo 最多等 4 秒，取消后立即停止后续
       BilibiliVideoInfo? full;
       try {
-        full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 4));
-      } catch (_) {
+        // 解析只发 1 次 DASH 请求（音频+分辨率），8 秒足够；不再逐清晰度请求
+        full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 8));
+      } catch (e) {
         if (_cancelNotifier?.value == true) { setState(() => item.status = _BatchStatus.waiting); break; }
+        _dlog('批量: ${item.info.bvid} getVideoInfo异常: $e');
         setState(() => item.status = _BatchStatus.failed);
         _batchDone++;
         continue;
       }
       if (_cancelNotifier?.value == true) { setState(() => item.status = _BatchStatus.waiting); break; }
       if (full?.audioUrl == null) {
+        _dlog('批量: ${item.info.bvid} audioUrl null (cid=${full?.cid}, streams=${full?.videoStreams.length})');
         setState(() => item.status = _BatchStatus.failed);
         _batchDone++;
         continue;
@@ -524,15 +533,21 @@ class _DownloadPageState extends State<DownloadPage> {
       if (_downloadVideo && full.videoStreams.isNotEmpty) {
         final best = full.videoStreams.first;
         final audioFile = File('${_downloadDir}/${item.name}.m4a');
+        // 解析期拿的是 DASH 流（无声）；下载时按需取带音轨的 durl 合并流
+        String? videoUrl = best.baseUrl;
+        try {
+          final durl = await _api.resolveVideoDurl(full.bvid, full.cid, best.id);
+          if (durl != null) videoUrl = durl;
+        } catch (_) {}
         // durl 合并流场景：视频流 URL 与音频流相同，直接拷贝避免重复下载
-        if (full.audioUrl != null && best.baseUrl == full.audioUrl && audioFile.existsSync()) {
+        if (full.audioUrl != null && videoUrl == full.audioUrl && audioFile.existsSync()) {
           try {
             audioFile.copySync('${_downloadDir}/${item.name}.mp4');
             videoOk = true;
           } catch (_) { videoOk = false; }
         } else {
           videoOk = await StreamDownloader.download(
-            url: best.baseUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
+            url: videoUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
             expectedSize: best.size > 0 ? best.size : null,
             onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
             onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; }); },

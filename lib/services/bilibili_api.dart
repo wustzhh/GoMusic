@@ -269,13 +269,35 @@ class BilibiliApi {
     }
   }
 
+  /// 下载视频时按需取带音轨的 durl 合并流 URL（MP4 自带音轨）
+  /// 解析期不请求，避免批量解析慢；找不到 durl 时返回 null（调用方退回 DASH 无声流）
+  Future<String?> resolveVideoDurl(String bvid, int cid, int qn) async {
+    try {
+      final p = {
+        'bvid': bvid,
+        'cid': cid.toString(),
+        'fnver': '0',
+        'fnval': '1',
+        'fourk': '1',
+        'qn': qn.toString(),
+      };
+      final d = await _playUrl(p);
+      if (d == null) return null;
+      final durls = (d['data']['durl'] as List?) ?? [];
+      if (durls.isEmpty) return null;
+      final u = (durls.first['url'] as String? ?? '').replaceAll('http:', 'https:');
+      return u.isEmpty ? null : u;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _fetchStreams(BilibiliVideoInfo info) async {
     if (info.cid == 0) return;
     try {
-      // 视频与音频分开处理：
-      //  - 视频：durl 合并流（MP4 自带音轨，有声），多个 qn 请求得到多分辨率
-      //  - 音频：DASH 音频流（独立 m4a，小体积）
-      // 分开后：视频拖动进度天然同步（单文件带音轨），音频独立不影响
+      // 解析期只发 1 次 DASH 请求：同时拿视频分辨率列表 + 最佳音频流（m4a）。
+      // durl（带音轨 MP4）不在解析时逐清晰度请求——批量解析必须快；
+      // 真正下载视频时才按选中清晰度调用 resolveVideoDurl 换取带音轨 URL。
       final base = {
         'bvid': info.bvid,
         'cid': info.cid.toString(),
@@ -283,76 +305,36 @@ class BilibiliApi {
         'fnval': '1',
         'fourk': '1',
       };
-
-      // 1) 分辨率列表：先用 DASH 响应拿各清晰度元数据（width/height）
       final pDash = Map<String, String>.from(base)..['fnval'] = '4048';
       final dDash = await _playUrl(pDash);
-      final dashStreams = <VideoStream>[];
-      if (dDash != null) {
-        final dash = dDash['data']['dash'];
-        if (dash != null) {
-          final videos = (dash['video'] as List?) ?? [];
-          dashStreams.addAll(videos.map((v) => VideoStream(
-            id: (v['id'] as int?) ?? 0,
-            bandwidth: (v['bandwidth'] as int?) ?? 0,
-            width: (v['width'] as int?) ?? 0,
-            height: (v['height'] as int?) ?? 0,
-            codecs: (v['codecs'] as String?) ?? '',
-            baseUrl: ((v['baseUrl'] ?? v['base_url']) as String?)?.replaceAll('http:', 'https:'),
-            size: (v['size'] as int?) ?? 0,
-          )).toList());
-        }
-      }
+      if (dDash == null) return;
+      final dash = dDash['data']['dash'];
+      if (dash == null) return;
 
-      // 2) 视频下载地址：每个分辨率用对应 qn 请求 durl（MP4 带音轨，有声）
-      // DASH id（如 16/32/64/80）即 qn，直接用 durl 请求拿到带音轨的单文件
-      final streams = <VideoStream>[];
-      final seen = <String>{};
-      for (final ds in dashStreams) {
-        final qn = ds.id; // DASH id 与 qn 对应
-        final p = Map<String, String>.from(base)..['qn'] = qn.toString();
-        final d = await _playUrl(p);
-        if (d == null) continue;
-        final durls = (d['data']['durl'] as List?) ?? [];
-        if (durls.isEmpty) continue;
-        final u = (durls.first['url'] as String? ?? '').replaceAll('http:', 'https:');
-        if (u.isEmpty) continue;
-        // 用 durl 的 URL（带音轨），保留 DASH 的分辨率信息
-        final s = VideoStream(
-          id: qn,
-          bandwidth: ds.bandwidth,
-          width: ds.width,
-          height: ds.height,
-          codecs: ds.codecs,
-          baseUrl: u,
-          size: (durls.first['size'] as int?) ?? 0,
-        );
-        final k = '${s.width}x${s.height}';
-        if (seen.add(k)) streams.add(s);
-      }
-      // durl 解析失败时兜底：直接用 DASH 视频流（无声但可选分辨率）
-      if (streams.isEmpty) {
-        info.videoStreams = dashStreams;
-      } else {
-        info.videoStreams = streams
-          ..sort((a, b) => (b.width * b.height).compareTo(a.width * a.height));
-      }
+      // 视频分辨率列表（DASH 无声流，解析期仅用于展示；下载时换 durl 带音轨）
+      final videos = (dash['video'] as List?) ?? [];
+      info.videoStreams = videos.map((v) => VideoStream(
+        id: (v['id'] as int?) ?? 0,
+        bandwidth: (v['bandwidth'] as int?) ?? 0,
+        width: (v['width'] as int?) ?? 0,
+        height: (v['height'] as int?) ?? 0,
+        codecs: (v['codecs'] as String?) ?? '',
+        baseUrl: ((v['baseUrl'] ?? v['base_url']) as String?)?.replaceAll('http:', 'https:'),
+        size: (v['size'] as int?) ?? 0,
+      )).toList()
+        ..sort((a, b) => (b.width * b.height).compareTo(a.width * a.height));
 
-      // 2) 音频：DASH 音频流（独立 m4a）
-      final pAudio = Map<String, String>.from(base)
-        ..['fnval'] = '4048'
-        ..['qn'] = '127';
-      final dAudio = await _playUrl(pAudio);
-      if (dAudio != null) {
-        final dash = dAudio['data']['dash'];
-        if (dash != null) {
-          final audios = (dash['audio'] as List?) ?? [];
-          if (audios.isNotEmpty) {
-            audios.sort((a, b) =>
-                ((b['bandwidth'] as int?) ?? 0).compareTo((a['bandwidth'] as int?) ?? 0));
-            final best = audios.first;
-            info.audioUrl = ((best['baseUrl'] ?? best['base_url']) as String?)?.replaceAll('http:', 'https:');
-            info.audioSize = (best['size'] as int?) ?? 0;
+      // 最佳音频流（DASH m4a）
+      Map<String, dynamic>? best;
+      final audios = (dash['audio'] as List?) ?? [];
+      if (audios.isNotEmpty) {
+        audios.sort((a, b) =>
+            ((b['bandwidth'] as int?) ?? 0).compareTo((a['bandwidth'] as int?) ?? 0));
+        final b = audios.first as Map<String, dynamic>;
+        best = b;
+        final bestUrl = (b['baseUrl'] ?? b['base_url']) as String?;
+        info.audioUrl = bestUrl?.replaceAll('http:', 'https:');
+        info.audioSize = (b['size'] as int?) ?? 0;
       // 探测音视频真实体积（Range bytes=0-0 读 Content-Range）
       final probeHeaders = {
         'User-Agent': _ua,
@@ -381,7 +363,7 @@ class BilibiliApi {
       await Future.wait(probes);
       // 探测失败：用码率×时长估算
       if (info.audioSize <= 0 && info.durationSeconds > 0) {
-        final bw = best['bandwidth'] as int? ?? 0;
+        final bw = best?['bandwidth'] as int? ?? 0;
         if (bw > 0) info.audioSize = (bw ~/ 8) * info.durationSeconds;
       }
       for (final vs in info.videoStreams) {
@@ -389,8 +371,6 @@ class BilibiliApi {
           vs.size = (vs.bandwidth ~/ 8) * info.durationSeconds;
         }
       }
-          }
-        }
       }
     } catch (_) {}
   }

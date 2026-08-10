@@ -31,6 +31,11 @@ void main() {
   });
 
   testWidgets('真实歌单：点击第3首播放第3首', (tester) async {
+    // 测试环境加大尺寸，避免 mini bar 布局溢出
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     // 真实下载目录
     final realDir = r'D:\GitHubProject\GoMusic\downloads';
     final songs = await scanLocalAudioFiles(realDir);
@@ -56,6 +61,10 @@ void main() {
   });
 
   testWidgets('真实歌单：点击第1首播放第1首', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final realDir = r'D:\GitHubProject\GoMusic\downloads';
     final songs = await scanLocalAudioFiles(realDir);
     if (songs.length < 1) { markTestSkipped('真实歌单为空'); return; }
