@@ -380,6 +380,22 @@ class _DownloadPageState extends State<DownloadPage> {
     String sizeText = '';
     try { final f = File('$dir/$name.m4a'); if (f.existsSync()) sizeText = '${(f.lengthSync() / 1048576).toStringAsFixed(1)} MB'; } catch (_) {}
 
+    // 最终校验：勾选的音频/视频 + 封面，任一缺失 = 下载失败
+    final needAudio = _downloadAudio ? (File('$dir/$name.m4a').existsSync() && File('$dir/$name.m4a').lengthSync() > 0) : true;
+    final needVideo = _downloadVideo ? (File('$dir/$name.mp4').existsSync() && File('$dir/$name.mp4').lengthSync() > 0) : true;
+    final needCover = File('$dir/$name.jpg').existsSync() && File('$dir/$name.jpg').lengthSync() > 0;
+    final allOk = audioOk && videoOk && needAudio && needVideo && needCover;
+    if (!allOk) {
+      // 清理残留，避免"已下载"误判
+      try {
+        if (!needAudio) File('$dir/$name.m4a').deleteSync();
+        if (!needVideo) File('$dir/$name.mp4').deleteSync();
+        if (!needCover) File('$dir/$name.jpg').deleteSync();
+      } catch (_) {}
+      setState(() { _isDownloading = false; _downloadingTitle = ''; });
+      _snack('下载失败：文件不完整（${needCover ? "" : "封面"}${needAudio ? "" : "音频"}${needVideo ? "" : "视频"}缺失）');
+      return;
+    }
     // 完全下载成功后才登记（不受页面切换影响）
     if (audioOk && videoOk) {
       SongManager.registerSong(
@@ -474,7 +490,22 @@ class _DownloadPageState extends State<DownloadPage> {
         }
       }
 
-      final ok = audioOk && videoOk;
+      // 最终校验：勾选的音频/视频 + 封面，任一缺失 = 失败
+      final needAudio = _downloadAudio ? (File('${_downloadDir}/${item.name}.m4a').existsSync() && File('${_downloadDir}/${item.name}.m4a').lengthSync() > 0) : true;
+      final needVideo = _downloadVideo ? (File('${_downloadDir}/${item.name}.mp4').existsSync() && File('${_downloadDir}/${item.name}.mp4').lengthSync() > 0) : true;
+      final needCover = File('${_downloadDir}/${item.name}.jpg').existsSync() && File('${_downloadDir}/${item.name}.jpg').lengthSync() > 0;
+      final ok = audioOk && videoOk && needAudio && needVideo && needCover;
+      if (!ok) {
+        // 清理残留
+        try {
+          if (!needAudio) File('${_downloadDir}/${item.name}.m4a').deleteSync();
+          if (!needVideo) File('${_downloadDir}/${item.name}.mp4').deleteSync();
+          if (!needCover) File('${_downloadDir}/${item.name}.jpg').deleteSync();
+        } catch (_) {}
+        if (mounted) setState(() => item.status = _BatchStatus.failed);
+        _batchDone++;
+        continue;
+      }
       if (ok) {
         item.exists = true;
         SongManager.registerSong(
