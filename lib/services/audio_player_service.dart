@@ -411,17 +411,10 @@ class AudioPlayerService {
               : (curKey != null
                   ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : _fileNameKey(x.filePath)) == curKey)
                   : startIndex.clamp(0, _queue.length - 1)));
-    } else if (keepOrder) {
-      // 播放全部：严格按列表顺序，不做组重排
-      _queue.addAll(List<Song>.from(s));
-      _queueIndex = _queue.isEmpty ? 0 : startIndex.clamp(0, _queue.length - 1);
     } else {
+      // 非随机（含播放全部）：按组重排——组内成员聚拢相邻且保持相对顺序，单曲原位
       _queue.addAll(_groupedQueue(s));
-      _queueIndex = _queue.isEmpty
-          ? 0
-          : (curKey != null
-              ? _queue.indexWhere((x) => (x.bvid.isNotEmpty ? x.bvid : _fileNameKey(x.filePath)) == curKey)
-              : startIndex.clamp(0, _queue.length - 1));
+      _queueIndex = _queue.isEmpty ? 0 : startIndex.clamp(0, _queue.length - 1);
     }
     if (_queueIndex < 0) _queueIndex = 0;
     currentSongNotifier.notifyListeners();
