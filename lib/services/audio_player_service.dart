@@ -433,6 +433,42 @@ class AudioPlayerService {
     _queueIndex = 0;
     currentSongNotifier.notifyListeners();
   }
+
+  /// 点击歌曲播放前的队列调整：
+  /// - 点击的是组内歌曲：点击的歌排到组内第一首（组内其余按组设置：随机打乱/顺序保持），
+  ///   保证从点击的歌开始把整个组播完才出组；
+  /// - 歌单播放模式为随机：整组放到队列最前（先播完这个组再播其他）；
+  /// - 单曲（无组）：原有 moveToFront 行为。
+  void prepareClickedSong(Song song) {
+    final key = song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath);
+    final g = SongGroupService.groupOf(song, playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId);
+    if (g == null) { moveToFront(song); return; }
+    // 收集组员（按队列当前顺序），记录原组首位置
+    final members = <Song>[];
+    var groupStart = _queue.length;
+    for (var i = 0; i < _queue.length; i++) {
+      final s = _queue[i];
+      if (g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath))) {
+        members.add(s);
+        if (i < groupStart) groupStart = i;
+      }
+    }
+    if (members.isEmpty) return;
+    // 组内排序：点击的歌第一，其余按组设置
+    final rest = members
+        .where((m) => (m.bvid.isNotEmpty ? m.bvid : _fileNameKey(m.filePath)) != key)
+        .toList();
+    if (g.shuffle && rest.length > 1) rest.shuffle(Random());
+    final ordered = <Song>[song, ...rest];
+    // 移除组员
+    _queue.removeWhere((s) => g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)));
+    // 插入：随机模式→最前；否则→原组首位置
+    final insertAt = _playMode == PlayMode.shuffle ? 0 : groupStart.clamp(0, _queue.length);
+    _queue.insertAll(insertAt, ordered);
+    _queueIndex = _queue.indexWhere((s) => (s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)) == key);
+    if (_queueIndex < 0) _queueIndex = 0;
+    currentSongNotifier.notifyListeners();
+  }
   void setPlayMode(PlayMode m) {
     if (m == PlayMode.shuffle && _playMode != PlayMode.shuffle) {
       _orderedQueue = List<Song>.from(_queue);

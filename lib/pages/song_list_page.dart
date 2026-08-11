@@ -186,10 +186,8 @@ class _SongListPageState extends State<SongListPage> {
     // 队列始终用完整歌单（搜索只是显示筛选，不影响播放列表）
     final idx = _songs.indexWhere((s) => _songKey(s) == _songKey(song));
     _service.setQueue(_songs, startIndex: idx, playlistId: widget.playlist.id, keepOrder: true);
-    // 随机模式：点击的歌必须放到队列第一首（生成新播放列表后立即播放它）
-    if (_service.playMode == PlayMode.shuffle) {
-      _service.moveToFront(song);
-    }
+    // 点击播放的队列调整：组内歌曲→点击的排组内第一首；随机模式→整组前置
+    _service.prepareClickedSong(song);
     _service.playSong(song);
     // 点击歌曲直接进入播放界面
     if (mounted) {
