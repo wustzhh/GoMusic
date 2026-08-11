@@ -11,6 +11,9 @@ import 'settings_service.dart';
 
 enum PlayMode { sequential, loopList, loopOne, shuffle }
 
+/// Windows 独立音量持久化 key（仅 Windows 读写，Android 跟随系统音量）
+const _windowsVolumeKey = 'windows_volume';
+
 class AudioPlayerService {
   static AudioPlayerService? _instance;
   factory AudioPlayerService() => _instance ??= AudioPlayerService._();
@@ -21,6 +24,43 @@ class AudioPlayerService {
   /// 确保播放内核存在（生产环境首次访问时构造 libmpv Player）
   Player? _playerRef;
   bool _playerInitDone = false;
+
+  /// 应用内独立音量（0~100，默认 100）。仅 Windows 生效：
+  /// 通过 mpv setVolume 独立于系统音量；Android 不干预（跟随系统音量）
+  double _volume = 100.0;
+  final ValueNotifier<double> volumeNotifier = ValueNotifier<double>(100.0);
+  double get volume => _volume;
+
+  /// 设置音量（钳位 5~100），Windows 才应用到播放器并持久化
+  Future<void> setVolume(double v) async {
+    final clamped = v.clamp(5.0, 100.0).toDouble();
+    if ((clamped - _volume).abs() < 0.01) return;
+    _volume = clamped;
+    volumeNotifier.value = clamped;
+    if (Platform.isWindows) {
+      try { await _player.setVolume(clamped); } catch (_) {}
+      try {
+        final p = await SharedPreferences.getInstance();
+        await p.setDouble(_windowsVolumeKey, clamped);
+      } catch (_) {}
+    }
+  }
+
+  /// 音量增减（步进 5，钳位 5~100）
+  Future<void> changeVolume(double delta) => setVolume(_volume + delta);
+
+  /// 启动时恢复 Windows 独立音量（默认 100）
+  Future<void> restoreVolume() async {
+    if (!Platform.isWindows) return;
+    try {
+      final p = await SharedPreferences.getInstance();
+      final saved = p.getDouble(_windowsVolumeKey) ?? 100.0;
+      _volume = saved.clamp(5.0, 100.0);
+      volumeNotifier.value = _volume;
+      try { await _player.setVolume(_volume); } catch (_) {}
+    } catch (_) {}
+  }
+
   void _ensurePlayer() {
     if (_playerInitDone) return;
     _playerInitDone = true;

@@ -47,17 +47,21 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));
 
-    // 点击第 3 首歌的标题
+    // 点击第 3 首歌的行（限定在 ListTile 内，避免命中 mini bar 同名标题）
     final third = songs[2].title;
-    expect(find.text(third), findsWidgets, reason: '第3首标题应显示');
-    await tester.tap(find.text(third).first);
+    final tile = find.ancestor(of: find.text(third), matching: find.byType(ListTile)).first;
+    expect(tile, findsOneWidget, reason: '第3首标题应在歌单列表行中');
+    await tester.tap(tile);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
     final svc = AudioPlayerService();
     print('点击第3首(${songs[2].bvid}) 后 currentSong: ${svc.currentSong?.bvid}, queueIndex: ${svc.queueIndex}');
     expect(svc.currentSong?.bvid, songs[2].bvid, reason: '点击第3首应播放第3首');
-    expect(svc.queueIndex, 2, reason: '队列索引应为 2');
+    // 队列按歌单显示顺序（标题序），点击的歌应定位到其在队列中的位置
+    final expectIdx = svc.queue.indexWhere((s) => s.bvid == songs[2].bvid);
+    expect(expectIdx, greaterThanOrEqualTo(0), reason: '点击的歌应在队列中');
+    expect(svc.queueIndex, expectIdx, reason: '队列索引应指向点击的歌');
   });
 
   testWidgets('真实歌单：点击第1首播放第1首', (tester) async {
@@ -76,13 +80,17 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
 
     final first = songs[0].title;
-    await tester.tap(find.text(first).first);
+    final tile = find.ancestor(of: find.text(first), matching: find.byType(ListTile)).first;
+    expect(tile, findsOneWidget, reason: '第1首标题应在歌单列表行中');
+    await tester.tap(tile);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
     final svc = AudioPlayerService();
     print('点击第1首(${songs[0].bvid}) 后 currentSong: ${svc.currentSong?.bvid}');
     expect(svc.currentSong?.bvid, songs[0].bvid, reason: '点击第1首应播放第1首');
-    expect(svc.queueIndex, 0);
+    final expectIdx = svc.queue.indexWhere((s) => s.bvid == songs[0].bvid);
+    expect(expectIdx, greaterThanOrEqualTo(0));
+    expect(svc.queueIndex, expectIdx);
   });
 }

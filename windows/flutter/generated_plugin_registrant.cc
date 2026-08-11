@@ -8,6 +8,7 @@
 
 #include <audioplayers_windows/audioplayers_windows_plugin.h>
 #include <flutter_inappwebview_windows/flutter_inappwebview_windows_plugin_c_api.h>
+#include <hotkey_manager_windows/hotkey_manager_windows_plugin_c_api.h>
 #include <media_kit_libs_windows_video/media_kit_libs_windows_video_plugin_c_api.h>
 #include <media_kit_video/media_kit_video_plugin_c_api.h>
 #include <permission_handler_windows/permission_handler_windows_plugin.h>
@@ -20,6 +21,8 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("AudioplayersWindowsPlugin"));
   FlutterInappwebviewWindowsPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FlutterInappwebviewWindowsPluginCApi"));
+  HotkeyManagerWindowsPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("HotkeyManagerWindowsPluginCApi"));
   MediaKitLibsWindowsVideoPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("MediaKitLibsWindowsVideoPluginCApi"));
   MediaKitVideoPluginCApiRegisterWithRegistrar(

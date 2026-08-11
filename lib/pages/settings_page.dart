@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../main.dart';
+import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
 import 'bilibili_login_page.dart';
 import '../widgets/top_toast.dart';
@@ -125,6 +126,51 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const SizedBox(height: 8),
+          // 音量（仅 Windows：应用内独立音量，不影响系统音量）
+          if (Platform.isWindows) ...[
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.volume_up_outlined, size: 20),
+                        const SizedBox(width: 8),
+                        const Text('音量', style: TextStyle(fontSize: 15)),
+                        const Spacer(),
+                        ValueListenableBuilder<double>(
+                          valueListenable: AudioPlayerService().volumeNotifier,
+                          builder: (_, v, __) => Text(
+                            '${v.round()}%',
+                            style: const TextStyle(fontSize: 13, color: Colors.grey),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ValueListenableBuilder<double>(
+                      valueListenable: AudioPlayerService().volumeNotifier,
+                      builder: (_, v, __) => Slider(
+                        value: v,
+                        min: 5,
+                        max: 100,
+                        divisions: 19,
+                        label: '${v.round()}%',
+                        onChanged: (nv) => AudioPlayerService().setVolume(nv),
+                      ),
+                    ),
+                    const Text(
+                      '快捷键：Ctrl+Alt+↑/↓ 音量±5%，Ctrl+Alt+←/→ 切歌（后台也生效）',
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           // 主题
           Card(
             child: Padding(

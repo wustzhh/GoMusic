@@ -15,6 +15,7 @@ import 'services/settings_service.dart';
 import 'services/bilibili_api.dart';
 import 'services/audio_player_service.dart';
 import 'services/audio_handler.dart';
+import 'services/hotkey_service.dart';
 import 'widgets/mini_player_bar.dart';
 
 void _logMs(String msg) {
@@ -53,6 +54,11 @@ void main() async {
   // 恢复上次播放状态
   final audioService = AudioPlayerService();
   await audioService.restoreLastSong();
+  // Windows 独立音量恢复 + 全局快捷键注册（Ctrl+Alt+方向键）
+  if (Platform.isWindows) {
+    await audioService.restoreVolume();
+    await HotkeyService.instance.init();
+  }
 
   runApp(const GoMusicApp());
 
