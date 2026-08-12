@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -568,6 +569,16 @@ class _DownloadPageState extends State<DownloadPage> {
         final durl = await _api.resolveVideoDurl(full.bvid, full.cid, best.id);
         if (durl != null) videoUrl = durl;
       } catch (_) {}
+      // 探测视频 URL 真实大小（Range bytes=0-0 读 Content-Range），保证进度准确
+      int? videoSize;
+      try {
+        final req = http.Request('GET', Uri.parse(videoUrl!));
+        req.headers.addAll({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': 'https://www.bilibili.com/', 'Range': 'bytes=0-0'});
+        final r = await req.send().timeout(const Duration(seconds: 5));
+        final cr = r.headers['content-range'];
+        r.stream.drain<void>();
+        if (cr != null && cr.contains('/')) videoSize = int.tryParse(cr.split('/').last);
+      } catch (_) {}
       if (full.audioUrl != null && videoUrl == full.audioUrl && audioFile.existsSync()) {
         try {
           audioFile.copySync('${_downloadDir}/${item.name}.mp4');
@@ -576,7 +587,7 @@ class _DownloadPageState extends State<DownloadPage> {
       } else {
         videoOk = await StreamDownloader.download(
           url: videoUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
-          expectedSize: best.size > 0 ? best.size : null,
+          expectedSize: videoSize ?? (best.size > 0 ? best.size : null),
           onProgress: (p) { if (mounted) setState(() {}); },
           onSize: (received, total) { if (mounted) setState(() { item.receivedBytes = received; _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; }); },
           cancel: _cancelNotifier,
