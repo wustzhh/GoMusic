@@ -250,14 +250,17 @@ class BilibiliApi {
   /// 请求播放地址（wbi 接口失败时降级到非 wbi），返回解析后的 JSON
   Future<Map<String, dynamic>?> _playUrl(Map<String, String> params) async {
     try {
-      final p = await _signed(params);
+      var p = await _signed(params);
       var uri = Uri.parse('https://api.bilibili.com/x/player/wbi/playurl')
           .replace(queryParameters: p);
       var r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 8));
-      if (r.statusCode != 200) {
-        final p2 = Map<String, String>.from(p)..remove('w_rid')..remove('wts');
-        uri = Uri.parse('https://api.bilibili.com/x/player/playurl')
-            .replace(queryParameters: p2);
+      // 签名可能过期/被风控：刷新 mixinKey 重试一次（不降级到无签名接口，避免清晰度受限）
+      if (r.statusCode != 200 || (jsonDecode(r.body)['code'] != 0 && r.body.isNotEmpty)) {
+        _mixinKey = null;
+        _mixinKeyExpire = 0;
+        p = await _signed(params);
+        uri = Uri.parse('https://api.bilibili.com/x/player/wbi/playurl')
+            .replace(queryParameters: p);
         r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 8));
       }
       if (r.statusCode != 200) return null;
