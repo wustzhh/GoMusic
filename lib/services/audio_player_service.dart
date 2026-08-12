@@ -31,6 +31,7 @@ class AudioPlayerService {
 
   /// 请求音频焦点（与其他音乐/视频 app 互斥）
   bool _interruptionWired = false;
+  bool _pausedByInterruption = false; // 被其他 app 抢占而暂停（焦点回归时自动恢复）
 
   Future<void> _requestAudioFocus() async {
     try {
@@ -40,12 +41,28 @@ class AudioPlayerService {
       }
       if (!_interruptionWired) {
         _interruptionWired = true;
-        // 其他 app 抢占音频焦点时，暂停自己（互斥）
+        // 互斥：其他 app 抢占焦点→暂停自己；焦点回归→自动恢复播放
         session.interruptionEventStream.listen((event) {
-          if (event.begin && _playing) {
-            _player.pause();
-            _playing = false;
-            currentSongNotifier.notifyListeners();
+          if (event.begin) {
+            if (_playing) {
+              _pausedByInterruption = true;
+              _player.pause();
+              _playing = false;
+              currentSongNotifier.notifyListeners();
+            }
+          } else if (!event.begin) {
+            if (_pausedByInterruption && _currentSong != null) {
+              _pausedByInterruption = false;
+              if (_player.state.completed) {
+                // 播完状态：从记录位置恢复
+                _playFile(_currentSong!.filePath, position: _lastPosition > Duration.zero ? _lastPosition : null);
+              } else {
+                _player.play();
+              }
+              _sourceLoaded = true;
+              _playing = true;
+              currentSongNotifier.notifyListeners();
+            }
           }
         });
       }
@@ -256,6 +273,7 @@ class AudioPlayerService {
   }
 
   void pause() {
+    _pausedByInterruption = false; // 手动暂停：焦点回归不自动恢复
     _player.pause();
     _playing = false;
     // 不释放音频焦点：暂停后媒体会话保持 active，耳机键仍路由到本 app；
