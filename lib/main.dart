@@ -13,6 +13,7 @@ import 'pages/settings_page.dart';
 import 'pages/video_page.dart';
 import 'services/settings_service.dart';
 import 'services/bilibili_api.dart';
+import 'models/music_data.dart';
 import 'services/audio_player_service.dart';
 import 'services/audio_handler.dart';
 import 'widgets/mini_player_bar.dart';
@@ -101,6 +102,7 @@ class _GoMusicAppState extends State<GoMusicApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    SongGroupService.init(); // 分组数据加载（SharedPreferences，覆盖安装保留）
     // 启动时从存储读取主题模式
     SettingsService.getInstance().then((s) {
       themeModeNotifier.value = s.getThemeMode();
