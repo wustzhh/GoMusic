@@ -195,11 +195,8 @@ class SongManager {
         if (f.path.contains('${Platform.pathSeparator}.tmp${Platform.pathSeparator}') || f.path.endsWith('.part')) continue;
         final ext = f.path.split('.').last.toLowerCase();
         final isAudio = ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav';
-        final isVideoMain = ext == 'mp4'; // 仅视频下载时 mp4 作为主文件
-        if (isVideoMain && m4aNames.contains(f.path.split(Platform.pathSeparator).last.replaceAll('.mp4', '.m4a'))) {
-          continue; // 已有 m4a 主文件，m4a 条目会带 videoPath
-        }
-        if (isAudio || isVideoMain) {
+        // 纯视频（mp4 主文件）不进音频歌单：视频列表由 video_page 单独扫描 mp4
+        if (isAudio) {
           // 从注册表查元数据：先按路径，路径不一致时按 BV号 兜底（bvid 唯一键）
           var meta = map[_normKey(f.absolute.path)] as Map<String, dynamic>?;
           final fname = f.path.split(Platform.pathSeparator).last;
