@@ -1032,7 +1032,16 @@ class _DownloadPageState extends State<DownloadPage> {
           : SizedBox(
               width: double.infinity, height: 44,
               child: ElevatedButton.icon(
-                onPressed: _batchItems.isNotEmpty ? _startBatch : _startSingle,
+                // 音频和视频都没勾选：置灰 + 点击提示
+                onPressed: (!_downloadAudio && !_downloadVideo)
+                    ? null
+                    : () {
+                        if (_batchItems.isNotEmpty) {
+                          _startBatch();
+                        } else {
+                          _startSingle();
+                        }
+                      },
                 icon: const Icon(Icons.download),
                 label: Text(
                   _batchItems.isNotEmpty
