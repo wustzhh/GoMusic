@@ -50,6 +50,7 @@ class _VideoPageState extends State<VideoPage> {
             final bv = name.substring(0, name.lastIndexOf('.'));
             // 元数据直接查数据管理器（纯视频条目也能查到标题/封面/时长）
             final m = SongManager.findByBvid(bv);
+            final cp = m?['coverPath'] as String?;
             videos.add(Song(
               id: bv,
               title: m?['title'] as String? ?? bv,
@@ -57,7 +58,7 @@ class _VideoPageState extends State<VideoPage> {
               duration: Duration(seconds: m?['duration'] as int? ?? 0),
               filePath: f.path,
               bvid: bv,
-              coverUrl: (m?['coverPath'] as String? ?? '').isNotEmpty ? m?['coverPath'] as String? : null,
+              coverUrl: (cp != null && cp.isNotEmpty) ? cp : null,
               hasVideo: true,
             ));
           }
