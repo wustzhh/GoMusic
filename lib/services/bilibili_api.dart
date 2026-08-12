@@ -555,6 +555,7 @@ class StreamDownloader {
           var received = append ? existing : 0;
 
           final sink = partFile.openWrite(mode: append ? FileMode.append : FileMode.write);
+          var lastLog = DateTime.now();
           try {
             await for (final chunk in streamed) {
               if (cancel?.value == true) {
@@ -569,6 +570,15 @@ class StreamDownloader {
                 onProgress(received / total);
               } else {
                 onProgress(received > 0 ? 0.5 : 0.0);
+              }
+              // 进度日志（每2秒一条，用于排查进度为0）
+              final now = DateTime.now();
+              if (now.difference(lastLog).inSeconds >= 2) {
+                lastLog = now;
+                try {
+                  File('${saveFile.parent.path}/debug.log').writeAsStringSync('[${now.toIso8601String().substring(11, 19)}] prog recv=$received total=$total cl=${streamed.contentLength} exp=$expectedSize
+', mode: FileMode.append);
+                } catch (_) {}
               }
             }
           } finally {

@@ -942,7 +942,10 @@ class _DownloadPageState extends State<DownloadPage> {
         if (name.isNotEmpty) Text(name, style: TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
         SizedBox(height: 6),
         Row(children: [
-          Expanded(child: LinearProgressIndicator(value: totalProg.clamp(0.0, 1.0), minHeight: 6)),
+          Expanded(child: LinearProgressIndicator(
+            value: totalProg > 0 ? totalProg.clamp(0.0, 1.0) : null, // total 未知时动画条
+            minHeight: 6,
+          )),
           SizedBox(width: 12),
           if (sizeText.isNotEmpty) Text(sizeText, style: TextStyle(fontSize: 11, color: Colors.grey)),
           if (sizeText.isNotEmpty) SizedBox(width: 6),
@@ -1011,7 +1014,9 @@ class _DownloadPageState extends State<DownloadPage> {
               width: 90,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(value: item.progress.clamp(0.0, 1.0), minHeight: 5, backgroundColor: Colors.grey.withValues(alpha: 0.2), color: Colors.orange),
+                child: LinearProgressIndicator(
+                  value: item.progress > 0 ? item.progress.clamp(0.0, 1.0) : null, // total 未知时动画条
+                  minHeight: 5, backgroundColor: Colors.grey.withValues(alpha: 0.2), color: Colors.orange),
               ),
             ),
             const SizedBox(width: 6),
