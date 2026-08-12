@@ -225,7 +225,6 @@ class AudioPlayerService {
       _lastPosition = _player.state.position;
       _player.pause();
       _playing = false;
-      _releaseAudioFocus();
     } else {
       _requestAudioFocus();
       if (_currentSong != null && _player.state.completed) {
@@ -259,7 +258,8 @@ class AudioPlayerService {
   void pause() {
     _player.pause();
     _playing = false;
-    _releaseAudioFocus();
+    // 不释放音频焦点：暂停后媒体会话保持 active，耳机键仍路由到本 app；
+    // 互斥由 interruption 监听保证（其他 app 播放抢占焦点时自动暂停）
   }
 
   /// 从队列移除歌曲（按 BV号键）
