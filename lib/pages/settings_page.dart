@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../main.dart';
 import '../services/settings_service.dart';
 import 'bilibili_login_page.dart';
@@ -87,6 +88,13 @@ class _SettingsPageState extends State<SettingsPage> {
         title: const Text('调试日志', style: TextStyle(fontSize: 15)),
         content: SizedBox(width: 420, child: SingleChildScrollView(child: SelectableText(content, style: const TextStyle(fontSize: 11)))),
         actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: content));
+              ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('日志已复制到剪贴板'), duration: Duration(seconds: 2)));
+            },
+            child: const Text('复制'),
+          ),
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
           TextButton(onPressed: () {
             Navigator.pop(ctx);
