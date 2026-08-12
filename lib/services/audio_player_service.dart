@@ -78,6 +78,22 @@ class AudioPlayerService {
     } catch (_) {}
   }
 
+  /// app 回到前台时调用：若因被其他 app 抢占而暂停，自动恢复播放
+  void onAppResumed() {
+    if (_pausedByInterruption && !_playing && _currentSong != null) {
+      _pausedByInterruption = false;
+      _requestAudioFocus();
+      if (_player.state.completed) {
+        _playFile(_currentSong!.filePath, position: _lastPosition > Duration.zero ? _lastPosition : null);
+      } else {
+        _player.play();
+      }
+      _sourceLoaded = true;
+      _playing = true;
+      currentSongNotifier.notifyListeners();
+    }
+  }
+
   Player get _player {
     _ensurePlayer();
     return _playerRef!;
