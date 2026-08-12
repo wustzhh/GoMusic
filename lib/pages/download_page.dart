@@ -621,6 +621,7 @@ class _DownloadPageState extends State<DownloadPage> {
 
 
   String _dlModeLabel() {
+    if (!_downloadAudio && !_downloadVideo) return '请先选择下载内容';
     if (_downloadAudio && _downloadVideo) return '音频+视频';
     if (_downloadVideo) return '仅视频';
     return '仅音频';
