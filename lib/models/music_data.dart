@@ -87,6 +87,17 @@ class SongManager {
     return File(norm).absolute.path;
   }
 
+  /// 按 BV号 查元数据（纯视频/仅音频/音视频都有；不依赖音频条目）
+  static Map<String, dynamic>? findByBvid(String bvid) {
+    try {
+      final map = _readMap();
+      for (final v in map.values) {
+        if (v is Map && v['bvid'] == bvid) return Map<String, dynamic>.from(v);
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// 读取全部元数据（key 归一化，历史混合分隔符数据自动迁移）
   static Map<String, dynamic> _readMap() {
     final f = File(_mapPath);

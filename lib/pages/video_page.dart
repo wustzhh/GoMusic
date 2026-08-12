@@ -39,8 +39,7 @@ class _VideoPageState extends State<VideoPage> {
   Future<void> _load() async {
     final svc = await SettingsService.getInstance();
     final dir = await svc.getDownloadPath();
-    final localSongs = await scanLocalAudioFiles(dir);
-    final byBvid = {for (final s in localSongs) if (s.bvid.isNotEmpty) s.bvid: s};
+    SongManager.init(dir);
     final videos = <Song>[];
     try {
       final d = Directory(dir);
@@ -49,15 +48,16 @@ class _VideoPageState extends State<VideoPage> {
           if (f is File && f.path.toLowerCase().endsWith('.mp4')) {
             final name = f.path.split('\\').last.split('/').last;
             final bv = name.substring(0, name.lastIndexOf('.'));
-            final meta = byBvid[bv];
+            // 元数据直接查数据管理器（纯视频条目也能查到标题/封面/时长）
+            final m = SongManager.findByBvid(bv);
             videos.add(Song(
               id: bv,
-              title: meta?.title ?? bv,
-              uploader: meta?.uploader ?? '',
-              duration: meta?.duration ?? Duration.zero,
+              title: m?['title'] as String? ?? bv,
+              uploader: m?['uploader'] as String? ?? '',
+              duration: Duration(seconds: m?['duration'] as int? ?? 0),
               filePath: f.path,
               bvid: bv,
-              coverUrl: meta?.coverUrl,
+              coverUrl: (m?['coverPath'] as String? ?? '').isNotEmpty ? m?['coverPath'] as String? : null,
               hasVideo: true,
             ));
           }
