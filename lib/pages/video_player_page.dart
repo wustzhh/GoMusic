@@ -62,6 +62,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _controller = VideoController(_player);
     _playingSub = _player.stream.playing.listen((p) {
       if (mounted) setState(() => _playing = p);
+      // 暂停瞬间立即保存进度（防杀进程丢失）
+      if (!p && _seekDone) {
+        _saveProgress(_player.state.position ?? _position);
+      }
       // 同步媒体会话（视频播放/暂停 → 通知栏/锁屏按钮状态）
       GoMusicAudioHandler.instance?.notifyVideoMedia(
         id: _song.bvid.isNotEmpty ? _song.bvid : _song.filePath,
@@ -116,7 +120,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       // 等媒体真正就绪（duration>0）后再 seek，否则 seek 会被忽略
       await _waitReady();
       await _player.seek(saved);
-      _vlog('seek done -> ${saved.inMilliseconds}');
+      // Android media_kit 在媒体未就绪时可能静默忽略 seek：短暂等待后验证，失败重试
+      await Future.delayed(const Duration(milliseconds: 800));
+      final pos = _player.state.position;
+      if (pos == null || pos == Duration.zero) {
+        await _player.seek(saved);
+        _vlog('seek retry -> ${saved.inMilliseconds}');
+      } else {
+        _vlog('seek ok -> ${pos.inMilliseconds}');
+      }
       if (mounted) setState(() => _position = saved);
     }
     _seekDone = true;
