@@ -152,11 +152,35 @@ class _DownloadPageState extends State<DownloadPage> {
         _authorController.text = info.author;
         _selectedStream = info.videoStreams.isNotEmpty ? info.videoStreams.first : null;
       });
+      _probeSelectedDurlSize();
     } else {
       setState(() => _isParsing = false);
       _snack('解析完成：${_batchItems.length} 个音视频');
       _probeBatchSizes();
     }
+  }
+
+  /// 探测当前选中清晰度的 durl 实际大小（下载用 durl 接口，与 DASH 探测可能不同，
+  /// 更新显示使解析与下载一致）
+  Future<void> _probeSelectedDurlSize() async {
+    final st = _selectedStream;
+    final info = _singleInfo;
+    if (st == null || info == null) return;
+    try {
+      final durl = await _api.resolveVideoDurl(info.bvid, info.cid, st.id);
+      if (durl == null) return;
+      final req = http.Request('GET', Uri.parse(durl));
+      req.headers.addAll({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': 'https://www.bilibili.com/', 'Range': 'bytes=0-0'});
+      final r = await req.send().timeout(const Duration(seconds: 5));
+      final cr = r.headers['content-range'];
+      r.stream.drain<void>();
+      if (cr != null && cr.contains('/')) {
+        final len = int.tryParse(cr.split('/').last);
+        if (len != null && len > 0 && mounted) {
+          setState(() => st.size = len); // 显示实际可下载大小
+        }
+      }
+    } catch (_) {}
   }
 
   bool _fileExists(String bvid, String titleName) {
@@ -188,6 +212,7 @@ class _DownloadPageState extends State<DownloadPage> {
           _authorController.text = info.author;
           _selectedStream = info.videoStreams.isNotEmpty ? info.videoStreams.first : null;
         });
+        _probeSelectedDurlSize();
       } else {
         setState(() => _isParsing = false);
         _snack('解析失败');
@@ -578,6 +603,11 @@ class _DownloadPageState extends State<DownloadPage> {
         final cr = r.headers['content-range'];
         r.stream.drain<void>();
         if (cr != null && cr.contains('/')) videoSize = int.tryParse(cr.split('/').last);
+        // 更新解析列表显示的大小（下载用 durl，与实际一致）
+        if (videoSize != null && videoSize > 0 && item.info.videoStreams.isNotEmpty) {
+          item.info.videoStreams.first.size = videoSize;
+          if (mounted) setState(() {});
+        }
         // 实际大小明显小于所选清晰度预期（<70%）：账号权限不足被降级
         if (videoSize != null && videoSize > 0 && best.size > 0 && videoSize < best.size * 0.7) {
           _snack('当前账号权限不足，视频已降级（${(videoSize / 1048576).toStringAsFixed(0)}MB）');
@@ -876,7 +906,7 @@ class _DownloadPageState extends State<DownloadPage> {
         child: DropdownButton<VideoStream>(
           value: _selectedStream ?? streams.first, isExpanded: true, underline: const SizedBox(),
           items: streams.map((s) => DropdownMenuItem(value: s, child: Text(s.description, style: const TextStyle(fontSize: 12)))).toList(),
-          onChanged: (v) { if (v != null) setState(() => _selectedStream = v); },
+          onChanged: (v) { if (v != null) { setState(() => _selectedStream = v); _probeSelectedDurlSize(); } },
         )),
     );
   }
