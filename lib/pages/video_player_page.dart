@@ -327,10 +327,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             child: const SizedBox.expand(),
           ),
         ),
-        // 中央播放/暂停图标：仅控制栏可见且暂停时显示（不一直显示）
+        // 中央播放图标：仅控制栏可见且暂停时显示；点击=播放（不隐藏控制栏）
         if (_controlsVisible && !_playing)
-          IgnorePointer(
-            child: Center(
+          Center(
+            child: GestureDetector(
+              onTap: () {
+                _player.play();
+                AudioPlayerService().acquireAudioFocus();
+                _scheduleHide();
+              },
               child: Icon(
                 Icons.play_circle,
                 size: 64,
