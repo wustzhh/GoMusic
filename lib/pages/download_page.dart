@@ -29,6 +29,8 @@ class _DownloadPageState extends State<DownloadPage> {
   bool _cancelling = false; // 点击取消后的即时反馈
   final List<_BatchItem> _dlQueue = []; // 下载队列（串行执行）
   bool _queueRunning = false;
+  int _queueTotal = 0; // 队列总任务数
+  int _queueDone = 0;  // 已完成任务数
   ValueNotifier<bool>? _cancelNotifier;
   String _downloadingTitle = '';
   int _downloadingSize = 0;
@@ -477,6 +479,7 @@ class _DownloadPageState extends State<DownloadPage> {
   /// 入队下载：点击行内下载按钮/一键全部/单曲下载统一入口
   void _enqueue(_BatchItem item) {
     if (item.queued || item.exists) return;
+    _queueTotal++;
     item.queued = true;
     item.status = _BatchStatus.waiting;
     item.progress = 0;
@@ -510,6 +513,7 @@ class _DownloadPageState extends State<DownloadPage> {
       if (ok) item.exists = true;
       item.queued = false;
       _dlQueue.remove(item);
+      _queueDone++;
       if (mounted) setState(() {});
     }
     _queueRunning = false;
@@ -862,9 +866,12 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   Widget _buildProgressBar() {
-    final pct = (_downloadProgress * 100).toStringAsFixed(0);
+    // 队列总进度：已完成 + 当前项进度
+    final curProg = _dlQueue.isNotEmpty ? _dlQueue.first.progress : 0.0;
+    final totalProg = _queueTotal > 0 ? (_queueDone + curProg) / _queueTotal : 0.0;
+    final pct = (totalProg.clamp(0.0, 1.0) * 100).toStringAsFixed(0);
     final name = _singleInfo != null ? _nameController.text.trim() : '';
-    final batch = _batchItems.isNotEmpty ? '${_batchDone}/${_batchTotal}' : '';
+    final batch = _queueTotal > 0 ? '${_queueDone}/${_queueTotal}' : '';
     // 已下载容量（total 未知时按估算字节显示）
     String sizeText = '';
     if (_downloadedBytes > 0) {
@@ -880,7 +887,7 @@ class _DownloadPageState extends State<DownloadPage> {
         if (name.isNotEmpty) Text(name, style: TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
         SizedBox(height: 6),
         Row(children: [
-          Expanded(child: LinearProgressIndicator(value: _downloadProgress, minHeight: 6)),
+          Expanded(child: LinearProgressIndicator(value: totalProg.clamp(0.0, 1.0), minHeight: 6)),
           SizedBox(width: 12),
           if (sizeText.isNotEmpty) Text(sizeText, style: TextStyle(fontSize: 11, color: Colors.grey)),
           if (sizeText.isNotEmpty) SizedBox(width: 6),
