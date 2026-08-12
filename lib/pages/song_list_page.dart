@@ -123,7 +123,10 @@ class _SongListPageState extends State<SongListPage> {
       final dir = await svc.getDownloadPath();
       _cleanZeroFiles(dir);
       if (widget.playlist.id == 'local') {
-        final scanned = await scanLocalAudioFiles(dir);
+        // 纯视频（mp4 主文件）不进本地音频歌单（视频只在视频列表显示）
+        final scanned = (await scanLocalAudioFiles(dir))
+            .where((s) => !s.filePath.toLowerCase().endsWith('.mp4'))
+            .toList();
         // 拖动过则应用拖动顺序；否则按添加顺序（最后添加的放最上面，mtime 倒序）
         final order = await SongManager.getLocalOrder();
         if (order.isNotEmpty) {
