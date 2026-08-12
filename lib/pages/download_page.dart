@@ -578,7 +578,7 @@ class _DownloadPageState extends State<DownloadPage> {
           url: videoUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
           expectedSize: best.size > 0 ? best.size : null,
           onProgress: (p) { if (mounted) setState(() {}); },
-          onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; }); },
+          onSize: (received, total) { if (mounted) setState(() { item.receivedBytes = received; _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; }); },
           cancel: _cancelNotifier,
         );
       }
@@ -598,8 +598,10 @@ class _DownloadPageState extends State<DownloadPage> {
       return false;
     }
     item.exists = true;
+    // 主文件：仅视频时用 mp4，否则 m4a（扫描/列表按主文件登记）
+    final mainFile = _downloadAudio ? '${_downloadDir}/${item.name}.m4a' : '${_downloadDir}/${item.name}.mp4';
     SongManager.registerSong(
-      filePath: '${_downloadDir}/${item.name}.m4a',
+      filePath: mainFile,
       title: full.title, uploader: full.author, durationSec: full.durationSeconds,
       bvid: full.bvid, url: full.url,
       coverPath: '${_downloadDir}/${item.name}.jpg',
@@ -617,6 +619,12 @@ class _DownloadPageState extends State<DownloadPage> {
     }
   }
 
+
+  String _dlModeLabel() {
+    if (_downloadAudio && _downloadVideo) return '音频+视频';
+    if (_downloadVideo) return '仅视频';
+    return '仅音频';
+  }
 
   String _safeName(String s) {
     // 替换非法字符并截断到安全长度
@@ -960,7 +968,10 @@ class _DownloadPageState extends State<DownloadPage> {
               ),
             ),
             const SizedBox(width: 6),
-            Text('${(item.progress * 100).clamp(0, 100).toStringAsFixed(0)}% ${item.speed > 0 ? _fmtSpeed(item.speed) : ""}', style: const TextStyle(fontSize: 10, color: Colors.orange)),
+            Text(item.progress > 0
+              ? '${(item.progress * 100).clamp(0, 100).toStringAsFixed(0)}% ${item.speed > 0 ? _fmtSpeed(item.speed) : ""}'
+              : (item.receivedBytes > 0 ? '${(item.receivedBytes / 1048576).toStringAsFixed(1)}MB ${item.speed > 0 ? _fmtSpeed(item.speed) : ""}' : '等待中'),
+              style: const TextStyle(fontSize: 10, color: Colors.orange)),
           ] else ...[
             Text(_downloadVideo ? '🎵🎬' : '🎵', style: const TextStyle(fontSize: 11)),
             const SizedBox(width: 6),
@@ -1025,8 +1036,8 @@ class _DownloadPageState extends State<DownloadPage> {
                 icon: const Icon(Icons.download),
                 label: Text(
                   _batchItems.isNotEmpty
-                      ? '一键下载全部(${_batchItems.where((b) => !b.exists).length}首${_downloadVideo ? " 音频+视频" : " 仅音频"})'
-                      : (_downloadVideo ? '开始下载 (音频+视频)' : '开始下载 (仅音频)'),
+                      ? '一键下载全部(${_batchItems.where((b) => !b.exists).length}首 ${_dlModeLabel()})'
+                      : '开始下载 (${_dlModeLabel()})',
                   style: const TextStyle(fontSize: 15),
                 ),
                 style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
@@ -1048,5 +1059,6 @@ class _BatchItem {
   bool queued = false;   // 已进入下载队列（等待或下载中）
   double progress = 0;   // 0~1
   double speed = 0;      // bytes/秒
+  int receivedBytes = 0; // 已下载字节（total 未知时显示容量）
   _BatchItem({required this.info, required this.name, this.exists = false, this.status = _BatchStatus.waiting});
 }

@@ -183,12 +183,23 @@ class SongManager {
 
     final map = _readMap();
     final songs = <Song>[];
+    // 预收集 m4a 文件名：mp4 仅在无对应 m4a 时作为主文件（避免同歌双条目）
+    final m4aNames = dir.listSync()
+        .whereType<File>()
+        .where((f) => f.path.toLowerCase().endsWith('.m4a'))
+        .map((f) => f.path.split(Platform.pathSeparator).last)
+        .toSet();
     for (final f in dir.listSync()) {
       if (f is File) {
         // 跳过缓存区（.tmp 目录）与 .part 下载中文件
         if (f.path.contains('${Platform.pathSeparator}.tmp${Platform.pathSeparator}') || f.path.endsWith('.part')) continue;
         final ext = f.path.split('.').last.toLowerCase();
-        if (ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav') {
+        final isAudio = ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav';
+        final isVideoMain = ext == 'mp4'; // 仅视频下载时 mp4 作为主文件
+        if (isVideoMain && m4aNames.contains(f.path.split(Platform.pathSeparator).last.replaceAll('.mp4', '.m4a'))) {
+          continue; // 已有 m4a 主文件，m4a 条目会带 videoPath
+        }
+        if (isAudio || isVideoMain) {
           // 从注册表查元数据：先按路径，路径不一致时按 BV号 兜底（bvid 唯一键）
           var meta = map[_normKey(f.absolute.path)] as Map<String, dynamic>?;
           final fname = f.path.split(Platform.pathSeparator).last;
