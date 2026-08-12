@@ -137,14 +137,34 @@ class _VideoPageState extends State<VideoPage> {
         content: Text('确定要删除「${song.title}」的视频文件吗？\n音频保留。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          TextButton(onPressed: () {
+          TextButton(onPressed: () async {
             Navigator.pop(ctx);
+            final isVideoOnly = song.filePath.toLowerCase().endsWith('.mp4');
             try {
-              final f = File(song.filePath);
-              if (f.existsSync()) f.deleteSync();
-              // 清除对应音频的视频关联
-              final audioPath = song.filePath.replaceAll('.mp4', '.m4a');
-              SongManager.registerVideoPath(audioPath, '');
+              if (isVideoOnly) {
+                // 仅视频的歌（主文件就是 mp4）：删视频 + 注销登记 + 清理所有歌单记录
+                if (File(song.filePath).existsSync()) File(song.filePath).deleteSync();
+                if (song.coverUrl != null && song.coverUrl!.isNotEmpty && File(song.coverUrl!).existsSync()) {
+                  File(song.coverUrl!).deleteSync();
+                }
+                SongManager.unregisterSong(song.filePath);
+                final key = song.bvid.isNotEmpty ? song.bvid : song.filePath.replaceAll('\\', '/').split('/').last.split('.').first;
+                try {
+                  final pls = await PlaylistService.getPlaylists();
+                  for (final pl in pls) {
+                    await PlaylistService.removeSongFromPlaylist(pl.id, key);
+                  }
+                } catch (_) {}
+                try { await AudioPlayerService.removeFavorite(key); } catch (_) {}
+                try { await RecentlyPlayedService.removeSong(key); } catch (_) {}
+                try { SongGroupService.removeSongFromGroups(key); } catch (_) {}
+              } else {
+                // 有音频的视频：只删视频文件（mp4），音频与记录保留
+                final videoPath = song.videoPath ?? '';
+                if (videoPath.isNotEmpty && File(videoPath).existsSync()) File(videoPath).deleteSync();
+                // 清除对应音频的视频关联
+                SongManager.registerVideoPath(song.filePath, '');
+              }
             } catch (_) {}
             AudioPlayerService().favoritesChangedNotifier.value++;
             _load();
