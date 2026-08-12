@@ -874,9 +874,9 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   Widget _buildProgressBar() {
-    // 队列总进度：已完成 + 当前项进度
+    // 总进度：批量/队列 = 已完成 + 当前项进度；单曲 = _downloadProgress（_startSingle 更新）
     final curProg = _dlQueue.isNotEmpty ? _dlQueue.first.progress : 0.0;
-    final totalProg = _queueTotal > 0 ? (_queueDone + curProg) / _queueTotal : 0.0;
+    final totalProg = _queueTotal > 0 ? (_queueDone + curProg) / _queueTotal : _downloadProgress;
     final pct = (totalProg.clamp(0.0, 1.0) * 100).toStringAsFixed(0);
     final name = _singleInfo != null ? _nameController.text.trim() : '';
     final batch = _queueTotal > 0 ? '${_queueDone}/${_queueTotal}' : '';
