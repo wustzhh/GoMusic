@@ -110,6 +110,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _vlog('open ${_song.bvid} saved=${saved?.inMilliseconds ?? -1}');
     _seekDone = false;
     await _player.open(Media(f.path));
+    AudioPlayerService().acquireAudioFocus();
     await _player.setRate(_speed);
     if (saved != null && saved.inMilliseconds > 0) {
       // 等媒体真正就绪（duration>0）后再 seek，否则 seek 会被忽略
@@ -251,6 +252,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _unlockHintTimer?.cancel();
     _saveTimer?.cancel();
     _player.dispose();
+    AudioPlayerService().releaseAudioFocus();
     // 与音频互斥：退出视频时恢复之前暂停的音频
     if (_audioWasPlaying) {
       AudioPlayerService().resume();
@@ -281,7 +283,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
               behavior: HitTestBehavior.opaque,
               onTap: _onTapVideo,
               onDoubleTap: () {
-                if (_playing) { _player.pause(); } else { _player.play(); }
+                if (_playing) {
+                  _player.pause();
+                  AudioPlayerService().releaseAudioFocus();
+                } else {
+                  _player.play();
+                  AudioPlayerService().acquireAudioFocus();
+                }
               },
               child: const SizedBox.expand(),
             ),
@@ -391,7 +399,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           ),
           IconButton(
             icon: Icon(_playing ? Icons.pause : Icons.play_arrow, size: 36, color: Colors.deepPurple),
-            onPressed: () { if (_playing) { _player.pause(); } else { _player.play(); } },
+            onPressed: () {
+              if (_playing) {
+                _player.pause();
+                AudioPlayerService().releaseAudioFocus();
+              } else {
+                _player.play();
+                AudioPlayerService().acquireAudioFocus();
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.skip_next, size: 28, color: Colors.white),

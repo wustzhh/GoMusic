@@ -78,6 +78,12 @@ class AudioPlayerService {
     } catch (_) {}
   }
 
+  /// 视频播放等场景主动获取音频焦点（抢占其他 app 的播放）
+  Future<void> acquireAudioFocus() async { await _requestAudioFocus(); }
+
+  /// 视频暂停/结束时释放音频焦点
+  Future<void> releaseAudioFocus() async { await _releaseAudioFocus(); }
+
   /// app 回到前台时调用：若因被其他 app 抢占而暂停，自动恢复播放
   void onAppResumed() {
     if (_pausedByInterruption && !_playing && _currentSong != null) {
