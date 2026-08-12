@@ -145,8 +145,10 @@ class _SongListPageState extends State<SongListPage> {
           _songs = scanned..sort((a, b) => _mtimeOf(b.filePath).compareTo(_mtimeOf(a.filePath)));
         }
       } else if (widget.playlist.id == 'fav') {
-        // 我喜欢：只显示收藏的歌（按收藏顺序，含拖动排序），用扫描结果补全信息
-        final all = await scanLocalAudioFiles(dir);
+        // 我喜欢：只显示收藏的歌（按收藏顺序，含拖动排序），用扫描结果补全信息；纯视频不进音频歌单
+        final all = (await scanLocalAudioFiles(dir))
+            .where((s) => !s.filePath.toLowerCase().endsWith('.mp4'))
+            .toList();
         final favs = await AudioPlayerService.getFavorites();
         final byKey = {for (final s in all) _songKey(s): s};
         final ordered = <Song>[];
@@ -161,7 +163,10 @@ class _SongListPageState extends State<SongListPage> {
       final found = pls.where((p) => p.id == widget.playlist.id).firstOrNull;
       if (found != null) {
         // 补全：自定义歌单存的是BV号，用本地对照表查标题/封面
-        final local = await scanLocalAudioFiles(dir);
+        // 纯视频（mp4 主文件）不进自定义歌单/最近播放等音频列表
+        final local = (await scanLocalAudioFiles(dir))
+            .where((s) => !s.filePath.toLowerCase().endsWith('.mp4'))
+            .toList();
         _songs = found.songs.map((s) {
           final bv = s.bvid.isNotEmpty ? s.bvid : _songKey(s);
           return local.where((x) => x.bvid == bv || _songKey(x) == bv).firstOrNull ?? s;

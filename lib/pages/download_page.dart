@@ -578,6 +578,10 @@ class _DownloadPageState extends State<DownloadPage> {
         final cr = r.headers['content-range'];
         r.stream.drain<void>();
         if (cr != null && cr.contains('/')) videoSize = int.tryParse(cr.split('/').last);
+        // 实际大小明显小于所选清晰度预期（<70%）：账号权限不足被降级
+        if (videoSize != null && videoSize > 0 && best.size > 0 && videoSize < best.size * 0.7) {
+          _snack('当前账号权限不足，视频已降级（${(videoSize / 1048576).toStringAsFixed(0)}MB）');
+        }
       } catch (_) {}
       if (full.audioUrl != null && videoUrl == full.audioUrl && audioFile.existsSync()) {
         try {
@@ -886,9 +890,10 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   Widget _buildProgressBar() {
-    // 总进度：批量/队列 = 已完成 + 当前项进度；单曲 = _downloadProgress（_startSingle 更新）
+    // 总进度：队列活动（批量/入队）用队列统计；否则（单曲）用 _downloadProgress
+    final queueActive = _queueRunning || _dlQueue.isNotEmpty;
     final curProg = _dlQueue.isNotEmpty ? _dlQueue.first.progress : 0.0;
-    final totalProg = _queueTotal > 0 ? (_queueDone + curProg) / _queueTotal : _downloadProgress;
+    final totalProg = queueActive && _queueTotal > 0 ? (_queueDone + curProg) / _queueTotal : _downloadProgress;
     final pct = (totalProg.clamp(0.0, 1.0) * 100).toStringAsFixed(0);
     final name = _singleInfo != null ? _nameController.text.trim() : '';
     final batch = _queueTotal > 0 ? '${_queueDone}/${_queueTotal}' : '';
