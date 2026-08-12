@@ -99,7 +99,7 @@ class _DownloadPageState extends State<DownloadPage> {
 
     setState(() {
       _isParsing = true; _singleInfo = null; _batchItems = [];
-      _alreadyDownloaded = false; _downloadVideo = false;
+      _alreadyDownloaded = false; _downloadAudio = false; _downloadVideo = false; // 勾哪个下哪个：每次解析重置
     });
 
     // 逐个链接解析，结果合并到批量列表

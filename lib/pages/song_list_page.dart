@@ -394,20 +394,23 @@ class _SongListPageState extends State<SongListPage> {
   Future<void> _deleteSong(Song song) async {
     final key = _songKey(song);
     try {
-      // 删除音频文件（视频保留：视频有独立删除入口）
-      if (File(song.filePath).existsSync()) File(song.filePath).deleteSync();
-      // 视频是否仍在（删除前判断）
-      final videoExists = song.videoPath != null && song.videoPath!.isNotEmpty && File(song.videoPath!).existsSync();
-      if (videoExists) {
-        // 视频还在：保留 metadata 记录与封面（视频列表页按 bvid 查封面/标题）
-        // 不删除封面、不注销登记
-      } else {
+      // 音频/视频主文件路径（按扩展名推导，不依赖字段）
+      final isVideoOnly = song.filePath.toLowerCase().endsWith('.mp4');
+      final m4aPath = isVideoOnly ? song.filePath.replaceAll('.mp4', '.m4a') : song.filePath;
+      final mp4Path = isVideoOnly ? song.filePath : (song.videoPath != null && song.videoPath!.isNotEmpty ? song.videoPath! : song.filePath.replaceAll('.m4a', '.mp4'));
+      // 删除音频文件（视频保留）
+      if (File(m4aPath).existsSync()) File(m4aPath).deleteSync();
+      // 视频是否仍在（按文件存在判断）
+      final videoStill = mp4Path != m4aPath && File(mp4Path).existsSync();
+      final audioStill = File(m4aPath).existsSync();
+      if (!videoStill && !audioStill) {
         // 音频、视频都不在了：删封面 + 注销登记
         if (song.coverUrl != null && song.coverUrl!.isNotEmpty && File(song.coverUrl!).existsSync()) {
           File(song.coverUrl!).deleteSync();
         }
         SongManager.unregisterSong(song.filePath);
       }
+      // 视频或音频任一还在：保留登记与封面
     } catch (_) {}
     // 清理所有歌单里的记录：自定义歌单（await，确保完成）
     try {
