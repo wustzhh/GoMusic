@@ -614,41 +614,14 @@ class _SongListPageState extends State<SongListPage> {
         Expanded(child: filtered.isEmpty
           ? const Center(child: Text('没有歌曲', style: TextStyle(color: Colors.grey)))
           : LayoutBuilder(builder: (ctx, cons) {
-              // 批量模式：可拖动排序的平铺列表（每行带拖动手柄）
+              // 批量模式：与歌单显示一致（组优先+彩色组框），每行复选框选择
               if (_batchMode) {
-                final searching = _searchText.isNotEmpty;
-                final list = _getFiltered();
-                if (searching) {
-                  // 搜索状态下无拖动手柄，仅复选框选择
-                  return ListView.builder(
-                    controller: _mainScrollCtrl,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    itemCount: filtered.length,
-                    itemBuilder: (_, i) => _buildSongItem(filtered[i]),
-                  );
-                }
-                return ReorderableListView.builder(
-                  scrollController: _mainScrollCtrl,
-                  buildDefaultDragHandles: false, // 用拖动手柄触发，避免与行内手势冲突
+                final items = _buildGroupedItems(filtered);
+                return ListView.builder(
+                  controller: _mainScrollCtrl,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  itemCount: list.length,
-                  onReorderItem: (oldIndex, newIndex) {
-                    setState(() {
-                      final moved = list.removeAt(oldIndex);
-                      list.insert(newIndex, moved);
-                      _songs = List<Song>.from(list);
-                      // 持久化：本地/我喜欢/自定义歌单保存新顺序（recent 由播放记录派生，不保存）
-                      final newKeys = list.map((s) => s.bvid.isNotEmpty ? s.bvid : _songKey(s)).toList();
-                      if (widget.playlist.id == 'local') {
-                        SongManager.saveLocalOrder(newKeys);
-                      } else if (widget.playlist.id == 'fav') {
-                        AudioPlayerService.saveFavoritesOrder(newKeys);
-                      } else if (widget.playlist.id != 'recent') {
-                        PlaylistService.reorderSongsInPlaylist(widget.playlist.id, newKeys);
-                      }
-                    });
-                  },
-                  itemBuilder: (_, i) => _buildSongItem(list[i], key: ValueKey(_songKey(list[i])), showDragHandle: true, dragIndex: i),
+                  itemCount: items.length,
+                  itemBuilder: (_, i) => items[i],
                 );
               }
               final items = _buildGroupedItems(filtered);
