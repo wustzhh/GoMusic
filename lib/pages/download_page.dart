@@ -23,7 +23,7 @@ class _DownloadPageState extends State<DownloadPage> {
   final _api = BilibiliApi();
 
   bool _downloadVideo = false;
-  bool _downloadAudio = true;
+  bool _downloadAudio = false; // 勾哪个下哪个：默认都不勾，未勾选时下载按钮置灰
   bool _isParsing = false;
   bool _isDownloading = false;
   bool _cancelling = false; // 点击取消后的即时反馈
