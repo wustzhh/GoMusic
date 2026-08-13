@@ -338,6 +338,7 @@ class _DownloadPageState extends State<DownloadPage> {
       if (!hasAudio) {
         _downloadingSize = info.audioSize;
         var lastUi = DateTime.now();
+        var lastUiSize = DateTime.now(); // 独立节流：不干扰 onProgress 的总进度更新
         audioOk = await StreamDownloader.download(
           url: info.audioUrl!, savePath: '$dir/$name.m4a',
           onProgress: (p) {
@@ -359,8 +360,8 @@ class _DownloadPageState extends State<DownloadPage> {
               _downloadedBytes = received;
               if (total > 0) _downloadingSize = total;
               final now2 = DateTime.now();
-              if (now2.difference(lastUi).inMilliseconds >= 400) {
-                lastUi = now2;
+              if (now2.difference(lastUiSize).inMilliseconds >= 400) {
+                lastUiSize = now2;
                 setState(() {});
               }
             }
@@ -390,6 +391,7 @@ class _DownloadPageState extends State<DownloadPage> {
         } else {
           _downloadingSize = _selectedStream!.size;
           var lastUi2 = DateTime.now();
+          var lastUiSize2 = DateTime.now(); // 独立节流：不干扰 onProgress 的总进度更新
           videoOk = await StreamDownloader.download(
             url: videoUrl!, savePath: '$dir/$name.mp4',
             onProgress: (p) {
@@ -411,8 +413,8 @@ class _DownloadPageState extends State<DownloadPage> {
                 _downloadedBytes = received;
                 if (total > 0) _downloadingSize = total;
                 final now2 = DateTime.now();
-                if (now2.difference(lastUi2).inMilliseconds >= 400) {
-                  lastUi2 = now2;
+                if (now2.difference(lastUiSize2).inMilliseconds >= 400) {
+                  lastUiSize2 = now2;
                   setState(() {});
                 }
               }
@@ -623,7 +625,10 @@ class _DownloadPageState extends State<DownloadPage> {
           url: videoUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
           expectedSize: videoSize ?? (best.size > 0 ? best.size : null),
           onProgress: (p) { if (mounted) setState(() {}); },
-          onSize: (received, total) { if (mounted) setState(() { item.receivedBytes = received; _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; }); },
+          onSize: (received, total) {
+            if (mounted) setState(() { item.receivedBytes = received; _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; });
+            _updateDownloadNotification(item.info.title, received, total);
+          },
           cancel: _cancelNotifier,
         );
       }
