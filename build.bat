@@ -1,35 +1,34 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
 
 echo ========================================
-echo   GoMusic 构建脚本 (Windows + Android)
+echo   GoMusic Build (Windows + Android)
 echo ========================================
 
 set JAVA_HOME=D:\app-dev\jdk\jdk-17.0.16+8
 set GRADLE_USER_HOME=D:\Dependencies\gradle
 
-REM --- 临时 patch gradle.properties（构建后还原） ---
+REM --- patch gradle.properties for local JDK (restored after build) ---
 python -c "import re; p='android/gradle.properties'; c=open(p,encoding='utf-8').read(); c=re.sub(r'org.gradle.java.home=.*', 'org.gradle.java.home=D:/app-dev/jdk/jdk-17.0.16+8', c); open(p,'w',encoding='utf-8').write(c)"
 
 echo.
-echo [1/2] 构建 Windows 版...
+echo [1/2] Building Windows...
 call D:\app-dev\flutter\bin\flutter.bat build windows
 if errorlevel 1 (
-    echo Windows 构建失败!
+    echo Windows build FAILED!
     goto :restore
 )
 
 echo.
-echo [2/2] 构建 Android APK...
+echo [2/2] Building Android APK...
 call D:\app-dev\flutter\bin\flutter.bat build apk --release
 if errorlevel 1 (
-    echo APK 构建失败!
+    echo APK build FAILED!
     goto :restore
 )
 
 :restore
-REM --- 还原 gradle.properties ---
+REM --- restore gradle.properties ---
 git checkout android/gradle.properties 2>nul
 
 echo.
