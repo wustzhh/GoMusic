@@ -13,6 +13,7 @@ import 'pages/settings_page.dart';
 import 'pages/video_page.dart';
 import 'services/settings_service.dart';
 import 'services/bilibili_api.dart';
+import 'models/music_data.dart';
 import 'services/audio_player_service.dart';
 import 'services/audio_handler.dart';
 import 'services/hotkey_service.dart';
@@ -102,10 +103,12 @@ final themeModeNotifier = ValueNotifier<int>(1);
 /// 全局"下载完成"通知：下载页下载完触发，视频页/歌单页监听后自动刷新
 final downloadsChangedNotifier = ValueNotifier<int>(0);
 
-class _GoMusicAppState extends State<GoMusicApp> {
+class _GoMusicAppState extends State<GoMusicApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    SongGroupService.init(); // 分组数据加载（SharedPreferences，覆盖安装保留）
     // 启动时从存储读取主题模式
     SettingsService.getInstance().then((s) {
       themeModeNotifier.value = s.getThemeMode();
@@ -114,8 +117,17 @@ class _GoMusicAppState extends State<GoMusicApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     themeModeNotifier.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 从 B站等外部 app 切回时：被抢占暂停的播放自动恢复
+    if (state == AppLifecycleState.resumed) {
+      AudioPlayerService().onAppResumed();
+    }
   }
 
   ThemeMode _resolveThemeMode(int m) {

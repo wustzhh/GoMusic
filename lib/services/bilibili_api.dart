@@ -250,14 +250,17 @@ class BilibiliApi {
   /// 请求播放地址（wbi 接口失败时降级到非 wbi），返回解析后的 JSON
   Future<Map<String, dynamic>?> _playUrl(Map<String, String> params) async {
     try {
-      final p = await _signed(params);
+      var p = await _signed(params);
       var uri = Uri.parse('https://api.bilibili.com/x/player/wbi/playurl')
           .replace(queryParameters: p);
       var r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 8));
-      if (r.statusCode != 200) {
-        final p2 = Map<String, String>.from(p)..remove('w_rid')..remove('wts');
-        uri = Uri.parse('https://api.bilibili.com/x/player/playurl')
-            .replace(queryParameters: p2);
+      // 签名可能过期/被风控：刷新 mixinKey 重试一次（不降级到无签名接口，避免清晰度受限）
+      if (r.statusCode != 200 || (jsonDecode(r.body)['code'] != 0 && r.body.isNotEmpty)) {
+        _mixinKey = null;
+        _mixinKeyExpire = 0;
+        p = await _signed(params);
+        uri = Uri.parse('https://api.bilibili.com/x/player/wbi/playurl')
+            .replace(queryParameters: p);
         r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 8));
       }
       if (r.statusCode != 200) return null;
@@ -552,6 +555,7 @@ class StreamDownloader {
           var received = append ? existing : 0;
 
           final sink = partFile.openWrite(mode: append ? FileMode.append : FileMode.write);
+          var lastLog = DateTime.now();
           try {
             await for (final chunk in streamed) {
               if (cancel?.value == true) {
@@ -566,6 +570,14 @@ class StreamDownloader {
                 onProgress(received / total);
               } else {
                 onProgress(received > 0 ? 0.5 : 0.0);
+              }
+              // 进度日志（每2秒一条，用于排查进度为0）
+              final now = DateTime.now();
+              if (now.difference(lastLog).inSeconds >= 2) {
+                lastLog = now;
+                try {
+                  File('${saveFile.parent.path}/debug.log').writeAsStringSync('[${now.toIso8601String().substring(11, 19)}] prog recv=$received total=$total cl=${streamed.contentLength} exp=$expectedSize\n', mode: FileMode.append);
+                } catch (_) {}
               }
             }
           } finally {

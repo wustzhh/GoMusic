@@ -87,6 +87,17 @@ class SongManager {
     return File(norm).absolute.path;
   }
 
+  /// 按 BV号 查元数据（纯视频/仅音频/音视频都有；不依赖音频条目）
+  static Map<String, dynamic>? findByBvid(String bvid) {
+    try {
+      final map = _readMap();
+      for (final v in map.values) {
+        if (v is Map && v['bvid'] == bvid) return Map<String, dynamic>.from(v);
+      }
+    } catch (_) {}
+    return null;
+  }
+
   /// 读取全部元数据（key 归一化，历史混合分隔符数据自动迁移）
   static Map<String, dynamic> _readMap() {
     final f = File(_mapPath);
@@ -183,12 +194,20 @@ class SongManager {
 
     final map = _readMap();
     final songs = <Song>[];
+    // 预收集 m4a 文件名：mp4 仅在无对应 m4a 时作为主文件（避免同歌双条目）
+    final m4aNames = dir.listSync()
+        .whereType<File>()
+        .where((f) => f.path.toLowerCase().endsWith('.m4a'))
+        .map((f) => f.path.split(Platform.pathSeparator).last)
+        .toSet();
     for (final f in dir.listSync()) {
       if (f is File) {
         // 跳过缓存区（.tmp 目录）与 .part 下载中文件
         if (f.path.contains('${Platform.pathSeparator}.tmp${Platform.pathSeparator}') || f.path.endsWith('.part')) continue;
         final ext = f.path.split('.').last.toLowerCase();
-        if (ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav') {
+        final isAudio = ext == 'm4a' || ext == 'mp3' || ext == 'aac' || ext == 'flac' || ext == 'wav';
+        // 纯视频（mp4 主文件）不进音频歌单：视频列表由 video_page 单独扫描 mp4
+        if (isAudio) {
           // 从注册表查元数据：先按路径，路径不一致时按 BV号 兜底（bvid 唯一键）
           var meta = map[_normKey(f.absolute.path)] as Map<String, dynamic>?;
           final fname = f.path.split(Platform.pathSeparator).last;
@@ -482,8 +501,17 @@ class SongGroupService {
   static const _key = 'song_groups';
   static List<SongGroup> _cache = [];
   static bool _loaded = false;
+  static SharedPreferences? _prefs;
 
-  /// 重置缓存（仅测试用：重新读取 song_groups.json）
+  /// 启动时初始化（main 调用）：加载存储（优先 SharedPreferences，旧文件自动迁移）
+  static Future<void> init() async {
+    try {
+      _prefs = await SharedPreferences.getInstance();
+    } catch (_) {}
+    _ensureLoaded();
+  }
+
+  /// 重置缓存（仅测试用）
   @visibleForTesting
   static void resetForTest() {
     _cache = [];
@@ -493,9 +521,18 @@ class SongGroupService {
   static void _ensureLoaded() {
     if (_loaded) return;
     try {
-      final f = File('song_groups.json');
-      if (f.existsSync()) {
-        final data = jsonDecode(f.readAsStringSync()) as List;
+      String? raw;
+      if (_prefs != null) raw = _prefs!.getString(_key);
+      if (raw == null) {
+        // 旧版文件存储迁移（song_groups.json 在私有目录，重装会丢）
+        final f = File('song_groups.json');
+        if (f.existsSync()) {
+          raw = f.readAsStringSync();
+          try { f.deleteSync(); } catch (_) {}
+        }
+      }
+      if (raw != null && raw.isNotEmpty) {
+        final data = jsonDecode(raw) as List;
         _cache = data.map((e) {
           final m = e as Map<String, dynamic>;
           return SongGroup(
@@ -506,6 +543,7 @@ class SongGroupService {
             shuffle: m['shuffle'] as bool? ?? false,
           );
         }).toList();
+        _persist(); // 迁移后写入新存储
       }
       _loaded = true;
     } catch (_) {
@@ -514,10 +552,17 @@ class SongGroupService {
   }
 
   static void _save() {
+    _persist();
+  }
+
+  static void _persist() {
     try {
-      File('song_groups.json').writeAsStringSync(jsonEncode(_cache.map((g) => {
+      final raw = jsonEncode(_cache.map((g) => {
         'id': g.id, 'pl': g.playlistId, 'name': g.name, 'paths': g.songPaths, 'shuffle': g.shuffle,
-      }).toList()));
+      }).toList());
+      _prefs?.setString(_key, raw); // setString 立即更新内存缓存，异步落盘
+      // 兜底：私有目录也写一份（_prefs 未初始化时回退读取）
+      try { File('song_groups.json').writeAsStringSync(raw); } catch (_) {}
     } catch (_) {}
   }
 

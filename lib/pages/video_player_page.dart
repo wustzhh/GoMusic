@@ -62,6 +62,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _controller = VideoController(_player);
     _playingSub = _player.stream.playing.listen((p) {
       if (mounted) setState(() => _playing = p);
+      // 暂停瞬间立即保存进度（防杀进程丢失）
+      if (!p && _seekDone) {
+        _saveProgress(_player.state.position ?? _position);
+      }
       // 同步媒体会话（视频播放/暂停 → 通知栏/锁屏按钮状态）
       GoMusicAudioHandler.instance?.notifyVideoMedia(
         id: _song.bvid.isNotEmpty ? _song.bvid : _song.filePath,
@@ -110,12 +114,21 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _vlog('open ${_song.bvid} saved=${saved?.inMilliseconds ?? -1}');
     _seekDone = false;
     await _player.open(Media(f.path));
+    AudioPlayerService().acquireAudioFocus();
     await _player.setRate(_speed);
     if (saved != null && saved.inMilliseconds > 0) {
       // 等媒体真正就绪（duration>0）后再 seek，否则 seek 会被忽略
       await _waitReady();
       await _player.seek(saved);
-      _vlog('seek done -> ${saved.inMilliseconds}');
+      // Android media_kit 在媒体未就绪时可能静默忽略 seek：短暂等待后验证，失败重试
+      await Future.delayed(const Duration(milliseconds: 800));
+      final pos = _player.state.position;
+      if (pos == null || pos == Duration.zero) {
+        await _player.seek(saved);
+        _vlog('seek retry -> ${saved.inMilliseconds}');
+      } else {
+        _vlog('seek ok -> ${pos.inMilliseconds}');
+      }
       if (mounted) setState(() => _position = saved);
     }
     _seekDone = true;
@@ -251,6 +264,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     _unlockHintTimer?.cancel();
     _saveTimer?.cancel();
     _player.dispose();
+    AudioPlayerService().releaseAudioFocus();
     // 与音频互斥：退出视频时恢复之前暂停的音频
     if (_audioWasPlaying) {
       AudioPlayerService().resume();
@@ -281,7 +295,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
               behavior: HitTestBehavior.opaque,
               onTap: _onTapVideo,
               onDoubleTap: () {
-                if (_playing) { _player.pause(); } else { _player.play(); }
+                if (_playing) {
+                  _player.pause();
+                  AudioPlayerService().releaseAudioFocus();
+                } else {
+                  _player.play();
+                  AudioPlayerService().acquireAudioFocus();
+                }
               },
               child: const SizedBox.expand(),
             ),
@@ -319,10 +339,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             child: const SizedBox.expand(),
           ),
         ),
-        // 中央播放/暂停图标：仅控制栏可见且暂停时显示（不一直显示）
+        // 中央播放图标：仅控制栏可见且暂停时显示；点击=播放（不隐藏控制栏）
         if (_controlsVisible && !_playing)
-          IgnorePointer(
-            child: Center(
+          Center(
+            child: GestureDetector(
+              onTap: () {
+                _player.play();
+                AudioPlayerService().acquireAudioFocus();
+                _scheduleHide();
+              },
               child: Icon(
                 Icons.play_circle,
                 size: 64,
@@ -391,7 +416,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           ),
           IconButton(
             icon: Icon(_playing ? Icons.pause : Icons.play_arrow, size: 36, color: Colors.deepPurple),
-            onPressed: () { if (_playing) { _player.pause(); } else { _player.play(); } },
+            onPressed: () {
+              if (_playing) {
+                _player.pause();
+                AudioPlayerService().releaseAudioFocus();
+              } else {
+                _player.play();
+                AudioPlayerService().acquireAudioFocus();
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.skip_next, size: 28, color: Colors.white),

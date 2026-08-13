@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -23,10 +24,14 @@ class _DownloadPageState extends State<DownloadPage> {
   final _api = BilibiliApi();
 
   bool _downloadVideo = false;
-  bool _downloadAudio = true;
+  bool _downloadAudio = false; // 勾哪个下哪个：默认都不勾，未勾选时下载按钮置灰
   bool _isParsing = false;
   bool _isDownloading = false;
   bool _cancelling = false; // 点击取消后的即时反馈
+  final List<_BatchItem> _dlQueue = []; // 下载队列（串行执行）
+  bool _queueRunning = false;
+  int _queueTotal = 0; // 队列总任务数
+  int _queueDone = 0;  // 已完成任务数
   ValueNotifier<bool>? _cancelNotifier;
   String _downloadingTitle = '';
   int _downloadingSize = 0;
@@ -42,6 +47,18 @@ class _DownloadPageState extends State<DownloadPage> {
       item.speed = (received - _speedLastBytes) / (dt / 1000);
     }
     _speedLastBytes = received; _speedLastTime = now;
+  }
+
+  void _updateDownloadNotification(String title, int received, int total) {
+    if (!Platform.isAndroid) return;
+    try {
+      final mb = received / 1048576;
+      final pct = total > 0 ? ((received / total) * 100).clamp(0, 100).toStringAsFixed(0) : '${mb.toStringAsFixed(1)}MB';
+      FlutterForegroundTask.updateService(
+        notificationTitle: 'GoMusic 下载中',
+        notificationText: '$title $pct',
+      );
+    } catch (_) {}
   }
 
   BilibiliVideoInfo? _singleInfo;
@@ -94,7 +111,7 @@ class _DownloadPageState extends State<DownloadPage> {
 
     setState(() {
       _isParsing = true; _singleInfo = null; _batchItems = [];
-      _alreadyDownloaded = false; _downloadVideo = false;
+      _alreadyDownloaded = false; _downloadAudio = false; _downloadVideo = false; // 勾哪个下哪个：每次解析重置
     });
 
     // 逐个链接解析，结果合并到批量列表
@@ -147,11 +164,35 @@ class _DownloadPageState extends State<DownloadPage> {
         _authorController.text = info.author;
         _selectedStream = info.videoStreams.isNotEmpty ? info.videoStreams.first : null;
       });
+      _probeSelectedDurlSize();
     } else {
       setState(() => _isParsing = false);
       _snack('解析完成：${_batchItems.length} 个音视频');
       _probeBatchSizes();
     }
+  }
+
+  /// 探测当前选中清晰度的 durl 实际大小（下载用 durl 接口，与 DASH 探测可能不同，
+  /// 更新显示使解析与下载一致）
+  Future<void> _probeSelectedDurlSize() async {
+    final st = _selectedStream;
+    final info = _singleInfo;
+    if (st == null || info == null) return;
+    try {
+      final durl = await _api.resolveVideoDurl(info.bvid, info.cid, st.id);
+      if (durl == null) return;
+      final req = http.Request('GET', Uri.parse(durl));
+      req.headers.addAll({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': 'https://www.bilibili.com/', 'Range': 'bytes=0-0'});
+      final r = await req.send().timeout(const Duration(seconds: 5));
+      final cr = r.headers['content-range'];
+      r.stream.drain<void>();
+      if (cr != null && cr.contains('/')) {
+        final len = int.tryParse(cr.split('/').last);
+        if (len != null && len > 0 && mounted) {
+          setState(() => st.size = len); // 显示实际可下载大小
+        }
+      }
+    } catch (_) {}
   }
 
   bool _fileExists(String bvid, String titleName) {
@@ -183,6 +224,7 @@ class _DownloadPageState extends State<DownloadPage> {
           _authorController.text = info.author;
           _selectedStream = info.videoStreams.isNotEmpty ? info.videoStreams.first : null;
         });
+        _probeSelectedDurlSize();
       } else {
         setState(() => _isParsing = false);
         _snack('解析失败');
@@ -308,6 +350,7 @@ class _DownloadPageState extends State<DownloadPage> {
       if (!hasAudio) {
         _downloadingSize = info.audioSize;
         var lastUi = DateTime.now();
+        var lastUiSize = DateTime.now(); // 独立节流：不干扰 onProgress 的总进度更新
         audioOk = await StreamDownloader.download(
           url: info.audioUrl!, savePath: '$dir/$name.m4a',
           onProgress: (p) {
@@ -329,8 +372,8 @@ class _DownloadPageState extends State<DownloadPage> {
               _downloadedBytes = received;
               if (total > 0) _downloadingSize = total;
               final now2 = DateTime.now();
-              if (now2.difference(lastUi).inMilliseconds >= 400) {
-                lastUi = now2;
+              if (now2.difference(lastUiSize).inMilliseconds >= 400) {
+                lastUiSize = now2;
                 setState(() {});
               }
             }
@@ -360,6 +403,7 @@ class _DownloadPageState extends State<DownloadPage> {
         } else {
           _downloadingSize = _selectedStream!.size;
           var lastUi2 = DateTime.now();
+          var lastUiSize2 = DateTime.now(); // 独立节流：不干扰 onProgress 的总进度更新
           videoOk = await StreamDownloader.download(
             url: videoUrl!, savePath: '$dir/$name.mp4',
             onProgress: (p) {
@@ -381,8 +425,8 @@ class _DownloadPageState extends State<DownloadPage> {
                 _downloadedBytes = received;
                 if (total > 0) _downloadingSize = total;
                 final now2 = DateTime.now();
-                if (now2.difference(lastUi2).inMilliseconds >= 400) {
-                  lastUi2 = now2;
+                if (now2.difference(lastUiSize2).inMilliseconds >= 400) {
+                  lastUiSize2 = now2;
                   setState(() {});
                 }
               }
@@ -472,134 +516,177 @@ class _DownloadPageState extends State<DownloadPage> {
     }
   }
 
-  Future<void> _startBatch() async {
+  /// 入队下载：点击行内下载按钮/一键全部/单曲下载统一入口
+  void _enqueue(_BatchItem item) {
+    if (item.queued || item.exists) return;
+    _queueTotal++;
+    item.queued = true;
+    item.status = _BatchStatus.waiting;
+    item.progress = 0;
+    item.speed = 0;
+    _dlQueue.add(item);
+    setState(() {});
+    _runQueue();
+  }
+
+  /// 串行执行队列：同一时间只下载一首，完成自动下一个
+  Future<void> _runQueue() async {
+    if (_queueRunning) return;
+    _queueRunning = true;
     _cancelNotifier = ValueNotifier(false);
-    setState(() { _isDownloading = true; _batchTotal = 0; _batchDone = 0; });
+    if (mounted) setState(() { _isDownloading = true; });
+    while (_dlQueue.isNotEmpty) {
+      if (!mounted) break;
+      if (_cancelNotifier?.value == true) break;
+      final item = _dlQueue.first;
+      item.status = _BatchStatus.downloading;
+      if (mounted) setState(() {});
+      final ok = await _downloadItem(item);
+      if (!mounted) break;
+      if (_cancelNotifier?.value == true) {
+        item.status = _BatchStatus.waiting;
+        item.queued = false;
+        _dlQueue.remove(item);
+        break;
+      }
+      item.status = ok ? _BatchStatus.done : _BatchStatus.failed;
+      if (ok) item.exists = true;
+      item.queued = false;
+      _dlQueue.remove(item);
+      _queueDone++;
+      if (mounted) setState(() {});
+    }
+    _queueRunning = false;
+    if (mounted) setState(() { _isDownloading = false; _cancelling = false; });
+    AudioPlayerService().favoritesChangedNotifier.value++;
+    downloadsChangedNotifier.value++;
+  }
+
+  /// 单首完整下载：解析→封面→音频→视频→校验→登记。返回是否成功。
+  Future<bool> _downloadItem(_BatchItem item) async {
     SongManager.init(_downloadDir!);
-
-    final toDownload = _batchItems.where((b) => !b.exists).toList();
-    _batchTotal = toDownload.length;
-
-    for (final item in toDownload) {
-      if (!mounted) return;
-      if (_cancelNotifier?.value == true) { setState(() {}); break; }
-      setState(() => item.status = _BatchStatus.downloading);
-
-      // 取消响应：getVideoInfo 最多等 4 秒，取消后立即停止后续
-      BilibiliVideoInfo? full;
+    BilibiliVideoInfo? full;
+    try {
+      full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 8));
+    } catch (e) {
+      _dlog('下载: ${item.info.bvid} getVideoInfo异常: $e');
+      return false;
+    }
+    if (_cancelNotifier?.value == true) return false;
+    if (full?.audioUrl == null) {
+      _dlog('下载: ${item.info.bvid} audioUrl null (cid=${full?.cid}, streams=${full?.videoStreams.length})');
+      return false;
+    }
+    // 封面（失败 = 该项下载失败）
+    var coverOk = true;
+    if (full!.coverUrl.isNotEmpty) {
+      coverOk = await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {}, cancel: _cancelNotifier);
+    } else {
+      coverOk = false;
+    }
+    if (_cancelNotifier?.value == true) return false;
+    if (!coverOk) return false;
+    // 音频（勾选才下载）
+    var audioOk = true;
+    if (_downloadAudio) {
+      _speedLastBytes = 0; _speedLastTime = DateTime.now();
+      audioOk = await StreamDownloader.download(
+        url: full.audioUrl!, savePath: '${_downloadDir}/${item.name}.m4a',
+        onProgress: (p) { if (mounted) setState(() {}); },
+        onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? (received / total) * 0.5 : item.progress; }); },
+        cancel: _cancelNotifier,
+      );
+    }
+    if (_cancelNotifier?.value == true) return false;
+    // 视频（勾选才下载）
+    var videoOk = true;
+    if (_downloadVideo && full.videoStreams.isNotEmpty) {
+      final best = full.videoStreams.first;
+      final audioFile = File('${_downloadDir}/${item.name}.m4a');
+      String? videoUrl = best.baseUrl;
       try {
-        // 解析只发 1 次 DASH 请求（音频+分辨率），8 秒足够；不再逐清晰度请求
-        full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 8));
-      } catch (e) {
-        if (_cancelNotifier?.value == true) { setState(() => item.status = _BatchStatus.waiting); break; }
-        _dlog('批量: ${item.info.bvid} getVideoInfo异常: $e');
-        setState(() => item.status = _BatchStatus.failed);
-        _batchDone++;
-        continue;
-      }
-      if (_cancelNotifier?.value == true) { setState(() => item.status = _BatchStatus.waiting); break; }
-      if (full?.audioUrl == null) {
-        _dlog('批量: ${item.info.bvid} audioUrl null (cid=${full?.cid}, streams=${full?.videoStreams.length})');
-        setState(() => item.status = _BatchStatus.failed);
-        _batchDone++;
-        continue;
-      }
-
-      // 封面（失败 = 该项下载失败）
-      var coverOk = true;
-      if (full!.coverUrl.isNotEmpty) {
-        coverOk = await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {}, cancel: _cancelNotifier);
+        final durl = await _api.resolveVideoDurl(full.bvid, full.cid, best.id);
+        if (durl != null) videoUrl = durl;
+      } catch (_) {}
+      // 探测视频 URL 真实大小（Range bytes=0-0 读 Content-Range），保证进度准确
+      int? videoSize;
+      try {
+        final req = http.Request('GET', Uri.parse(videoUrl!));
+        req.headers.addAll({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Referer': 'https://www.bilibili.com/', 'Range': 'bytes=0-0'});
+        final r = await req.send().timeout(const Duration(seconds: 5));
+        final cr = r.headers['content-range'];
+        r.stream.drain<void>();
+        if (cr != null && cr.contains('/')) videoSize = int.tryParse(cr.split('/').last);
+        // 更新解析列表显示的大小（下载用 durl，与实际一致）
+        if (videoSize != null && videoSize > 0 && item.info.videoStreams.isNotEmpty) {
+          item.info.videoStreams.first.size = videoSize;
+          if (mounted) setState(() {});
+        }
+        // 实际大小明显小于所选清晰度预期（<70%）：账号权限不足被降级
+        if (videoSize != null && videoSize > 0 && best.size > 0 && videoSize < best.size * 0.7) {
+          _snack('当前账号权限不足，视频已降级（${(videoSize / 1048576).toStringAsFixed(0)}MB）');
+        }
+      } catch (_) {}
+      if (full.audioUrl != null && videoUrl == full.audioUrl && audioFile.existsSync()) {
+        try {
+          audioFile.copySync('${_downloadDir}/${item.name}.mp4');
+          videoOk = true;
+        } catch (_) { videoOk = false; }
       } else {
-        coverOk = false;
-      }
-      if (!coverOk) {
-        if (mounted) setState(() => item.status = _BatchStatus.failed);
-        _batchDone++;
-        continue;
-      }
-      // 音频（勾选才下载）
-      var audioOk = true;
-      if (_downloadAudio) {
-        _speedLastBytes = 0; _speedLastTime = DateTime.now();
-        audioOk = await StreamDownloader.download(
-          url: full.audioUrl!, savePath: '${_downloadDir}/${item.name}.m4a',
-          onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
-          onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? (received / total) * 0.5 : item.progress; }); },
+        videoOk = await StreamDownloader.download(
+          url: videoUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
+          expectedSize: videoSize ?? (best.size > 0 ? best.size : null),
+          onProgress: (p) { if (mounted) setState(() {}); },
+          onSize: (received, total) {
+            if (mounted) setState(() { item.receivedBytes = received; _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; });
+            _updateDownloadNotification(item.info.title, received, total);
+          },
           cancel: _cancelNotifier,
         );
       }
-      // 视频（勾选才下载）
-      var videoOk = true;
-      if (_downloadVideo && full.videoStreams.isNotEmpty) {
-        final best = full.videoStreams.first;
-        final audioFile = File('${_downloadDir}/${item.name}.m4a');
-        // 解析期拿的是 DASH 流（无声）；下载时按需取带音轨的 durl 合并流
-        String? videoUrl = best.baseUrl;
-        try {
-          final durl = await _api.resolveVideoDurl(full.bvid, full.cid, best.id);
-          if (durl != null) videoUrl = durl;
-        } catch (_) {}
-        // durl 合并流场景：视频流 URL 与音频流相同，直接拷贝避免重复下载
-        if (full.audioUrl != null && videoUrl == full.audioUrl && audioFile.existsSync()) {
-          try {
-            audioFile.copySync('${_downloadDir}/${item.name}.mp4');
-            videoOk = true;
-          } catch (_) { videoOk = false; }
-        } else {
-          videoOk = await StreamDownloader.download(
-            url: videoUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
-            expectedSize: best.size > 0 ? best.size : null,
-            onProgress: (p) { if (mounted) setState(() => _downloadProgress = (_batchDone + p) / _batchTotal); },
-            onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; }); },
-            cancel: _cancelNotifier,
-          );
-        }
-      }
-
-      // 最终校验：勾选的音频/视频 + 封面，任一缺失 = 失败
-      final needAudio = _downloadAudio ? (File('${_downloadDir}/${item.name}.m4a').existsSync() && File('${_downloadDir}/${item.name}.m4a').lengthSync() > 0) : true;
-      final needVideo = _downloadVideo ? (File('${_downloadDir}/${item.name}.mp4').existsSync() && File('${_downloadDir}/${item.name}.mp4').lengthSync() > 0) : true;
-      final needCover = File('${_downloadDir}/${item.name}.jpg').existsSync() && File('${_downloadDir}/${item.name}.jpg').lengthSync() > 0;
-      final ok = audioOk && videoOk && needAudio && needVideo && needCover;
-      if (!ok) {
-        if (_cancelNotifier?.value == true) {
-          if (mounted) setState(() => item.status = _BatchStatus.waiting);
-          _batchDone++;
-          continue;
-        }
-        // 清理残留
-        try {
-          if (!needAudio) File('${_downloadDir}/${item.name}.m4a').deleteSync();
-          if (!needVideo) File('${_downloadDir}/${item.name}.mp4').deleteSync();
-          if (!needCover) File('${_downloadDir}/${item.name}.jpg').deleteSync();
-        } catch (_) {}
-        if (mounted) setState(() => item.status = _BatchStatus.failed);
-        _batchDone++;
-        continue;
-      }
-      if (ok) {
-        item.exists = true;
-        SongManager.registerSong(
-          filePath: '${_downloadDir}/${item.name}.m4a',
-          title: full.title, uploader: full.author, durationSec: full.durationSeconds,
-          bvid: full.bvid, url: full.url,
-          coverPath: '${_downloadDir}/${item.name}.jpg',
-          videoPath: _downloadVideo && File('${_downloadDir}/${item.name}.mp4').existsSync() ? '${_downloadDir}/${item.name}.mp4' : null,
-        );
-      }
-      setState(() {
-        item.status = ok ? _BatchStatus.done : _BatchStatus.failed;
-        if (ok) item.exists = true;
-        _batchDone++;
-      });
     }
+    if (_cancelNotifier?.value == true) return false;
+    // 最终校验：勾选的音频/视频 + 封面，任一缺失 = 失败
+    final needAudio = _downloadAudio ? (File('${_downloadDir}/${item.name}.m4a').existsSync() && File('${_downloadDir}/${item.name}.m4a').lengthSync() > 0) : true;
+    final needVideo = _downloadVideo ? (File('${_downloadDir}/${item.name}.mp4').existsSync() && File('${_downloadDir}/${item.name}.mp4').lengthSync() > 0) : true;
+    final needCover = File('${_downloadDir}/${item.name}.jpg').existsSync() && File('${_downloadDir}/${item.name}.jpg').lengthSync() > 0;
+    final ok = audioOk && videoOk && needAudio && needVideo && needCover;
+    if (!ok) {
+      try {
+        if (!needAudio) File('${_downloadDir}/${item.name}.m4a').deleteSync();
+        if (!needVideo) File('${_downloadDir}/${item.name}.mp4').deleteSync();
+        if (!needCover) File('${_downloadDir}/${item.name}.jpg').deleteSync();
+      } catch (_) {}
+      return false;
+    }
+    item.exists = true;
+    // 主文件：仅视频时用 mp4，否则 m4a（扫描/列表按主文件登记）
+    final mainFile = _downloadAudio ? '${_downloadDir}/${item.name}.m4a' : '${_downloadDir}/${item.name}.mp4';
+    SongManager.registerSong(
+      filePath: mainFile,
+      title: full.title, uploader: full.author, durationSec: full.durationSeconds,
+      bvid: full.bvid, url: full.url,
+      coverPath: '${_downloadDir}/${item.name}.jpg',
+      videoPath: _downloadVideo && File('${_downloadDir}/${item.name}.mp4').existsSync() ? '${_downloadDir}/${item.name}.mp4' : null,
+    );
+    return true;
+  }
 
-    if (!mounted) return;
-    setState(() { _isDownloading = false; _cancelling = false; });
-    // 通知主界面刷新（下载完成后本地歌单/历史记录立即更新）
-    AudioPlayerService().favoritesChangedNotifier.value++;
-    downloadsChangedNotifier.value++;
-    _snack('批量下载完成: $_batchDone/$_batchTotal');
+  /// 一键下载全部：未下载的歌全部入队（排队下载）
+  void _startBatch() {
+    _cancelNotifier = ValueNotifier(false);
+    final toDownload = _batchItems.where((b) => !b.exists).toList();
+    for (final item in toDownload) {
+      _enqueue(item);
+    }
+  }
+
+
+  String _dlModeLabel() {
+    if (!_downloadAudio && !_downloadVideo) return '请先选择下载内容';
+    if (_downloadAudio && _downloadVideo) return '音频+视频';
+    if (_downloadVideo) return '仅视频';
+    return '仅音频';
   }
 
   String _safeName(String s) {
@@ -836,7 +923,7 @@ class _DownloadPageState extends State<DownloadPage> {
         child: DropdownButton<VideoStream>(
           value: _selectedStream ?? streams.first, isExpanded: true, underline: const SizedBox(),
           items: streams.map((s) => DropdownMenuItem(value: s, child: Text(s.description, style: const TextStyle(fontSize: 12)))).toList(),
-          onChanged: (v) { if (v != null) setState(() => _selectedStream = v); },
+          onChanged: (v) { if (v != null) { setState(() => _selectedStream = v); _probeSelectedDurlSize(); } },
         )),
     );
   }
@@ -850,9 +937,13 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   Widget _buildProgressBar() {
-    final pct = (_downloadProgress * 100).toStringAsFixed(0);
+    // 总进度：队列活动（批量/入队）用队列统计；否则（单曲）用 _downloadProgress
+    final queueActive = _queueRunning || _dlQueue.isNotEmpty;
+    final curProg = _dlQueue.isNotEmpty ? _dlQueue.first.progress : 0.0;
+    final totalProg = queueActive && _queueTotal > 0 ? (_queueDone + curProg) / _queueTotal : _downloadProgress;
+    final pct = (totalProg.clamp(0.0, 1.0) * 100).toStringAsFixed(0);
     final name = _singleInfo != null ? _nameController.text.trim() : '';
-    final batch = _batchItems.isNotEmpty ? '${_batchDone}/${_batchTotal}' : '';
+    final batch = _queueTotal > 0 ? '${_queueDone}/${_queueTotal}' : '';
     // 已下载容量（total 未知时按估算字节显示）
     String sizeText = '';
     if (_downloadedBytes > 0) {
@@ -868,7 +959,10 @@ class _DownloadPageState extends State<DownloadPage> {
         if (name.isNotEmpty) Text(name, style: TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
         SizedBox(height: 6),
         Row(children: [
-          Expanded(child: LinearProgressIndicator(value: _downloadProgress, minHeight: 6)),
+          Expanded(child: LinearProgressIndicator(
+            value: totalProg > 0 ? totalProg.clamp(0.0, 1.0) : null, // total 未知时动画条
+            minHeight: 6,
+          )),
           SizedBox(width: 12),
           if (sizeText.isNotEmpty) Text(sizeText, style: TextStyle(fontSize: 11, color: Colors.grey)),
           if (sizeText.isNotEmpty) SizedBox(width: 6),
@@ -917,6 +1011,12 @@ class _DownloadPageState extends State<DownloadPage> {
         title: Text(item.info.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
         subtitle: Text('${item.info.author} · ${item.info.durationText} · 音频${item.info.audioSizeText}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (!item.exists && !item.queued && item.status != _BatchStatus.downloading)
+            IconButton(
+              icon: const Icon(Icons.download, color: Colors.deepPurple, size: 18),
+              tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+              onPressed: () => _enqueue(item),
+            ),
           if (item.status == _BatchStatus.failed)
             Padding(
               padding: const EdgeInsets.only(right: 6),
@@ -931,11 +1031,16 @@ class _DownloadPageState extends State<DownloadPage> {
               width: 90,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(value: item.progress.clamp(0.0, 1.0), minHeight: 5, backgroundColor: Colors.grey.withValues(alpha: 0.2), color: Colors.orange),
+                child: LinearProgressIndicator(
+                  value: item.progress > 0 ? item.progress.clamp(0.0, 1.0) : null, // total 未知时动画条
+                  minHeight: 5, backgroundColor: Colors.grey.withValues(alpha: 0.2), color: Colors.orange),
               ),
             ),
             const SizedBox(width: 6),
-            Text('${(item.progress * 100).clamp(0, 100).toStringAsFixed(0)}% ${item.speed > 0 ? _fmtSpeed(item.speed) : ""}', style: const TextStyle(fontSize: 10, color: Colors.orange)),
+            Text(item.progress > 0
+              ? '${(item.progress * 100).clamp(0, 100).toStringAsFixed(0)}% ${item.speed > 0 ? _fmtSpeed(item.speed) : ""}'
+              : (item.receivedBytes > 0 ? '${(item.receivedBytes / 1048576).toStringAsFixed(1)}MB ${item.speed > 0 ? _fmtSpeed(item.speed) : ""}' : '等待中'),
+              style: const TextStyle(fontSize: 10, color: Colors.orange)),
           ] else ...[
             Text(_downloadVideo ? '🎵🎬' : '🎵', style: const TextStyle(fontSize: 11)),
             const SizedBox(width: 6),
@@ -946,83 +1051,12 @@ class _DownloadPageState extends State<DownloadPage> {
     );
   }
 
-  Future<void> _retryItem(_BatchItem item) async {
-    // 并发防护：有下载任务进行中时不允许重试，避免多首同时下载
-    if (_isDownloading) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('有下载任务进行中，请等待当前下载完成'), duration: Duration(seconds: 2)));
-      return;
-    }
-    setState(() { item.status = _BatchStatus.downloading; item.exists = false; item.progress = 0; item.speed = 0; });
-    SongManager.init(_downloadDir!);
-
-    BilibiliVideoInfo? full;
-    try {
-      full = await _api.getVideoInfo(item.info.url).timeout(const Duration(seconds: 4));
-    } catch (_) {
-      if (_cancelNotifier?.value == true) { setState(() => item.status = _BatchStatus.waiting); return; }
-      setState(() => item.status = _BatchStatus.failed);
-      return;
-    }
-    if (_cancelNotifier?.value == true) { setState(() => item.status = _BatchStatus.waiting); return; }
-    if (full?.audioUrl == null) { setState(() => item.status = _BatchStatus.failed); return; }
-
-    // 封面（失败 = 该项下载失败）
-    var coverOk = true;
-    if (full!.coverUrl.isNotEmpty) {
-      coverOk = await StreamDownloader.download(url: full.coverUrl, savePath: '${_downloadDir}/${item.name}.jpg', onProgress: (_) {}, cancel: _cancelNotifier);
-    } else {
-      coverOk = false;
-    }
-    // 音频（勾选才下载）
-    var audioOk = true;
-    if (_downloadAudio) {
-      _speedLastBytes = 0; _speedLastTime = DateTime.now();
-      audioOk = await StreamDownloader.download(
-        url: full.audioUrl!, savePath: '${_downloadDir}/${item.name}.m4a',
-        onProgress: (_) {},
-        onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? (received / total) * 0.5 : item.progress; }); },
-        cancel: _cancelNotifier,
-      );
-    }
-    // 视频（勾选才下载）
-    var videoOk = true;
-    if (_downloadVideo && full.videoStreams.isNotEmpty) {
-      final best = full.videoStreams.first;
-      final audioFile = File('${_downloadDir}/${item.name}.m4a');
-      if (full.audioUrl != null && best.baseUrl == full.audioUrl && audioFile.existsSync()) {
-        try { audioFile.copySync('${_downloadDir}/${item.name}.mp4'); videoOk = true; } catch (_) { videoOk = false; }
-      } else {
-        videoOk = await StreamDownloader.download(
-          url: best.baseUrl!, savePath: '${_downloadDir}/${item.name}.mp4',
-          expectedSize: best.size > 0 ? best.size : null,
-          onProgress: (_) {},
-          onSize: (received, total) { if (mounted) setState(() { _updateItemSpeed(item, received); item.progress = total > 0 ? 0.5 + (received / total) * 0.5 : item.progress; }); },
-          cancel: _cancelNotifier,
-        );
-      }
-    }
-    // 最终校验
-    final needAudio = _downloadAudio ? (File('${_downloadDir}/${item.name}.m4a').existsSync() && File('${_downloadDir}/${item.name}.m4a').lengthSync() > 0) : true;
-    final needVideo = _downloadVideo ? (File('${_downloadDir}/${item.name}.mp4').existsSync() && File('${_downloadDir}/${item.name}.mp4').lengthSync() > 0) : true;
-    final needCover = File('${_downloadDir}/${item.name}.jpg').existsSync() && File('${_downloadDir}/${item.name}.jpg').lengthSync() > 0;
-    final ok = audioOk && videoOk && needAudio && needVideo && needCover;
-    if (!ok) {
-      try {
-        if (!needAudio) File('${_downloadDir}/${item.name}.m4a').deleteSync();
-        if (!needVideo) File('${_downloadDir}/${item.name}.mp4').deleteSync();
-        if (!needCover) File('${_downloadDir}/${item.name}.jpg').deleteSync();
-      } catch (_) {}
-    }
-    if (ok) {
-      SongManager.registerSong(
-        filePath: '${_downloadDir}/${item.name}.m4a',
-        title: full.title, uploader: full.author, durationSec: full.durationSeconds,
-        bvid: full.bvid, url: full.url,
-        coverPath: '${_downloadDir}/${item.name}.jpg',
-        videoPath: _downloadVideo ? '${_downloadDir}/${item.name}.mp4' : null,
-      );
-    }
-    setState(() { item.status = ok ? _BatchStatus.done : _BatchStatus.failed; if (ok) item.exists = true; item.progress = ok ? 1.0 : 0; item.speed = 0; });
+  /// 失败重试：重新入队（排队下载，不打断当前任务）
+  void _retryItem(_BatchItem item) {
+    if (item.queued) return;
+    item.exists = false;
+    item.status = _BatchStatus.waiting;
+    _enqueue(item);
   }
 
   // ---- 固定底部按钮 ----
@@ -1048,6 +1082,14 @@ class _DownloadPageState extends State<DownloadPage> {
                 child: OutlinedButton.icon(
                   onPressed: _cancelling ? null : () {
                     _cancelNotifier?.value = true;
+                    // 取消时清空等待队列（未开始的任务恢复可重新入队）
+                    for (final t in _dlQueue) {
+                      if (t.status == _BatchStatus.waiting) {
+                        t.queued = false;
+                        t.status = _BatchStatus.waiting;
+                      }
+                    }
+                    _dlQueue.removeWhere((t) => t.status == _BatchStatus.waiting && !t.queued);
                     setState(() => _cancelling = true); // 立即反馈
                   },
                   icon: const Icon(Icons.close, color: Colors.red, size: 16),
@@ -1059,12 +1101,21 @@ class _DownloadPageState extends State<DownloadPage> {
           : SizedBox(
               width: double.infinity, height: 44,
               child: ElevatedButton.icon(
-                onPressed: _batchItems.isNotEmpty ? _startBatch : _startSingle,
+                // 音频和视频都没勾选：置灰 + 点击提示
+                onPressed: (!_downloadAudio && !_downloadVideo)
+                    ? null
+                    : () {
+                        if (_batchItems.isNotEmpty) {
+                          _startBatch();
+                        } else {
+                          _startSingle();
+                        }
+                      },
                 icon: const Icon(Icons.download),
                 label: Text(
                   _batchItems.isNotEmpty
-                      ? '一键下载全部(${_batchItems.where((b) => !b.exists).length}首${_downloadVideo ? " 音频+视频" : " 仅音频"})'
-                      : (_downloadVideo ? '开始下载 (音频+视频)' : '开始下载 (仅音频)'),
+                      ? '一键下载全部(${_batchItems.where((b) => !b.exists).length}首 ${_dlModeLabel()})'
+                      : '开始下载 (${_dlModeLabel()})',
                   style: const TextStyle(fontSize: 15),
                 ),
                 style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
@@ -1083,7 +1134,9 @@ class _BatchItem {
   final String name;
   bool exists;
   _BatchStatus status;
+  bool queued = false;   // 已进入下载队列（等待或下载中）
   double progress = 0;   // 0~1
   double speed = 0;      // bytes/秒
+  int receivedBytes = 0; // 已下载字节（total 未知时显示容量）
   _BatchItem({required this.info, required this.name, this.exists = false, this.status = _BatchStatus.waiting});
 }

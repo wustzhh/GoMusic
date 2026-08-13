@@ -9,6 +9,13 @@ class GoMusicAudioHandler extends BaseAudioHandler {
   /// 全局单例（video_player_page 等通过它更新媒体信息）
   static GoMusicAudioHandler? instance;
 
+  void _log(String msg) {
+    try {
+      File('${Directory.systemTemp.path}/gomusic_debug.log')
+          .writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] [MS] $msg\n', mode: FileMode.append);
+    } catch (_) {}
+  }
+
   GoMusicAudioHandler() {
     instance = this;
     // 监听音乐播放器状态变化，同步媒体会话
@@ -103,6 +110,7 @@ class GoMusicAudioHandler extends BaseAudioHandler {
   @override
   Future<void> play() async {
     final svc = AudioPlayerService();
+    _log('play: isPlaying=${svc.isPlaying} pos=${svc.currentPosition.inMilliseconds}ms dur=${svc.currentSong?.duration.inSeconds}s');
     if (svc.currentSong != null) {
       if (svc.isPlaying) {
         // 已在播放：什么都不做
@@ -110,21 +118,26 @@ class GoMusicAudioHandler extends BaseAudioHandler {
           svc.currentSong!.duration.inMilliseconds > 0 &&
           svc.currentPosition >= svc.currentSong!.duration - const Duration(seconds: 1)) {
         // 播完了：从头播放
+        _log('play: 播完重播 ${svc.currentSong!.title}');
         await svc.playSong(svc.currentSong!, forceRestart: true);
       } else {
+        _log('play: resume');
         svc.resume();
       }
     }
     _syncFromPlayer();
+    _log('play: done isPlaying=${svc.isPlaying}');
   }
 
   @override
   Future<void> pause() async {
     final svc = AudioPlayerService();
+    _log('pause: isPlaying=${svc.isPlaying}');
     if (svc.isPlaying) {
       svc.togglePause();
     }
     _syncFromPlayer();
+    _log('pause: done isPlaying=${svc.isPlaying}');
   }
 
   @override
