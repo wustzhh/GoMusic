@@ -49,6 +49,18 @@ class _DownloadPageState extends State<DownloadPage> {
     _speedLastBytes = received; _speedLastTime = now;
   }
 
+  void _updateDownloadNotification(String title, int received, int total) {
+    if (!Platform.isAndroid) return;
+    try {
+      final mb = received / 1048576;
+      final pct = total > 0 ? ((received / total) * 100).clamp(0, 100).toStringAsFixed(0) : '${mb.toStringAsFixed(1)}MB';
+      FlutterForegroundTask.updateService(
+        notificationTitle: 'GoMusic 下载中',
+        notificationText: '$title $pct',
+      );
+    } catch (_) {}
+  }
+
   BilibiliVideoInfo? _singleInfo;
   VideoStream? _selectedStream;
   bool _alreadyDownloaded = false;

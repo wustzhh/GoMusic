@@ -576,8 +576,7 @@ class StreamDownloader {
               if (now.difference(lastLog).inSeconds >= 2) {
                 lastLog = now;
                 try {
-                  File('${saveFile.parent.path}/debug.log').writeAsStringSync('[${now.toIso8601String().substring(11, 19)}] prog recv=$received total=$total cl=${streamed.contentLength} exp=$expectedSize
-', mode: FileMode.append);
+                  File('${saveFile.parent.path}/debug.log').writeAsStringSync('[${now.toIso8601String().substring(11, 19)}] prog recv=$received total=$total cl=${streamed.contentLength} exp=$expectedSize\n', mode: FileMode.append);
                 } catch (_) {}
               }
             }
