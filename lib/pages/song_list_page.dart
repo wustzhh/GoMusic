@@ -263,7 +263,7 @@ class _SongListPageState extends State<SongListPage> {
         ),
         padding: const EdgeInsets.all(16),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          ListTile(leading: const Icon(Icons.playlist_play, color: Colors.deepPurple), title: const Text('下一首播放'),
+          ListTile(leading: Icon(Icons.playlist_play, color: Theme.of(context).colorScheme.primary), title: const Text('下一首播放'),
             onTap: () { Navigator.pop(ctx); _service.playNext(song); }),
           ListTile(leading: const Icon(Icons.vertical_align_top, color: Colors.blue), title: const Text('置顶'),
             onTap: () { Navigator.pop(ctx); _pinSong(song); }),
@@ -496,6 +496,7 @@ class _SongListPageState extends State<SongListPage> {
         }
       },
       child: Scaffold(
+      backgroundColor: Colors.transparent, // 透出全局动态背景
       appBar: AppBar(
         title: Text('${widget.playlist.name} (${_songs.length}首)'),
         centerTitle: true,
@@ -559,7 +560,7 @@ class _SongListPageState extends State<SongListPage> {
                         PlayMode.shuffle => Icons.shuffle,
                       },
                       size: 18,
-                      color: Colors.deepPurple,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     Text(_service.playModeLabel, style: const TextStyle(fontSize: 9)),
                   ]),
@@ -791,7 +792,7 @@ class _SongListPageState extends State<SongListPage> {
             },
       child: Container(
         key: isPlaying ? _playingRowKey : null,
-        color: selected ? Colors.deepPurple.withValues(alpha: 0.15) : (isPlaying ? Colors.lightBlue.withValues(alpha: 0.3) : Colors.transparent),
+        color: selected ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15) : (isPlaying ? Colors.lightBlue.withValues(alpha: 0.3) : Colors.transparent),
         child: InkWell(
           onTap: _batchMode ? () => setState(() { if (selected) _selectedPaths.remove(_songKey(song)); else _selectedPaths.add(_songKey(song)); }) : () => _playSong(song),
           child: ListTile(
@@ -905,10 +906,10 @@ class _SongListPageState extends State<SongListPage> {
             child: Stack(alignment: Alignment.center, children: [
               CircularProgressIndicator(
                 value: _duration.inMilliseconds > 0 ? _position.inMilliseconds / _duration.inMilliseconds : 0,
-                strokeWidth: 2.5, color: Colors.deepPurple, backgroundColor: Colors.grey.withValues(alpha: 0.2),
+                strokeWidth: 2.5, color: Theme.of(context).colorScheme.primary, backgroundColor: Colors.grey.withValues(alpha: 0.2),
               ),
               IconButton(
-                icon: Icon(_service.isPlaying ? Icons.pause : Icons.play_arrow, size: 22, color: Colors.deepPurple),
+                icon: Icon(_service.isPlaying ? Icons.pause : Icons.play_arrow, size: 22, color: Theme.of(context).colorScheme.primary),
                 onPressed: () => _service.togglePause(),
                 padding: EdgeInsets.zero,
               ),
@@ -1008,7 +1009,7 @@ class _SongListPageState extends State<SongListPage> {
     return _icon();
   }
 
-  Widget _icon() => const Icon(Icons.music_note, color: Colors.deepPurple, size: 28);
+  Widget _icon() => Icon(Icons.music_note, color: Theme.of(context).colorScheme.primary, size: 28);
 
   Widget _buildCoverSmall(Song song) {
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
@@ -1019,7 +1020,7 @@ class _SongListPageState extends State<SongListPage> {
         } catch (_) {}
       }
     }
-    return Icon(Icons.music_note, color: Colors.deepPurple, size: 24);
+    return Icon(Icons.music_note, color: Theme.of(context).colorScheme.primary, size: 24);
   }
 
 
@@ -1030,7 +1031,7 @@ class _SongListPageState extends State<SongListPage> {
         borderRadius: BorderRadius.circular(4),
         onTap: onTap,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 18, color: Colors.deepPurple),
+          Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
           Text(label, style: const TextStyle(fontSize: 9)),
         ]),
       ),
@@ -1046,7 +1047,7 @@ class _SongListPageState extends State<SongListPage> {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
       onPressed: onTap,
-      icon: Icon(icon, size: 16, color: red ? Colors.red : Colors.deepPurple),
+      icon: Icon(icon, size: 16, color: red ? Colors.red : Theme.of(context).colorScheme.primary),
       label: Text(label, style: TextStyle(fontSize: 11, color: red ? Colors.red : null)),
     );
   }

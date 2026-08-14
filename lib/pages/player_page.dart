@@ -5,6 +5,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../main.dart';
+
 import '../models/music_data.dart';
 
 import '../services/audio_player_service.dart';
@@ -28,9 +30,12 @@ class PlayerPage extends StatefulWidget {
 
 
 
-class _PlayerPageState extends State<PlayerPage> {
+class _PlayerPageState extends State<PlayerPage> with SingleTickerProviderStateMixin {
 
   final _service = AudioPlayerService();
+
+  // 流光/呼吸动画控制器：播放时持续旋转流光与封面呼吸
+  late final AnimationController _fxController;
 
   Song? _song;
 
@@ -52,6 +57,11 @@ class _PlayerPageState extends State<PlayerPage> {
 
     super.initState();
 
+    _fxController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 6),
+    );
+
     if (widget.song != null) _service.playSong(widget.song!);
 
     _refresh();
@@ -59,6 +69,7 @@ class _PlayerPageState extends State<PlayerPage> {
     _stateSub = _service.onPlayingChanged.listen((playing) {
 
       if (mounted) setState(() { _isPlaying = playing; _refresh(); });
+      _syncFx(playing);
 
     });
 
@@ -92,7 +103,18 @@ class _PlayerPageState extends State<PlayerPage> {
 
   @override
 
-  void dispose() { _stateSub?.cancel(); _posSub?.cancel(); _durSub?.cancel(); super.dispose(); }
+  void dispose() { _stateSub?.cancel(); _posSub?.cancel(); _durSub?.cancel(); _fxController.dispose(); super.dispose(); }
+
+
+
+  /// 播放时流光旋转+封面呼吸，暂停时停住（保持当前角度不闪变）
+  void _syncFx(bool playing) {
+    if (playing) {
+      if (!_fxController.isAnimating) _fxController.repeat();
+    } else {
+      _fxController.stop();
+    }
+  }
 
 
 
@@ -117,14 +139,17 @@ class _PlayerPageState extends State<PlayerPage> {
 
   Widget build(BuildContext context) {
 
-    if (_song == null) return Scaffold(appBar: AppBar(title: const Text('')), body: const Center(child: Text('未在播放')));
+    if (_song == null) return Scaffold(backgroundColor: Colors.transparent, appBar: AppBar(title: const Text('')), body: const Center(child: Text('未在播放')));
 
     final dur = _duration.inMilliseconds > 0 ? _duration : (_song?.duration ?? Duration.zero);
     final progress = dur.inMilliseconds > 0 ? _position.inMilliseconds / dur.inMilliseconds : 0.0;
 
+    if (!_fxController.isAnimating && _isPlaying) _fxController.repeat();
+
 
 
     return Scaffold(
+      backgroundColor: Colors.transparent, // 透出全局动态背景
 
       appBar: AppBar(title: const Text(''), actions: [
 
@@ -136,12 +161,23 @@ class _PlayerPageState extends State<PlayerPage> {
 
         const Spacer(),
 
-        Container(width: 260, height: 260, margin: const EdgeInsets.symmetric(horizontal: 40),
-
-          decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(16)),
-
-          clipBehavior: Clip.antiAlias, child: _buildCover(_song!),
-
+        // 封面：流光旋转边框 + 播放时呼吸，点击大图无动作
+        AnimatedBuilder(
+          animation: _fxController,
+          builder: (context, _) {
+            final breathe = _isPlaying ? 1.0 + 0.015 * sin(_fxController.value * pi * 2) : 1.0;
+            return Transform.scale(
+              scale: breathe,
+              child: _GlowBorder(
+                active: _isPlaying,
+                angle: _fxController.value * pi * 2,
+                child: Container(width: 260, height: 260, margin: const EdgeInsets.symmetric(horizontal: 40),
+                  decoration: BoxDecoration(color: Colors.grey[800], borderRadius: BorderRadius.circular(16)),
+                  clipBehavior: Clip.antiAlias, child: _buildCover(_song!),
+                ),
+              ),
+            );
+          },
         ),
 
         const Spacer(),
@@ -194,17 +230,17 @@ class _PlayerPageState extends State<PlayerPage> {
 
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
 
-          IconButton(icon: const Icon(Icons.skip_previous, size: 44), onPressed: () { _service.prev(); setState(() {}); }),
+          _TapScale(child: IconButton(icon: const Icon(Icons.skip_previous, size: 44), onPressed: () { _service.prev(); setState(() {}); })),
 
           const SizedBox(width: 20),
 
-          IconButton(icon: Icon(_isPlaying ? Icons.pause_circle : Icons.play_circle, size: 64, color: Colors.deepPurple),
+          _TapScale(child: IconButton(icon: Icon(_isPlaying ? Icons.pause_circle : Icons.play_circle, size: 64, color: Theme.of(context).colorScheme.primary),
 
-            onPressed: () { _service.togglePause(); setState(() => _isPlaying = !_isPlaying); }),
+            onPressed: () { _service.togglePause(); setState(() => _isPlaying = !_isPlaying); _syncFx(!_isPlaying); })),
 
           const SizedBox(width: 20),
 
-          IconButton(icon: const Icon(Icons.skip_next, size: 44), onPressed: () { _service.next(); setState(() {}); }),
+          _TapScale(child: IconButton(icon: const Icon(Icons.skip_next, size: 44), onPressed: () { _service.next(); setState(() {}); })),
 
         ]),
 
@@ -405,3 +441,85 @@ class _QueueSheetState extends State<_QueueSheet> {
 
 }
 
+
+/// 流光边框：播放时一束渐变光绕封面旋转（暂停停住并弱化），
+/// 光色跟随当前皮肤强调色。
+class _GlowBorder extends StatelessWidget {
+  final bool active;
+  final double angle;
+  final Widget child;
+
+  const _GlowBorder({required this.active, required this.angle, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = skinNotifier.value.accent;
+    final alpha = active ? 0.95 : 0.35;
+    final border = ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Transform.rotate(
+        angle: angle,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: SweepGradient(
+              colors: [
+                accent.withValues(alpha: 0),
+                accent.withValues(alpha: alpha),
+                accent.withValues(alpha: 0),
+                accent.withValues(alpha: 0),
+              ],
+              stops: const [0.0, 0.13, 0.42, 1.0],
+            ),
+          ),
+        ),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.all(4),
+      child: Stack(fit: StackFit.passthrough, children: [
+        Positioned.fill(child: border),
+        child,
+      ]),
+    );
+  }
+}
+
+/// 点击缩放动画：按下回弹（1→0.86→1.05→1），包在 IconButton 外层，
+/// 不拦截子级点击事件（两者同时触发）。
+class _TapScale extends StatefulWidget {
+  final Widget child;
+  const _TapScale({required this.child});
+  @override
+  State<_TapScale> createState() => _TapScaleState();
+}
+
+class _TapScaleState extends State<_TapScale> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 240),
+  );
+  late final Animation<double> _scale = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(begin: 1.0, end: 0.86).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 40,
+    ),
+    TweenSequenceItem(
+      tween: Tween(begin: 0.86, end: 1.04).chain(CurveTween(curve: Curves.easeOutBack)),
+      weight: 60,
+    ),
+  ]).animate(_controller);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _controller.forward(from: 0),
+      child: ScaleTransition(scale: _scale, child: widget.child),
+    );
+  }
+}

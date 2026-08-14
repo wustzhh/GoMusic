@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  audio_service_win
   audioplayers_windows
   flutter_inappwebview_windows
   hotkey_manager_windows

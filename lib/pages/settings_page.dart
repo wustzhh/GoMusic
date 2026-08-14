@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 import '../main.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
+import '../ui/dynamic_background.dart';
+import '../ui/skin.dart';
+import '../widgets/gradient_button.dart';
 import 'bilibili_login_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -13,15 +16,28 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> {
+class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderStateMixin {
   String _downloadPath = '';
-  int _themeMode = 1; // 0:浅色 1:深色 2:跟随系统
+  String _skinId = 'plain_dark'; // 当前皮肤 id
   bool _loaded = false;
+
+  // 皮肤画廊预览动画（8 张缩略图共享一个 ticker，开销小）
+  late final AnimationController _previewController;
 
   @override
   void initState() {
     super.initState();
+    _previewController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 120),
+    )..repeat();
     _loadSettings();
+  }
+
+  @override
+  void dispose() {
+    _previewController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSettings() async {
@@ -30,17 +46,46 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) {
       setState(() {
         _downloadPath = path;
-        _themeMode = service.getThemeMode();
+        _skinId = skinNotifier.value.id;
         _loaded = true;
       });
     }
   }
 
-  Future<void> _setTheme(int mode) async {
-    setState(() => _themeMode = mode);
-    themeModeNotifier.value = mode; // 全局立即生效
+  Future<void> _setSkin(SkinStyle skin) async {
+    setState(() => _skinId = skin.id);
+    skinNotifier.value = skin; // 全局立即生效（动态背景/主题色）
     final service = await SettingsService.getInstance();
-    await service.setThemeMode(mode); // 持久化
+    await service.setSkin(skin.id); // 持久化
+  }
+
+  /// 全屏主题选择器：遮罩 + 全屏展示全部 8 套 + 竖向滚动 + 确定/取消
+  Future<void> _showSkinPicker() async {
+    final pickedId = await showGeneralDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: '更多主题',
+      barrierColor: Colors.black54, // 背后遮罩
+      transitionDuration: const Duration(milliseconds: 260),
+      transitionBuilder: (context, anim, _, child) {
+        return FadeTransition(
+          opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+          child: SlideTransition(
+            position: Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
+                .chain(CurveTween(curve: Curves.easeOutCubic))
+                .animate(anim),
+            child: child,
+          ),
+        );
+      },
+      pageBuilder: (context, _, __) => _SkinPickerScreen(
+        initialSkinId: _skinId,
+        animation: _previewController,
+      ),
+    );
+    if (pickedId != null && pickedId != _skinId) {
+      await _setSkin(Skins.byId(pickedId));
+    }
   }
 
   Future<void> _changeDownloadPath() async {
@@ -111,6 +156,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent, // 透出全局动态背景
       appBar: AppBar(title: const Text('设置'), centerTitle: true, actions: [
         IconButton(icon: const Icon(Icons.bug_report_outlined, size: 20), tooltip: '', onPressed: _showDebugLog),
       ]),
@@ -178,22 +224,46 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 8),
           ],
-          // 主题
+// 界面皮肤：默认显示 3 套预览 + "更多主题"全屏选择
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('主题', style: TextStyle(fontSize: 15)),
+                  Row(children: [
+                    const Text('界面皮肤', style: TextStyle(fontSize: 15)),
+                    const Spacer(),
+                    // 右上角：更多主题入口
+                    InkWell(
+                      onTap: _showSkinPicker,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Text('更多主题', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.primary)),
+                          const Icon(Icons.chevron_right, size: 16),
+                        ]),
+                      ),
+                    ),
+                  ]),
                   const SizedBox(height: 12),
-                  Row(
+                  // 前 3 套预览（点击直接切换）
+                  GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 3,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 0.62,
                     children: [
-                      _ThemeOption(label: '浅色', selected: _themeMode == 0, onTap: () => _setTheme(0)),
-                      const SizedBox(width: 12),
-                      _ThemeOption(label: '深色', selected: _themeMode == 1, onTap: () => _setTheme(1)),
-                      const SizedBox(width: 12),
-                      _ThemeOption(label: '跟随系统', selected: _themeMode == 2, onTap: () => _setTheme(2)),
+                      for (final skin in Skins.all.take(3))
+                        _SkinCard(
+                          skin: skin,
+                          selected: skin.id == _skinId,
+                          animation: _previewController,
+                          onTap: () => _setSkin(skin),
+                        ),
                     ],
                   ),
                 ],
@@ -241,27 +311,161 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
-class _ThemeOption extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+/// 全屏主题选择页：遮罩路由 + 全屏展示全部皮肤（竖向滚动）+ 底部确定/取消
+class _SkinPickerScreen extends StatefulWidget {
+  final String initialSkinId;
+  final Animation<double> animation;
+  const _SkinPickerScreen({required this.initialSkinId, required this.animation});
+  @override
+  State<_SkinPickerScreen> createState() => _SkinPickerScreenState();
+}
 
-  const _ThemeOption({required this.label, required this.selected, required this.onTap});
+class _SkinPickerScreenState extends State<_SkinPickerScreen> {
+  late String _selectedId;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedId = widget.initialSkinId;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      backgroundColor: scheme.surface,
+      body: SafeArea(
+        child: Column(children: [
+          // 标题行 + 关闭
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 8, 8),
+            child: Row(children: [
+              const Text('选择主题', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              const SizedBox(width: 12),
+              Text(
+                Skins.byId(_selectedId).name,
+                style: TextStyle(fontSize: 13, color: scheme.primary),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.close, size: 22),
+                tooltip: '关闭',
+                onPressed: () => Navigator.pop(context),
+              ),
+            ]),
+          ),
+          const Divider(height: 1),
+          // 全部皮肤：竖向滚动网格（3 列）
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.all(16),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 14,
+                crossAxisSpacing: 14,
+                childAspectRatio: 0.62,
+              ),
+              itemCount: Skins.all.length,
+              itemBuilder: (_, i) {
+                final skin = Skins.all[i];
+                return _SkinCard(
+                  skin: skin,
+                  selected: skin.id == _selectedId,
+                  animation: widget.animation,
+                  onTap: () => setState(() => _selectedId = skin.id),
+                );
+              },
+            ),
+          ),
+          const Divider(height: 1),
+          // 底部：取消 / 确定
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消', style: TextStyle(fontSize: 15)),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: GradientButton(
+                  colors: skinNotifier.value.buttonGradient,
+                  radius: 12,
+                  height: 48,
+                  onPressed: () => Navigator.pop(context, _selectedId),
+                  child: const Text('确定', style: TextStyle(fontSize: 15)),
+                ),
+              ),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _SkinCard extends StatelessWidget {
+  final SkinStyle skin;
+  final bool selected;
+  final Animation<double> animation;
+  final VoidCallback onTap;
+
+  const _SkinCard({required this.skin, required this.selected, required this.animation, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
     return GestureDetector(
       onTap: onTap,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Column(
         children: [
-          Icon(
-            selected ? Icons.radio_button_checked : Icons.radio_button_off,
-            size: 18,
-            color: selected ? Colors.deepPurple : Colors.grey,
+          // 迷你预览（动态皮肤实时动画，素皮肤纯色），自适应网格单元大小
+          Expanded(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: double.infinity,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selected ? accent : Colors.grey.withValues(alpha: 0.25),
+                  width: selected ? 2.5 : 1,
+                ),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(fit: StackFit.expand, children: [
+                SkinPreview(skin: skin, animation: animation),
+                if (selected)
+                  Positioned(
+                    right: 4,
+                    bottom: 4,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+                      child: Icon(
+                        Icons.check,
+                        size: 12,
+                        color: Theme.of(context).colorScheme.onPrimary,
+                      ),
+                    ),
+                  ),
+              ]),
+            ),
           ),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(fontSize: 13, color: selected ? Colors.deepPurple : Colors.grey)),
+          const SizedBox(height: 6),
+          Text(
+            skin.name,
+            style: TextStyle(
+              fontSize: 13,
+              color: selected ? accent : Colors.grey,
+              fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
         ],
       ),
     );

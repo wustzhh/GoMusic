@@ -46,6 +46,7 @@ class _VideoDetailPageState extends State<VideoDetailPage> {
     final vp = widget.song.videoPath;
     final hasLocal = vp != null && vp.isNotEmpty && File(vp).existsSync();
     return Scaffold(
+      backgroundColor: Colors.transparent, // 透出全局动态背景
       appBar: AppBar(title: const Text(''), actions: [
         if (hasLocal)
           PopupMenuButton<String>(

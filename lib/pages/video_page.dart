@@ -76,11 +76,13 @@ class _VideoPageState extends State<VideoPage> {
   Widget build(BuildContext context) {
     if (!_loaded) {
       return Scaffold(
+        backgroundColor: Colors.transparent, // 透出全局动态背景
         appBar: AppBar(title: const Text('视频'), centerTitle: true),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
     return Scaffold(
+      backgroundColor: Colors.transparent, // 透出全局动态背景
       appBar: AppBar(title: const Text('视频'), centerTitle: true, actions: [
         IconButton(icon: const Icon(Icons.refresh, size: 20), tooltip: '', onPressed: _load),
       ]),
@@ -99,7 +101,7 @@ class _VideoPageState extends State<VideoPage> {
                     subtitle: Text(v.uploader, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       IconButton(
-                        icon: const Icon(Icons.play_circle_outline, color: Colors.deepPurple),
+                        icon: Icon(Icons.play_circle_outline, color: Theme.of(context).colorScheme.primary),
                         onPressed: () {
                           Navigator.push(context, MaterialPageRoute(builder: (_) => VideoPlayerPage(song: v, videos: _videos, initialIndex: i)));
                         },
@@ -183,8 +185,8 @@ class _VideoPageState extends State<VideoPage> {
     }
     return Container(
       width: 44, height: 44,
-      decoration: BoxDecoration(color: Colors.deepPurple.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
-      child: const Icon(Icons.video_file_outlined, color: Colors.deepPurple, size: 24),
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
+      child: Icon(Icons.video_file_outlined, color: Theme.of(context).colorScheme.primary, size: 24),
     );
   }
 }

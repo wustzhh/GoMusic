@@ -23,7 +23,7 @@ class VideoPlayerPage extends StatefulWidget {
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
 }
 
-class _VideoPlayerPageState extends State<VideoPlayerPage> {
+class _VideoPlayerPageState extends State<VideoPlayerPage> implements VideoMediaDelegate {
   final _player = Player();
   VideoController? _controller;
   StreamSubscription? _posSub, _durSub, _playingSub, _completeSub;
@@ -67,26 +67,29 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         _saveProgress(_player.state.position);
       }
       // 同步媒体会话（视频播放/暂停 → 通知栏/锁屏按钮状态）
-      GoMusicAudioHandler.instance?.notifyVideoMedia(
-        id: _song.bvid.isNotEmpty ? _song.bvid : _song.filePath,
-        title: _song.title,
-        artist: _song.uploader,
-        duration: _duration,
-        playing: p,
-        position: _position,
-      );
+      _notifyMedia(playing: p);
     });
     _posSub = _player.stream.position.listen((p) {
       if (mounted) setState(() => _position = p);
+      // 节流：每 1 秒同步一次进度到媒体会话（通知栏/锁屏进度条）
+      final now = DateTime.now();
+      if (_lastMediaPosSync == null || now.difference(_lastMediaPosSync!) >= const Duration(seconds: 1)) {
+        _lastMediaPosSync = now;
+        GoMusicAudioHandler.instance?.notifyVideoPosition(p);
+      }
     });
     _durSub = _player.stream.duration.listen((d) { if (mounted) setState(() => _duration = d); });
     _completeSub = _player.stream.completed.listen((_) {
       if (mounted) setState(() => _playing = false);
       // 播完清除进度，下次从头
       _saveProgress(Duration.zero);
+      // 播完：通知栏/锁屏按钮变回播放态
+      _notifyMedia(playing: false);
     });
     _open();
     _scheduleHide();
+    // 注册媒体会话委托：耳机键/通知栏/锁屏控制路由到本页（与音频互斥）
+    GoMusicAudioHandler.instance?.attachVideoDelegate(this);
     // 与音频互斥：打开视频时若音频在播放则暂停（退出时恢复）
     _audioWasPlaying = AudioPlayerService().isPlaying;
     if (_audioWasPlaying) {
@@ -104,6 +107,78 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   // 是否已完成恢复 seek（避免在 seek 前用 0 覆盖已存进度）
   bool _seekDone = false;
+
+  // 上次同步进度到媒体会话的时间（节流）
+  DateTime? _lastMediaPosSync;
+
+  /// 主动驱动媒体会话（不依赖 media_kit playing 事件，首次播放事件不可靠）：
+  /// playing=true 会让 audio_service 启动前台服务（Android 后台保活），
+  /// 通知栏/锁屏显示视频信息与播放状态。
+  void _notifyMedia({required bool playing, Duration? position}) {
+    GoMusicAudioHandler.instance?.notifyVideoMedia(
+      id: _song.bvid.isNotEmpty ? _song.bvid : _song.filePath,
+      title: _song.title,
+      artist: _song.uploader,
+      duration: _duration,
+      playing: playing,
+      position: position ?? _position,
+      coverUrl: _song.coverUrl,
+    );
+  }
+
+  /// 播放（统一入口：焦点 + UI + 媒体会话同步）
+  void _doPlay() {
+    _player.play();
+    AudioPlayerService().acquireAudioFocus();
+    if (mounted) setState(() => _playing = true);
+    _notifyMedia(playing: true);
+  }
+
+  /// 暂停（统一入口：焦点 + UI + 媒体会话同步）
+  void _doPause() {
+    _player.pause();
+    AudioPlayerService().releaseAudioFocus();
+    if (mounted) setState(() => _playing = false);
+    _notifyMedia(playing: false);
+  }
+
+  // ==================== 媒体会话委托（耳机键/通知栏/锁屏控制路由） ====================
+
+  @override
+  Future<void> mediaPlay() async {
+    _vlog('mediaPlay (媒体按键/通知栏)');
+    _doPlay();
+  }
+
+  @override
+  Future<void> mediaPause() async {
+    _vlog('mediaPause (媒体按键/通知栏)');
+    _doPause();
+  }
+
+  @override
+  Future<void> mediaNext() async {
+    _vlog('mediaNext (媒体按键/通知栏)');
+    if ((widget.videos?.length ?? 1) > 1) {
+      await _switchTo(_currentIndex + 1);
+    }
+  }
+
+  @override
+  Future<void> mediaPrevious() async {
+    _vlog('mediaPrevious (媒体按键/通知栏)');
+    if ((widget.videos?.length ?? 1) > 1) {
+      await _switchTo(_currentIndex - 1);
+    }
+  }
+
+  @override
+  Future<void> mediaSeek(Duration position) async {
+    _vlog('mediaSeek -> ${position.inMilliseconds}ms');
+    _position = position;
+    if (mounted) setState(() {});
+    await _player.seek(position);
+  }
 
   Future<void> _open() async {
     final path = _song.videoPath ?? _song.filePath;
@@ -132,6 +207,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       if (mounted) setState(() => _position = saved);
     }
     _seekDone = true;
+    // 显式开始播放并主动驱动媒体会话：
+    // playing=true → audio_service 启动前台服务（Android 后台保活，视频可后台播放）
+    await _player.play();
+    if (mounted) {
+      setState(() => _playing = true);
+      _notifyMedia(playing: true);
+    }
   }
 
   /// 等待媒体就绪（duration 出现），最多 15 秒
@@ -256,6 +338,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   void dispose() {
     // 保存最终播放进度（seek 未完成时跳过，避免覆盖已存进度）
     if (_seekDone) _saveProgress(_position);
+    // 注销媒体会话委托，媒体会话恢复给音频服务（无歌则清空通知栏）
+    GoMusicAudioHandler.instance?.detachVideoDelegate(this);
     _posSub?.cancel();
     _durSub?.cancel();
     _playingSub?.cancel();
@@ -269,6 +353,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     if (_audioWasPlaying) {
       AudioPlayerService().resume();
     }
+    // 媒体会话回到音频状态（audioWasPlaying 时 resume 已同步，此处兜底清残留视频信息）
+    GoMusicAudioHandler.instance?.onVideoDetached();
     // 退出时恢复竖屏/退出全屏
     if (_fullscreen) {
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -296,11 +382,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
               onTap: _onTapVideo,
               onDoubleTap: () {
                 if (_playing) {
-                  _player.pause();
-                  AudioPlayerService().releaseAudioFocus();
+                  _doPause();
                 } else {
-                  _player.play();
-                  AudioPlayerService().acquireAudioFocus();
+                  _doPlay();
                 }
               },
               child: const SizedBox.expand(),
@@ -334,7 +418,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             behavior: HitTestBehavior.opaque,
             onTap: _onTapVideo,
             onDoubleTap: () {
-              if (_playing) { _player.pause(); } else { _player.play(); }
+              if (_playing) { _doPause(); } else { _doPlay(); }
             },
             child: const SizedBox.expand(),
           ),
@@ -344,8 +428,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           Center(
             child: GestureDetector(
               onTap: () {
-                _player.play();
-                AudioPlayerService().acquireAudioFocus();
+                _doPlay();
                 _scheduleHide();
               },
               child: Icon(
@@ -415,15 +498,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             onPressed: () => _switchTo(_currentIndex - 1),
           ),
           IconButton(
-            icon: Icon(_playing ? Icons.pause : Icons.play_arrow, size: 36, color: Colors.deepPurple),
+            icon: Icon(_playing ? Icons.pause : Icons.play_arrow, size: 36, color: Theme.of(context).colorScheme.primary),
             onPressed: () {
-              if (_playing) {
-                _player.pause();
-                AudioPlayerService().releaseAudioFocus();
-              } else {
-                _player.play();
-                AudioPlayerService().acquireAudioFocus();
-              }
+              if (_playing) { _doPause(); } else { _doPlay(); }
             },
           ),
           IconButton(
@@ -444,7 +521,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             onSelected: (s) async { _speed = s; await _player.setRate(s); setState(() {}); },
             itemBuilder: (_) => [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((s) => PopupMenuItem(
               value: s,
-              child: Text('${s}x', style: TextStyle(fontWeight: _speed == s ? FontWeight.bold : FontWeight.normal, color: _speed == s ? Colors.deepPurple : null)),
+              child: Text('${s}x', style: TextStyle(fontWeight: _speed == s ? FontWeight.bold : FontWeight.normal, color: _speed == s ? Theme.of(context).colorScheme.primary : null)),
             )).toList(),
           ),
           Text('${_speed}x', style: const TextStyle(fontSize: 12, color: Colors.grey)),
@@ -524,7 +601,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           ),
         ),
         const SizedBox(height: 4),
-        Text(v.title, style: TextStyle(fontSize: 11, color: cur ? Colors.deepPurple : null), maxLines: 2, overflow: TextOverflow.ellipsis),
+        Text(v.title, style: TextStyle(fontSize: 11, color: cur ? Theme.of(context).colorScheme.primary : null), maxLines: 2, overflow: TextOverflow.ellipsis),
       ]),
     );
   }
@@ -534,8 +611,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     final cur = i == _currentIndex;
     return ListTile(
       dense: true,
-      leading: Icon(cur ? Icons.play_arrow : Icons.movie_outlined, size: 18, color: cur ? Colors.deepPurple : Colors.grey),
-      title: Text(v.title, style: TextStyle(fontSize: 13, color: cur ? Colors.deepPurple : null), maxLines: 1, overflow: TextOverflow.ellipsis),
+      leading: Icon(cur ? Icons.play_arrow : Icons.movie_outlined, size: 18, color: cur ? Theme.of(context).colorScheme.primary : Colors.grey),
+      title: Text(v.title, style: TextStyle(fontSize: 13, color: cur ? Theme.of(context).colorScheme.primary : null), maxLines: 1, overflow: TextOverflow.ellipsis),
       onTap: () {
         Navigator.pop(ctx);
         _switchTo(i);

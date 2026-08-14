@@ -3,11 +3,36 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'audio_player_service.dart';
 
+/// 视频播放器的媒体会话委托：注册期间，耳机键/通知栏/锁屏等系统媒体控制
+/// 优先路由到视频播放器（与音频互斥时视频正在前台播放）。
+abstract class VideoMediaDelegate {
+  Future<void> mediaPlay();
+  Future<void> mediaPause();
+  Future<void> mediaNext();
+  Future<void> mediaPrevious();
+  Future<void> mediaSeek(Duration position);
+}
+
 /// 媒体会话处理器：桥接系统媒体控制（耳机键/通知栏/锁屏）与播放器。
 /// 音乐播放走 AudioPlayerService；视频页切换时通过 notifyMediaChanged 更新媒体信息。
 class GoMusicAudioHandler extends BaseAudioHandler {
   /// 全局单例（video_player_page 等通过它更新媒体信息）
   static GoMusicAudioHandler? instance;
+
+  /// 视频播放页注册的委托（非空时系统媒体控制路由到视频）
+  VideoMediaDelegate? _videoDelegate;
+
+  void attachVideoDelegate(VideoMediaDelegate d) {
+    _videoDelegate = d;
+    _log('attachVideoDelegate: ${d.runtimeType}');
+  }
+
+  void detachVideoDelegate(VideoMediaDelegate d) {
+    if (identical(_videoDelegate, d)) {
+      _videoDelegate = null;
+      _log('detachVideoDelegate: ${d.runtimeType}');
+    }
+  }
 
   void _log(String msg) {
     try {
@@ -23,6 +48,7 @@ class GoMusicAudioHandler extends BaseAudioHandler {
     AudioPlayerService().onPlayingChanged.listen((_) => _syncFromPlayer());
     // 进度实时同步（播放中每 500ms 一次）
     AudioPlayerService().onPositionChanged.listen((p) {
+      if (_videoDelegate != null) return; // 视频激活：不覆盖
       final svc = AudioPlayerService();
       final song = svc.currentSong;
       if (song == null) return;
@@ -30,6 +56,7 @@ class GoMusicAudioHandler extends BaseAudioHandler {
     });
     // 时长变化同步到 mediaItem
     AudioPlayerService().onDurationChanged.listen((d) {
+      if (_videoDelegate != null) return; // 视频激活：不覆盖
       final svc = AudioPlayerService();
       final song = svc.currentSong;
       if (song == null || d.inMilliseconds <= 0) return;
@@ -40,6 +67,8 @@ class GoMusicAudioHandler extends BaseAudioHandler {
   }
 
   void _syncFromPlayer() {
+    // 视频播放器激活期间：媒体会话由视频页驱动，音频状态不覆盖
+    if (_videoDelegate != null) return;
     final svc = AudioPlayerService();
     final song = svc.currentSong;
     if (song == null) return;
@@ -107,8 +136,23 @@ class GoMusicAudioHandler extends BaseAudioHandler {
     ));
   }
 
+  /// 视频页调用：仅更新播放位置（高频进度同步，避免重建 mediaItem）
+  void notifyVideoPosition(Duration position) {
+    playbackState.add(playbackState.value.copyWith(updatePosition: position));
+  }
+
+  /// 视频页退出时调用：媒体会话恢复给音频服务（无歌则清空）
+  void onVideoDetached() {
+    _syncFromPlayer();
+  }
+
   @override
   Future<void> play() async {
+    final video = _videoDelegate;
+    if (video != null) {
+      await video.mediaPlay();
+      return;
+    }
     final svc = AudioPlayerService();
     _log('play: isPlaying=${svc.isPlaying} pos=${svc.currentPosition.inMilliseconds}ms dur=${svc.currentSong?.duration.inSeconds}s');
     if (svc.currentSong != null) {
@@ -131,6 +175,11 @@ class GoMusicAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> pause() async {
+    final video = _videoDelegate;
+    if (video != null) {
+      await video.mediaPause();
+      return;
+    }
     final svc = AudioPlayerService();
     _log('pause: isPlaying=${svc.isPlaying}');
     if (svc.isPlaying) {
@@ -142,18 +191,33 @@ class GoMusicAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> skipToNext() async {
+    final video = _videoDelegate;
+    if (video != null) {
+      await video.mediaNext();
+      return;
+    }
     await AudioPlayerService().next();
     _syncFromPlayer();
   }
 
   @override
   Future<void> skipToPrevious() async {
+    final video = _videoDelegate;
+    if (video != null) {
+      await video.mediaPrevious();
+      return;
+    }
     await AudioPlayerService().prev();
     _syncFromPlayer();
   }
 
   @override
   Future<void> seek(Duration position) async {
+    final video = _videoDelegate;
+    if (video != null) {
+      await video.mediaSeek(position);
+      return;
+    }
     await AudioPlayerService().seek(position);
     _syncFromPlayer();
   }

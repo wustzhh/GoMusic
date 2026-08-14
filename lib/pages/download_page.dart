@@ -8,6 +8,7 @@ import '../services/bilibili_api.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
 import '../widgets/top_toast.dart';
+import '../widgets/gradient_button.dart';
 import '../models/music_data.dart';
 
 class DownloadPage extends StatefulWidget {
@@ -18,6 +19,7 @@ class DownloadPage extends StatefulWidget {
 
 class _DownloadPageState extends State<DownloadPage> {
   final _urlController = TextEditingController();
+  final _urlFocus = FocusNode();
   final _nameController = TextEditingController();
   final _authorController = TextEditingController();
   final _api = BilibiliApi();
@@ -88,6 +90,7 @@ class _DownloadPageState extends State<DownloadPage> {
   @override
   void dispose() {
     _urlController.dispose();
+    _urlFocus.dispose();
     _nameController.dispose();
     _authorController.dispose();
     super.dispose();
@@ -96,6 +99,7 @@ class _DownloadPageState extends State<DownloadPage> {
   // ==================== 解析 ====================
 
   Future<void> _parseUrl() async {
+    _urlFocus.unfocus(); // 点击解析/提交后收起键盘、失去焦点
     var url = _urlController.text.trim();
     if (url.isEmpty) return;
     // 从分享文本中提取所有 URL（可多个链接）
@@ -662,6 +666,7 @@ class _DownloadPageState extends State<DownloadPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent, // 透出全局动态背景
       appBar: AppBar(title: const Text('下载'), centerTitle: true),
       body: Column(children: [
         _buildUrlInput(),
@@ -695,6 +700,7 @@ class _DownloadPageState extends State<DownloadPage> {
         Expanded(
           child: TextField(
             controller: _urlController,
+            focusNode: _urlFocus,
             decoration: InputDecoration(
               hintText: '粘贴B站分享链接或视频/收藏夹链接...',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
@@ -708,6 +714,8 @@ class _DownloadPageState extends State<DownloadPage> {
             ),
             style: const TextStyle(fontSize: 13),
             onSubmitted: (_) => _parseUrl(),
+            // 点击输入框外部：收起键盘、失去焦点
+            onTapOutside: (_) => _urlFocus.unfocus(),
             contextMenuBuilder: (ctx, editableTextState) {
               final items = editableTextState.contextMenuButtonItems;
               // 翻译成中文
@@ -730,12 +738,17 @@ class _DownloadPageState extends State<DownloadPage> {
           ),
         ),
         const SizedBox(width: 8),
-        ElevatedButton(
+        GradientButton(
           onPressed: _isParsing ? null : _parseUrl,
-          style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12)),
-          child: _isParsing
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Text('解析'),
+          colors: skinNotifier.value.buttonGradient,
+          height: 46,
+          radius: 10,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _isParsing
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('解析'),
+          ),
         ),
       ]),
     );
@@ -914,7 +927,7 @@ class _DownloadPageState extends State<DownloadPage> {
     }
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.deepPurple.withValues(alpha: 0.12),
+      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (batch.isNotEmpty) Text('下载 $batch 首', style: TextStyle(fontSize: 11, color: Colors.grey)),
         if (name.isNotEmpty) Text(name, style: TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -974,7 +987,7 @@ class _DownloadPageState extends State<DownloadPage> {
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
           if (!item.exists && !item.queued && item.status != _BatchStatus.downloading)
             IconButton(
-              icon: const Icon(Icons.download, color: Colors.deepPurple, size: 18),
+              icon: Icon(Icons.download, color: Theme.of(context).colorScheme.primary, size: 18),
               tooltip: '', padding: EdgeInsets.zero, constraints: const BoxConstraints(),
               onPressed: () => _enqueue(item),
             ),
@@ -1059,28 +1072,31 @@ class _DownloadPageState extends State<DownloadPage> {
                 ),
               ),
             ])
-          : SizedBox(
-              width: double.infinity, height: 44,
-              child: ElevatedButton.icon(
-                // 音频和视频都没勾选：置灰 + 点击提示
-                onPressed: (!_downloadAudio && !_downloadVideo)
-                    ? null
-                    : () {
-                        if (_batchItems.isNotEmpty) {
-                          _startBatch();
-                        } else {
-                          _startSingle();
-                        }
-                      },
-                icon: const Icon(Icons.download),
-                label: Text(
+          : GradientButton(
+              // 音频和视频都没勾选：置灰 + 点击提示
+              onPressed: (!_downloadAudio && !_downloadVideo)
+                  ? null
+                  : () {
+                      _urlFocus.unfocus(); // 点击下载：收起键盘
+                      if (_batchItems.isNotEmpty) {
+                        _startBatch();
+                      } else {
+                        _startSingle();
+                      }
+                    },
+              colors: skinNotifier.value.buttonGradient,
+              height: 44,
+              radius: 12,
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                const Icon(Icons.download),
+                const SizedBox(width: 6),
+                Text(
                   _batchItems.isNotEmpty
                       ? '一键下载全部(${_batchItems.where((b) => !b.exists).length}首 ${_dlModeLabel()})'
                       : '开始下载 (${_dlModeLabel()})',
                   style: const TextStyle(fontSize: 15),
                 ),
-                style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-              ),
+              ]),
             ),
     );
   }

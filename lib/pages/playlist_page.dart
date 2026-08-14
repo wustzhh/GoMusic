@@ -189,12 +189,14 @@ class PlaylistPageState extends State<PlaylistPage> {
   Widget build(BuildContext context) {
     if (!_loaded) {
       return Scaffold(
+        backgroundColor: Colors.transparent, // 透出全局动态背景
         appBar: AppBar(title: const Text('播放列表'), centerTitle: true),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
+      backgroundColor: Colors.transparent, // 透出全局动态背景
       appBar: AppBar(
         // 不显示合计数量：同一首歌可在多个歌单，简单相加会重复计数
         title: const Text('播放列表'),

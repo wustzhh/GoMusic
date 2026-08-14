@@ -7,6 +7,7 @@ class SettingsService {
   static const _keyDownloadPath = 'download_path';
   static const _keyBilibiliCookie = 'bilibili_cookie';
   static const _keyThemeMode = 'theme_mode'; // 0:浅色 1:深色 2:跟随系统
+  static const _keySkin = 'ui_skin'; // 皮肤 id（Skins.byId 查询，默认素·深色）
 
   static Future<SettingsService>? _instanceFuture;
   late SharedPreferences _prefs;
@@ -88,5 +89,15 @@ class SettingsService {
   /// 保存主题模式
   Future<void> setThemeMode(int mode) async {
     await _prefs.setInt(_keyThemeMode, mode);
+  }
+
+  /// 读取界面皮肤 id（默认极光：启动即有动态背景）
+  String getSkin() {
+    return _prefs.getString(_keySkin) ?? 'aurora';
+  }
+
+  /// 保存界面皮肤
+  Future<void> setSkin(String skinId) async {
+    await _prefs.setString(_keySkin, skinId);
   }
 }

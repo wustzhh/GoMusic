@@ -91,7 +91,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
         ),
         child: Column(
           children: [
-            LinearProgressIndicator(value: progress, minHeight: 1.5, backgroundColor: Colors.transparent, color: Colors.deepPurple),
+            LinearProgressIndicator(value: progress, minHeight: 1.5, backgroundColor: Colors.transparent, color: Theme.of(context).colorScheme.primary),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -111,10 +111,10 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
                     child: Stack(alignment: Alignment.center, children: [
                       CircularProgressIndicator(
                         value: _duration.inMilliseconds > 0 ? _position.inMilliseconds / _duration.inMilliseconds : 0,
-                        strokeWidth: 2.5, color: Colors.deepPurple, backgroundColor: Colors.grey.withValues(alpha: 0.2),
+                        strokeWidth: 2.5, color: Theme.of(context).colorScheme.primary, backgroundColor: Colors.grey.withValues(alpha: 0.2),
                       ),
                       IconButton(
-                        icon: Icon(_service.isPlaying ? Icons.pause : Icons.play_arrow, size: 20, color: Colors.deepPurple),
+                        icon: Icon(_service.isPlaying ? Icons.pause : Icons.play_arrow, size: 20, color: Theme.of(context).colorScheme.primary),
                         onPressed: () { _service.togglePause(); setState(() {}); },
                         padding: EdgeInsets.zero,
                       ),
@@ -138,7 +138,7 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
         return Image.file(f, width: 28, height: 28, fit: BoxFit.cover);
       }
     }
-    return Icon(Icons.music_note, color: Colors.deepPurple, size: 22);
+    return Icon(Icons.music_note, color: Theme.of(context).colorScheme.primary, size: 22);
   }
 
   void _showQueue() {

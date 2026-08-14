@@ -55,3 +55,4 @@ song_groups.json
 # 签名文件（一次性共享，不入库）
 android/key.properties
 android/app/app-release.keystore
+build_test/
