@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'dart:io';
 
-import 'dart:math';
 
 import 'package:flutter/material.dart';
 
@@ -10,7 +9,6 @@ import '../models/music_data.dart';
 
 import '../services/audio_player_service.dart';
 
-import 'video_detail_page.dart';
 import 'video_player_page.dart';
 import '../widgets/song_queue_list.dart';
 
@@ -98,156 +96,6 @@ class _PlayerPageState extends State<PlayerPage> {
 
 
 
-  void _addToList() async {
-
-    if (_song == null) return;
-
-    final existing = await PlaylistService.getPlaylists();
-
-
-
-    showModalBottomSheet(
-
-      context: context,
-
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-
-      builder: (ctx) => Padding(
-
-        padding: const EdgeInsets.all(16),
-
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-
-          const Text('添加到收藏夹', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-
-          const SizedBox(height: 12),
-
-          ListTile(
-
-            leading: const Icon(Icons.favorite, color: Colors.red, size: 24),
-
-            title: const Text('我喜欢'),
-
-            trailing: _isFav ? const Icon(Icons.check, color: Colors.green) : null,
-
-            onTap: () async {
-
-              Navigator.pop(ctx);
-
-              await AudioPlayerService.toggleFavorite(_song!);
-
-              setState(() => _isFav = !_isFav);
-
-            },
-
-          ),
-
-          ...existing.map((pl) => FutureBuilder<bool>(
-
-            future: PlaylistService.isSongInPlaylist(pl.id, _song!.bvid.isNotEmpty ? _song!.bvid : _song!.filePath.split("\\").last.split("/").last.split(".").first),
-
-            builder: (_, snap) => ListTile(
-
-              leading: const Icon(Icons.list, color: Colors.grey, size: 22),
-
-              title: Text(pl.name),
-
-              trailing: (snap.data == true) ? const Icon(Icons.check, color: Colors.green) : null,
-
-              onTap: () async {
-
-                Navigator.pop(ctx);
-
-                await PlaylistService.addSongToPlaylist(pl.id, _song!.bvid.isNotEmpty ? _song!.bvid : _song!.filePath.split("\\").last.split("/").last.split(".").first);
-
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}')));
-
-              },
-
-            ),
-
-          )),
-
-          const Divider(),
-
-          ListTile(
-
-            leading: const Icon(Icons.add, color: Colors.blue),
-
-            title: const Text('新建收藏夹'),
-
-            onTap: () {
-
-              Navigator.pop(ctx);
-
-              _showNewList();
-
-            },
-
-          ),
-
-        ]),
-
-      ),
-
-    );
-
-  }
-
-
-
-  void _showNewList() {
-
-    final ctrl = TextEditingController();
-
-    showDialog(
-
-      context: context,
-
-      builder: (ctx) => AlertDialog(
-
-        title: const Text('新建收藏夹'),
-
-        content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: '名称', border: OutlineInputBorder())),
-
-        actions: [
-
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-
-          FilledButton(onPressed: () async {
-
-            if (ctrl.text.trim().isNotEmpty) {
-
-              await PlaylistService.addPlaylist(ctrl.text.trim());
-
-              final pls = await PlaylistService.getPlaylists();
-
-              final created = pls.where((p) => p.name == ctrl.text.trim()).firstOrNull;
-
-              if (created != null) {
-
-                await PlaylistService.addSongToPlaylist(created.id, _song!.bvid.isNotEmpty ? _song!.bvid : _song!.filePath.split("\\").last.split("/").last.split(".").first);
-
-              }
-
-              Navigator.pop(ctx);
-
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已创建并添加')));
-
-            }
-
-          }, child: const Text('创建')),
-
-        ],
-
-      ),
-
-    );
-
-  }
-
-
-
   void _showQueue() {
     showModalBottomSheet(
       context: context,
@@ -262,40 +110,6 @@ class _PlayerPageState extends State<PlayerPage> {
     );
   }
 
-
-
-
-  void _showModeMenu() {
-
-    showModalBottomSheet(
-
-      context: context,
-
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-
-      builder: (_) => Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: PlayMode.values.map((m) {
-
-        final sel = _service.playMode == m;
-
-        return ListTile(
-
-          leading: Icon(sel ? Icons.radio_button_checked : Icons.radio_button_off, color: sel ? Colors.deepPurple : Colors.grey, size: 20),
-
-          title: Text(_label(m)),
-
-          onTap: () { _service.setPlayMode(m); setState(() {}); Navigator.pop(context); },
-
-        );
-
-      }).toList())),
-
-    );
-
-  }
-
-
-
-  String _label(PlayMode m) { switch (m) { case PlayMode.sequential: return '顺序播放'; case PlayMode.loopList: return '列表循环'; case PlayMode.loopOne: return '单曲循环'; case PlayMode.shuffle: return '随机播放'; }}
 
 
 
@@ -530,15 +344,6 @@ class _QueueSheetState extends State<_QueueSheet> {
     });
   }
 
-  Widget _queueCover(Song s, bool isCur) {
-    if (s.coverUrl != null && s.coverUrl!.isNotEmpty) {
-      final f = File(s.coverUrl!);
-      if (f.existsSync() && f.lengthSync() > 0) {
-        return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.file(f, width: 34, height: 34, fit: BoxFit.cover));
-      }
-    }
-    return Icon(isCur ? Icons.play_arrow : Icons.music_note, color: isCur ? Colors.red : Colors.grey, size: 22);
-  }
 
   @override
   void dispose() { _scrollCtrl.dispose(); super.dispose(); }

@@ -2,13 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gomusic/models/music_data.dart';
-import 'package:gomusic/pages/playlist_page.dart';
 import 'package:gomusic/pages/song_list_page.dart';
 import 'package:gomusic/services/audio_player_service.dart';
-import 'package:gomusic/services/settings_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fakes.dart';

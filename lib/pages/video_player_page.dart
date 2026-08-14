@@ -64,7 +64,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       if (mounted) setState(() => _playing = p);
       // 暂停瞬间立即保存进度（防杀进程丢失）
       if (!p && _seekDone) {
-        _saveProgress(_player.state.position ?? _position);
+        _saveProgress(_player.state.position);
       }
       // 同步媒体会话（视频播放/暂停 → 通知栏/锁屏按钮状态）
       GoMusicAudioHandler.instance?.notifyVideoMedia(

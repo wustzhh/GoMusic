@@ -998,30 +998,6 @@ class _SongListPageState extends State<SongListPage> {
     );
   }
 
-  void _showModePicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(mainAxisSize: MainAxisSize.min, children: PlayMode.values.map((m) {
-          final sel = _service.playMode == m;
-          return ListTile(
-            leading: Icon(sel ? Icons.radio_button_checked : Icons.radio_button_off, color: sel ? Colors.deepPurple : Colors.grey),
-            title: Text(_modeLabel(m)),
-            onTap: () { _service.setPlayMode(m); setState(() {}); Navigator.pop(context); },
-          );
-        }).toList()),
-      ),
-    );
-  }
-
-  String _modeLabel(PlayMode m) { switch (m) { case PlayMode.sequential: return '顺序播放'; case PlayMode.loopList: return '列表循环'; case PlayMode.loopOne: return '单曲循环'; case PlayMode.shuffle: return '随机播放'; }}
-
   Widget _buildCover(Song song) {
     if (song.coverUrl != null && song.coverUrl!.isNotEmpty) {
       final f = File(song.coverUrl!);
@@ -1046,15 +1022,6 @@ class _SongListPageState extends State<SongListPage> {
     return Icon(Icons.music_note, color: Colors.deepPurple, size: 24);
   }
 
-  Widget _queueCover(Song s, bool cur) {
-    if (s.coverUrl != null && s.coverUrl!.isNotEmpty) {
-      final f = File(s.coverUrl!);
-      if (f.existsSync() && f.lengthSync() > 0) {
-        return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.file(f, width: 34, height: 34, fit: BoxFit.cover));
-      }
-    }
-    return Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.red : Colors.grey, size: 20);
-  }
 
   Widget _actionBtn(IconData icon, String label, VoidCallback onTap) {
     return Padding(

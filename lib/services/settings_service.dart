@@ -8,7 +8,6 @@ class SettingsService {
   static const _keyBilibiliCookie = 'bilibili_cookie';
   static const _keyThemeMode = 'theme_mode'; // 0:浅色 1:深色 2:跟随系统
 
-  static SettingsService? _instance;
   static Future<SettingsService>? _instanceFuture;
   late SharedPreferences _prefs;
 
@@ -23,7 +22,6 @@ class SettingsService {
   static Future<SettingsService> _initInstance() async {
     final s = SettingsService._();
     s._prefs = await SharedPreferences.getInstance();
-    _instance = s;
     return s;
   }
 

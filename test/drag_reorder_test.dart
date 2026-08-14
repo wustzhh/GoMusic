@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gomusic/models/music_data.dart';
 import 'package:gomusic/pages/song_list_page.dart';
@@ -106,8 +105,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200)); // 等待 _applyPersistedOrder
 
     // 第一首应为 BV3（拖动后的顺序）
-    final firstRow = find.byType(ListTile).first;
-    final titleText = firstRow.evaluate().isEmpty ? null : tester.widget<Text>(find.descendant(of: firstRow, matching: find.byType(Text)).first);
     // 歌3 应排在列表第一行（第一个 ListTile 的标题）
     final firstTile = find.byType(ListTile).first;
     final firstTitle = tester.widget<Text>(

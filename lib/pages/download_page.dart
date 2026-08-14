@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
@@ -69,8 +68,6 @@ class _DownloadPageState extends State<DownloadPage> {
 
   // 批量下载
   List<_BatchItem> _batchItems = [];
-  int _batchTotal = 0;
-  int _batchDone = 0;
 
   String? _downloadDir;
 
@@ -209,39 +206,6 @@ class _DownloadPageState extends State<DownloadPage> {
       (url.contains('list.bilibili.com') && (url.contains('ml') || url.contains('fid'))) ||
       (url.contains('fid=') && url.contains('space.bilibili.com'));
 
-  Future<void> _parseCollection(String url) async {
-    final videos = await _api.getCollectionVideos(url);
-    if (!mounted) return;
-    if (videos == null || videos.isEmpty) {
-      // 回退普通解析
-      final info = await _api.getVideoInfo(url);
-      if (!mounted) return;
-      if (info != null) {
-        await _checkSingleExists(info);
-        setState(() {
-          _singleInfo = info; _isParsing = false;
-          _nameController.text = info.bvid;
-          _authorController.text = info.author;
-          _selectedStream = info.videoStreams.isNotEmpty ? info.videoStreams.first : null;
-        });
-        _probeSelectedDurlSize();
-      } else {
-        setState(() => _isParsing = false);
-        _snack('解析失败');
-      }
-      return;
-    }
-
-    final dir = _downloadDir ?? '';
-    setState(() {
-      _batchItems = videos.map((v) {
-        final name = v.bvid;
-        return _BatchItem(info: v, exists: _fileExists(v.bvid, v.title), name: name);
-      }).toList();
-      _isParsing = false;
-    });
-  }
-
   Future<void> _checkSingleExists(BilibiliVideoInfo info) async {
     if (_downloadDir == null) await _initDir();
     final dir = _downloadDir ?? '';
@@ -272,9 +236,6 @@ class _DownloadPageState extends State<DownloadPage> {
     if (mounted) showTopToast(context, msg);
   }
 
-  void _saveMeta(String dir, String name, String author, BilibiliVideoInfo info) {
-    // 全部下载成功后才在 SongManager 统一登记
-  }
 
   // ==================== 单个下载 ====================
 
@@ -1133,10 +1094,10 @@ class _BatchItem {
   final BilibiliVideoInfo info;
   final String name;
   bool exists;
-  _BatchStatus status;
+  _BatchStatus status = _BatchStatus.waiting;
   bool queued = false;   // 已进入下载队列（等待或下载中）
   double progress = 0;   // 0~1
   double speed = 0;      // bytes/秒
   int receivedBytes = 0; // 已下载字节（total 未知时显示容量）
-  _BatchItem({required this.info, required this.name, this.exists = false, this.status = _BatchStatus.waiting});
+  _BatchItem({required this.info, required this.name, this.exists = false});
 }

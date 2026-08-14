@@ -15,7 +15,6 @@ class MiniPlayerBar extends StatefulWidget {
 class _MiniPlayerBarState extends State<MiniPlayerBar> {
   final _service = AudioPlayerService();
   Song? _song;
-  bool _isPlaying = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
 
@@ -23,13 +22,12 @@ class _MiniPlayerBarState extends State<MiniPlayerBar> {
   void initState() {
     super.initState();
     _song = _service.currentSong;
-    _isPlaying = _service.isPlaying;
     _position = _service.currentPosition;
 
     _service.currentSongNotifier.addListener(_onSongChanged);
     if (_song != null) _duration = _song!.duration;
     _service.onPlayingChanged.listen((playing) {
-      if (mounted) setState(() => _isPlaying = playing);
+      if (mounted) setState(() {});
     });
     _service.onPositionChanged.listen((p) {
       if (mounted) setState(() => _position = p);
@@ -196,16 +194,6 @@ class _MiniQueueSheetState extends State<_MiniQueueSheet> {
       });
     }
     locate();
-  }
-
-  Widget _queueCover(Song s, bool cur) {
-    if (s.coverUrl != null && s.coverUrl!.isNotEmpty) {
-      final f = File(s.coverUrl!);
-      if (f.existsSync() && f.lengthSync() > 0) {
-        return ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.file(f, width: 34, height: 34, fit: BoxFit.cover));
-      }
-    }
-    return Icon(cur ? Icons.play_arrow : Icons.music_note, color: cur ? Colors.red : Colors.grey, size: 20);
   }
 
   @override

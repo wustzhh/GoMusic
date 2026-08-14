@@ -551,7 +551,7 @@ class StreamDownloader {
             cancel?.removeListener(onCancel);
             return false;
           }
-          final total = (streamed.contentLength ?? expectedSize ?? 0) + (append ? existing : 0);
+          final total = streamed.contentLength + (append ? existing : 0);
           var received = append ? existing : 0;
 
           final sink = partFile.openWrite(mode: append ? FileMode.append : FileMode.write);
