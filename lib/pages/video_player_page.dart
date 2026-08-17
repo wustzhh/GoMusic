@@ -23,7 +23,9 @@ class VideoPlayerPage extends StatefulWidget {
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
 }
 
-class _VideoPlayerPageState extends State<VideoPlayerPage> implements VideoMediaDelegate {
+class _VideoPlayerPageState extends State<VideoPlayerPage>
+    with WidgetsBindingObserver
+    implements VideoMediaDelegate {
   final _player = Player();
   VideoController? _controller;
   StreamSubscription? _posSub, _durSub, _playingSub, _completeSub;
@@ -58,6 +60,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> implements VideoMedia
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // 生命周期：后台异常中断回前台自动续播
     _currentIndex = (widget.initialIndex ?? 0).clamp(0, (widget.videos?.length ?? 1) - 1);
     _controller = VideoController(_player);
     _playingSub = _player.stream.playing.listen((p) {
@@ -81,10 +84,23 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> implements VideoMedia
     _durSub = _player.stream.duration.listen((d) { if (mounted) setState(() => _duration = d); });
     _completeSub = _player.stream.completed.listen((_) {
       if (mounted) setState(() => _playing = false);
-      // 播完清除进度，下次从头
-      _saveProgress(Duration.zero);
-      // 播完：通知栏/锁屏按钮变回播放态
-      _notifyMedia(playing: false);
+      // 区分"真的播完"与"异常中断"（如后台 MediaCodec 被系统回收触发的 EOF）：
+      // 播完时 position ≈ duration；异常中断时 position 远小于 duration，
+      // 此时保留进度、不通知暂停，回前台可自动续播。
+      final pos = _position;
+      final dur = _duration;
+      final realEnd = dur.inMilliseconds > 0 &&
+          pos.inMilliseconds >= dur.inMilliseconds - 2500;
+      _vlog('completed: pos=${pos.inMilliseconds} dur=${dur.inMilliseconds} realEnd=$realEnd');
+      if (realEnd) {
+        // 播完清除进度，下次从头
+        _saveProgress(Duration.zero);
+        // 播完：通知栏/锁屏按钮变回播放态
+        _notifyMedia(playing: false);
+      } else {
+        // 异常中断：保留进度 + 标记待恢复，回前台自动续播
+        _interrupted = true;
+      }
     });
     _open();
     _scheduleHide();
@@ -114,6 +130,47 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> implements VideoMedia
 
   Timer? _attachRetryTimer;
   bool _attached = false;
+
+  // 异常中断（后台 MediaCodec 回收等）：回前台自动从记录位置续播
+  bool _interrupted = false;
+  bool _resuming = false;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      // 诊断日志：记录切后台时的播放器状态（排查后台暂停问题）
+      _vlog('lifecycle paused: playing=$_playing pos=${_position.inMilliseconds} interrupted=$_interrupted');
+    } else if (state == AppLifecycleState.resumed) {
+      _vlog('lifecycle resumed: interrupted=$_interrupted');
+      if (_interrupted && !_resuming && _seekDone) {
+        _resuming = true;
+        _resumeAfterInterruption();
+      }
+    }
+  }
+
+  /// 异常中断后的续播：重新打开媒体并从记录位置继续
+  Future<void> _resumeAfterInterruption() async {
+    try {
+      final saved = _position;
+      _vlog('resumeAfterInterruption: pos=${saved.inMilliseconds}');
+      await _player.open(Media(_song.videoPath ?? _song.filePath));
+      await _player.setRate(_speed);
+      if (saved.inMilliseconds > 0) {
+        await _waitReady();
+        await _player.seek(saved);
+      }
+      await _player.play();
+      AudioPlayerService().acquireAudioFocus();
+      _interrupted = false;
+      if (mounted) setState(() => _playing = true);
+      _notifyMedia(playing: true, position: saved);
+    } catch (e) {
+      _vlog('resumeAfterInterruption failed: $e');
+    } finally {
+      _resuming = false;
+    }
+  }
 
   /// 注册媒体会话委托（handler 未就绪时每秒重试，防止启动早期竞态）
   void _attachWithRetry() {
@@ -356,6 +413,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> implements VideoMedia
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // 保存最终播放进度（seek 未完成时跳过，避免覆盖已存进度）
     if (_seekDone) _saveProgress(_position);
     _attachRetryTimer?.cancel();

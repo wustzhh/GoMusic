@@ -100,8 +100,9 @@ Future<void> _initMediaSession() async {
       ),
     );
     _logMs('media session init ok');
-  } catch (_) {
-    // 媒体会话失败不影响正常使用
+  } catch (e) {
+    // 媒体会话失败不影响正常使用，但记录原因（媒体会话失败会导致无通知栏/耳机键/前台服务）
+    _logMs('media session init FAILED: $e');
   }
 }
 
