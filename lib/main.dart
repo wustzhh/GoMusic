@@ -76,6 +76,13 @@ void main() async {
   }
 }
 
+/// 提前创建媒体会话处理器单例（消除竞态：
+/// 若等 AudioService.init 的 builder 异步创建，用户启动后立即播放视频时
+/// instance 仍为 null，视频页 attach 委托失败 → 耳机键无路由、前台服务未启动）
+GoMusicAudioHandler ensureMediaHandler() {
+  return GoMusicAudioHandler.instance ??= GoMusicAudioHandler();
+}
+
 /// 初始化媒体会话（异步，不阻塞启动；失败静默）
 Future<void> _initMediaSession() async {
   try {
@@ -85,7 +92,7 @@ Future<void> _initMediaSession() async {
       await Permission.notification.request();
     }
     await AudioService.init(
-      builder: () => GoMusicAudioHandler(),
+      builder: ensureMediaHandler, // 复用提前创建的单例（不新建）
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'com.gomusic.channel.playback',
         androidNotificationChannelName: 'GoMusic 播放控制',

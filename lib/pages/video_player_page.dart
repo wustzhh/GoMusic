@@ -89,7 +89,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> implements VideoMedia
     _open();
     _scheduleHide();
     // 注册媒体会话委托：耳机键/通知栏/锁屏控制路由到本页（与音频互斥）
-    GoMusicAudioHandler.instance?.attachVideoDelegate(this);
+    // 若 handler 尚未就绪（启动早期），每 1 秒重试直到成功
+    _attachWithRetry();
     // 与音频互斥：打开视频时若音频在播放则暂停（退出时恢复）
     _audioWasPlaying = AudioPlayerService().isPlaying;
     if (_audioWasPlaying) {
@@ -110,6 +111,25 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> implements VideoMedia
 
   // 上次同步进度到媒体会话的时间（节流）
   DateTime? _lastMediaPosSync;
+
+  Timer? _attachRetryTimer;
+  bool _attached = false;
+
+  /// 注册媒体会话委托（handler 未就绪时每秒重试，防止启动早期竞态）
+  void _attachWithRetry() {
+    if (_attached || !mounted) return;
+    final handler = GoMusicAudioHandler.instance;
+    if (handler != null) {
+      handler.attachVideoDelegate(this);
+      _attached = true;
+      _attachRetryTimer?.cancel();
+      _attachRetryTimer = null;
+      // 注册成功后再同步一次当前播放状态（确保通知栏/前台服务即时更新）
+      _notifyMedia(playing: _playing, position: _position);
+    } else {
+      _attachRetryTimer ??= Timer.periodic(const Duration(seconds: 1), (_) => _attachWithRetry());
+    }
+  }
 
   /// 主动驱动媒体会话（不依赖 media_kit playing 事件，首次播放事件不可靠）：
   /// playing=true 会让 audio_service 启动前台服务（Android 后台保活），
@@ -338,6 +358,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> implements VideoMedia
   void dispose() {
     // 保存最终播放进度（seek 未完成时跳过，避免覆盖已存进度）
     if (_seekDone) _saveProgress(_position);
+    _attachRetryTimer?.cancel();
+    _attachRetryTimer = null;
     // 注销媒体会话委托，媒体会话恢复给音频服务（无歌则清空通知栏）
     GoMusicAudioHandler.instance?.detachVideoDelegate(this);
     _posSub?.cancel();
