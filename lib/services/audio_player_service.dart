@@ -350,22 +350,22 @@ class AudioPlayerService {
     currentSongNotifier.notifyListeners();
   }
 
-  /// 下一首播放：目标歌曲放入当前歌曲（或所在组）之后
-  void playNext(Song song) {
-    final key = song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath);
-    // 移除已存在的目标（存在则放到下一位）
-    final existIdx = _queue.indexWhere((s) => (s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)) == key);
-    if (existIdx >= 0) {
-      _queue.removeAt(existIdx);
-      if (existIdx < _queueIndex) _queueIndex--;
-    }
-    // 计算插入位置
+  /// 下一首播放：目标歌曲（或整组跟随）放入当前歌曲（或所在组）之后。
+  /// 可传 groupMembers 让目标所在整组一起排到下一首，组内顺序由调用方排定
+  /// （从目标歌开始，其余按组内顺序/组内随机），保证播放列表显示与实际播放一致。
+  void playNext(Song song, {List<Song>? groupMembers}) {
+    final target = (groupMembers != null && groupMembers.isNotEmpty) ? List<Song>.from(groupMembers) : <Song>[song];
+    final targetKeys = target.map((s) => s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)).toSet();
+    final curKey = _currentSong != null ? (_currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _fileNameKey(_currentSong!.filePath)) : null;
+    // 移除队列中已存在的目标（整组），避免拆分/重复
+    _queue.removeWhere((s) => targetKeys.contains(s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)));
+    if (_queueIndex >= _queue.length) _queueIndex = _queue.isEmpty ? 0 : _queue.length - 1;
+    // 计算插入位置：当前在组内 → 组最后一个成员之后；否则当前歌之后
     int insertAt;
     final curSong = _currentSong;
     if (curSong != null) {
       final g = SongGroupService.groupOf(curSong, playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId);
       if (g != null) {
-        // 当前在组内：插到组的最后一个成员之后
         var lastMemberIdx = _queueIndex;
         for (var i = 0; i < _queue.length; i++) {
           final s = _queue[i];
@@ -382,7 +382,12 @@ class AudioPlayerService {
     }
     if (insertAt < 0) insertAt = 0;
     if (insertAt > _queue.length) insertAt = _queue.length;
-    _queue.insert(insertAt, song);
+    _queue.insertAll(insertAt, target);
+    // 移除操作可能移动了当前歌，重新定位
+    if (curKey != null) {
+      final idx = _queue.indexWhere((s) => (s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)) == curKey);
+      if (idx >= 0) _queueIndex = idx;
+    }
     _saveState();
     currentSongNotifier.notifyListeners();
   }

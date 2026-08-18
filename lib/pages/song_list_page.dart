@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/music_data.dart';
@@ -264,7 +265,23 @@ class _SongListPageState extends State<SongListPage> {
         padding: const EdgeInsets.all(16),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           ListTile(leading: Icon(Icons.playlist_play, color: Theme.of(context).colorScheme.primary), title: const Text('下一首播放'),
-            onTap: () { Navigator.pop(ctx); _service.playNext(song); }),
+            onTap: () {
+              Navigator.pop(ctx);
+              // 目标在组内：整组跟随（目标歌第一，其余按组内顺序/组内随机），与播放列表显示一致
+              final g = SongGroupService.groupOf(song, playlistId: widget.playlist.id);
+              if (g != null && g.songPaths.length > 1) {
+                final key = _songKey(song);
+                final rest = g.songPaths
+                    .map((p) => _songs.where((s) => _songKey(s) == p).firstOrNull)
+                    .whereType<Song>()
+                    .where((s) => _songKey(s) != key)
+                    .toList();
+                if (g.shuffle && rest.length > 1) rest.shuffle(Random());
+                _service.playNext(song, groupMembers: [song, ...rest]);
+              } else {
+                _service.playNext(song);
+              }
+            }),
           ListTile(leading: const Icon(Icons.vertical_align_top, color: Colors.blue), title: const Text('置顶'),
             onTap: () { Navigator.pop(ctx); _pinSong(song); }),
           ListTile(leading: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? Colors.red : Colors.grey),
