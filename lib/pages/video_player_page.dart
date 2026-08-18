@@ -134,17 +134,24 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   // 异常中断（后台 MediaCodec 回收等）：回前台自动从记录位置续播
   bool _interrupted = false;
   bool _resuming = false;
+  // 用户是否主动暂停（区分"系统在后台暂停"与"用户点暂停"；后者回前台不自动恢复）
+  bool _userPaused = false;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       // 诊断日志：记录切后台时的播放器状态（排查后台暂停问题）
-      _vlog('lifecycle paused: playing=$_playing pos=${_position.inMilliseconds} interrupted=$_interrupted');
+      _vlog('lifecycle paused: playing=$_playing pos=${_position.inMilliseconds} interrupted=$_interrupted userPaused=$_userPaused');
     } else if (state == AppLifecycleState.resumed) {
-      _vlog('lifecycle resumed: interrupted=$_interrupted');
+      _vlog('lifecycle resumed: interrupted=$_interrupted userPaused=$_userPaused playing=$_playing');
       if (_interrupted && !_resuming && _seekDone) {
         _resuming = true;
         _resumeAfterInterruption();
+      } else if (!_userPaused && !_playing && _seekDone) {
+        // 兜底：切后台被系统暂停（非用户主动、且未触发 completed 事件，如
+        // ExoPlayer 被 audio focus 收回直接发 playing=false），回前台自动恢复播放。
+        _vlog('lifecycle resumed: 非主动暂停 → 自动恢复播放');
+        _doPlay();
       }
     }
   }
@@ -205,6 +212,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   /// 播放（统一入口：焦点 + UI + 媒体会话同步）
   void _doPlay() {
+    _userPaused = false;
     _player.play();
     AudioPlayerService().acquireAudioFocus();
     if (mounted) setState(() => _playing = true);
@@ -213,6 +221,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
 
   /// 暂停（统一入口：焦点 + UI + 媒体会话同步）
   void _doPause() {
+    _userPaused = true;
     _player.pause();
     AudioPlayerService().releaseAudioFocus();
     if (mounted) setState(() => _playing = false);
@@ -286,6 +295,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
     _seekDone = true;
     // 显式开始播放并主动驱动媒体会话：
     // playing=true → audio_service 启动前台服务（Android 后台保活，视频可后台播放）
+    _userPaused = false;
     await _player.play();
     if (mounted) {
       setState(() => _playing = true);
