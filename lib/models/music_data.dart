@@ -486,7 +486,7 @@ class SongGroup {
   final String id;
   final String playlistId; // 所属歌单
   String name;
-  final List<String> songPaths;
+  List<String> songPaths; // 组内顺序（可被批量拖动/下一首播放重排）
   bool shuffle; // 组内随机
   SongGroup({required this.id, required this.playlistId, required this.name, required this.songPaths, this.shuffle = false});
 }
@@ -635,6 +635,20 @@ class SongGroupService {
     _ensureLoaded();
     for (final g in _cache) {
       if (g.id == groupId) { g.shuffle = shuffle; break; }
+    }
+    _save();
+  }
+
+  /// 批量拖动后同步组内顺序：把组的 songPaths 重排为歌单当前实际位置顺序
+  /// （组内歌曲必须在歌单中真实相邻，才符合"组内按真实位置显示"的语义）
+  static void reorderGroup(String groupId, List<String> actualOrder) {
+    _ensureLoaded();
+    for (final g in _cache) {
+      if (g.id == groupId) {
+        // 只保留组内成员，按 actualOrder 重排
+        g.songPaths = actualOrder.where((p) => g.songPaths.contains(p)).toList();
+        break;
+      }
     }
     _save();
   }

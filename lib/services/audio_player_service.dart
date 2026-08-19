@@ -277,8 +277,11 @@ class AudioPlayerService {
       return;
     }
     // 换源决定：立即标记手动播放时间——open 进行中旧源 complete 就会到达，
-    // 必须在 open 前建立防抖，否则误触发 _autoNext 切到下一首（"点 A 播 B"）
-    _lastManualPlayAt = DateTime.now();
+    // 必须在 open 前建立防抖，否则误触发 _autoNext 切到下一首（"点 A 播 B"）。
+    // 自动切歌（_next）不刷新：连播时每首歌播完都要能触发下一首
+    if (!_autoSwitching) {
+      _lastManualPlayAt = DateTime.now();
+    }
     _lastPosition = Duration.zero;
     _currentSong = song;
     currentSongNotifier.value = song;
@@ -351,10 +354,39 @@ class AudioPlayerService {
   }
 
   /// 下一首播放：目标歌曲（或整组跟随）放入当前歌曲（或所在组）之后。
-  /// 可传 groupMembers 让目标所在整组一起排到下一首，组内顺序由调用方排定
-  /// （从目标歌开始，其余按组内顺序/组内随机），保证播放列表显示与实际播放一致。
+  /// 目标所在组会整组跟随（第一首=用户选的目标歌，其余按组内顺序/组内随机），
+  /// 保证"等当前组播完 → 播目标组全部"的语义与播放列表显示一致。
+  /// 组员优先取调用方传入的 groupMembers，缺失部分从 _queue 现有歌曲补齐。
   void playNext(Song song, {List<Song>? groupMembers}) {
-    final target = (groupMembers != null && groupMembers.isNotEmpty) ? List<Song>.from(groupMembers) : <Song>[song];
+    // 收集目标整组：调用方传入的优先，缺失成员从 _queue 补齐
+    final g = SongGroupService.groupOf(song, playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId);
+    final target = <Song>[];
+    final seen = <String>{};
+    if (groupMembers != null) {
+      for (final s in groupMembers) {
+        final k = s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath);
+        if (seen.add(k)) target.add(s);
+      }
+    }
+    if (g != null && g.songPaths.length > 1) {
+      final songKey = song.bvid.isNotEmpty ? song.bvid : _fileNameKey(song.filePath);
+      // 已传入组员之外的组员：按组内顺序从 _queue 补齐（含目标歌本身缺失时）
+      for (final p in g.songPaths) {
+        if (seen.contains(p)) continue;
+        final s = _queue.where((x) => (x.bvid.isNotEmpty ? x.bvid : _fileNameKey(x.filePath)) == p).firstOrNull;
+        if (s != null) {
+          seen.add(p);
+          target.add(s);
+        }
+      }
+      // 目标歌必须在整组第一首（调用方可能把它排在后面）
+      final targetSong = target.where((x) => (x.bvid.isNotEmpty ? x.bvid : _fileNameKey(x.filePath)) == songKey).firstOrNull;
+      if (targetSong != null) {
+        target.remove(targetSong);
+        target.insert(0, targetSong);
+      }
+    }
+    if (target.isEmpty) target.add(song);
     final targetKeys = target.map((s) => s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath)).toSet();
     final curKey = _currentSong != null ? (_currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _fileNameKey(_currentSong!.filePath)) : null;
     // 移除队列中已存在的目标（整组），避免拆分/重复
@@ -364,12 +396,12 @@ class AudioPlayerService {
     int insertAt;
     final curSong = _currentSong;
     if (curSong != null) {
-      final g = SongGroupService.groupOf(curSong, playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId);
-      if (g != null) {
+      final cg = SongGroupService.groupOf(curSong, playlistId: _currentPlaylistId.isEmpty ? null : _currentPlaylistId);
+      if (cg != null) {
         var lastMemberIdx = _queueIndex;
         for (var i = 0; i < _queue.length; i++) {
           final s = _queue[i];
-          if (g.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath))) {
+          if (cg.songPaths.contains(s.bvid.isNotEmpty ? s.bvid : _fileNameKey(s.filePath))) {
             lastMemberIdx = i;
           }
         }
@@ -426,10 +458,11 @@ class AudioPlayerService {
   }
 
   /// 播放完成自动触发：单曲循环重播自己，否则切下一首
-  /// 防抖1：Windows 端换源时旧源的 complete 事件可能滞后到达，1 秒内忽略重复触发
+  /// 防抖1：Windows 端换源时旧源的 complete 事件可能滞后到达，1 秒内同歌忽略重复触发
   /// 防抖2：手动切歌/播放后 2 秒内忽略 complete（换源时旧源 complete 滞后到达，
   ///        会误触发 next() 导致"点 A 播 B"——实际是自动切到了下一首）
   DateTime? _lastCompleteAt;
+  String? _lastCompleteKey; // 上次 complete 的歌曲 key（防抖1 只拦同歌重复）
   DateTime? _lastManualPlayAt;
   Future<void> _autoNext() async {
     if (_queue.isEmpty) return;
@@ -438,10 +471,16 @@ class AudioPlayerService {
     if (_lastManualPlayAt != null && now.difference(_lastManualPlayAt!) < const Duration(seconds: 2)) {
       return;
     }
-    if (_lastCompleteAt != null && now.difference(_lastCompleteAt!) < const Duration(seconds: 1)) {
+    // 1 秒内同一首歌的重复 complete 忽略（换源滞后），不同歌曲放行（连播不卡）
+    final curKey = _currentSong != null ? (_currentSong!.bvid.isNotEmpty ? _currentSong!.bvid : _fileNameKey(_currentSong!.filePath)) : null;
+    if (curKey != null &&
+        _lastCompleteKey == curKey &&
+        _lastCompleteAt != null &&
+        now.difference(_lastCompleteAt!) < const Duration(seconds: 1)) {
       return;
     }
     _lastCompleteAt = now;
+    _lastCompleteKey = curKey;
     if (_playMode == PlayMode.loopOne) {
       // 单曲循环：重新播放自己（Windows 端播完已 Stop，resume 无效，必须重新 play）
       await playSong(_currentSong!, forceRestart: true);
@@ -455,7 +494,14 @@ class AudioPlayerService {
     // 随机模式 = 队列在 setQueue/setPlayMode 时已整体随机化，
     // 下一曲永远按随机后列表顺序取下一首（不重复随机）
     _queueIndex = (_queueIndex + 1) % _queue.length;
-    await playSong(_queue[_queueIndex]);
+    // 标记自动切换：_playFile 不刷新防抖时间戳，
+    // 使本首歌播完的 complete 不被 2 秒防抖误拦（否则短视频/连播会卡住不切歌）
+    _autoSwitching = true;
+    try {
+      await playSong(_queue[_queueIndex]);
+    } finally {
+      _autoSwitching = false;
+    }
   }
 
   /// 从当前 _queueIndex 往后跳，跳过文件无效的歌（点无效歌时用）
@@ -484,10 +530,16 @@ class AudioPlayerService {
   /// 带序号防竞态：快速连续点击/切歌时，只有最后一次 open 才会真正 play，
   /// 避免旧 open 异步完成时覆盖新歌（"点 A 播 B"）。
   int _playSeq = 0;
+  /// 是否处于自动切歌中（_next 触发的 playSong）：自动切歌不刷新防抖时间戳，
+  /// 保证连播时每首歌播完的 complete 都能触发下一首（短视频不会被 2 秒防抖误吞）
+  bool _autoSwitching = false;
   Future<void> _playFile(String path, {Duration? position}) async {
     // 任何实际播放都刷新防抖时间戳：open 期间旧源 complete 到达时，
-    // _autoNext 会因 2 秒内刚播放过而忽略，避免误切到下一首
-    _lastManualPlayAt = DateTime.now();
+    // _autoNext 会因 2 秒内刚播放过而忽略，避免误切到下一首。
+    // 但自动切歌（_next）不刷新——连播时每首歌播完都要能触发下一首
+    if (!_autoSwitching) {
+      _lastManualPlayAt = DateTime.now();
+    }
     final seq = ++_playSeq;
     await _player.open(Media(path), play: false);
     if (seq != _playSeq) return; // 已被更新的播放请求取代

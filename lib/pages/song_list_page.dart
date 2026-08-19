@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/music_data.dart';
@@ -267,7 +266,8 @@ class _SongListPageState extends State<SongListPage> {
           ListTile(leading: Icon(Icons.playlist_play, color: Theme.of(context).colorScheme.primary), title: const Text('下一首播放'),
             onTap: () {
               Navigator.pop(ctx);
-              // 目标在组内：整组跟随（目标歌第一，其余按组内顺序/组内随机），与播放列表显示一致
+              // 目标在组内：整组跟随（目标歌第一，其余按组内顺序），
+              // 从当前歌单完整取组员，确保即使 _queue 不含全部也能整组插入
               final g = SongGroupService.groupOf(song, playlistId: widget.playlist.id);
               if (g != null && g.songPaths.length > 1) {
                 final key = _songKey(song);
@@ -276,7 +276,6 @@ class _SongListPageState extends State<SongListPage> {
                     .whereType<Song>()
                     .where((s) => _songKey(s) != key)
                     .toList();
-                if (g.shuffle && rest.length > 1) rest.shuffle(Random());
                 _service.playNext(song, groupMembers: [song, ...rest]);
               } else {
                 _service.playNext(song);
@@ -667,6 +666,8 @@ class _SongListPageState extends State<SongListPage> {
                       } else if (widget.playlist.id != 'recent') {
                         PlaylistService.reorderSongsInPlaylist(widget.playlist.id, newKeys);
                       }
+                      // 组内顺序跟随真实位置：每个组按歌单当前顺序重排 songPaths
+                      _syncGroupOrderFromPlaylist();
                     });
                   },
                   itemBuilder: (_, i) => _buildSongItem(list[i], key: ValueKey(_songKey(list[i])), showDragHandle: true, dragIndex: i),
@@ -779,6 +780,16 @@ class _SongListPageState extends State<SongListPage> {
         _mainScrollCtrl.jumpTo(_savedScrollOffset.clamp(0, _mainScrollCtrl.position.maxScrollExtent));
       }
     });
+  }
+
+  /// 批量拖动后同步所有组内顺序为歌单当前真实位置
+  void _syncGroupOrderFromPlaylist() {
+    final keys = _songs.map((s) => s.bvid.isNotEmpty ? s.bvid : _songKey(s)).toList();
+    final groups = SongGroupService.getGroups(playlistId: widget.playlist.id);
+    for (final g in groups) {
+      final gn = g.id;
+      SongGroupService.reorderGroup(gn, keys);
+    }
   }
 
   /// 退出批量模式并保持滚动位置
