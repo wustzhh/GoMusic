@@ -588,7 +588,7 @@ class SongGroupService {
   }
 
   /// 组队：把选中歌曲合并为一个组（各自原有组合并后生成新组）
-  static void groupSongs(List<Song> songs, {required String playlistId}) {
+  static void groupSongs(List<Song> songs, {required String playlistId, String? name}) {
     _ensureLoaded();
     if (songs.length < 2) return;
     final paths = songs.map((s) => s.bvid.isNotEmpty ? s.bvid : s.filePath.split("\\").last.split("/").last.split(".").first).toList();
@@ -606,7 +606,9 @@ class SongGroupService {
     _cache.add(SongGroup(
       id: 'g${DateTime.now().millisecondsSinceEpoch}',
       playlistId: playlistId,
-      name: first.title.isNotEmpty ? first.title : first.filePath.split('\\').last.split('/').last.split('.').first,
+      name: name != null && name.isNotEmpty
+          ? name
+          : (first.title.isNotEmpty ? first.title : first.filePath.split('\\').last.split('/').last.split('.').first),
       songPaths: involved.toList(),
     ));
     _save();

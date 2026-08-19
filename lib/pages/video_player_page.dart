@@ -69,6 +69,15 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
       if (!p && _seekDone) {
         _saveProgress(_player.state.position);
       }
+      // 后台瞬时暂停（非用户主动）：立即自动恢复，且不降级媒体会话，
+      // 保持前台服务保活（否则 playing=false 会让 audio_service 撤前台服务，
+      // 进程失去保活后 Android 冻结，视频彻底暂停）
+      if (!p && _appInBackground && !_userPaused && !_resuming) {
+        _vlog('background playing=false → 自动恢复播放');
+        _notifyMedia(playing: true, position: _position);
+        _player.play();
+        return;
+      }
       // 同步媒体会话（视频播放/暂停 → 通知栏/锁屏按钮状态）
       _notifyMedia(playing: p);
     });
@@ -136,13 +145,22 @@ class _VideoPlayerPageState extends State<VideoPlayerPage>
   bool _resuming = false;
   // 用户是否主动暂停（区分"系统在后台暂停"与"用户点暂停"；后者回前台不自动恢复）
   bool _userPaused = false;
+  // App 是否处于后台（后台瞬时暂停时自动恢复并保持前台服务，实现真正的后台播放）
+  bool _appInBackground = false;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      _appInBackground = true;
+      // 后台保活：仍在播放时保持媒体会话 playing=true（前台服务不撤、
+      // 通知栏状态不变，配合 playing 流自动恢复实现真正的后台播放）
+      if (_playing && !_userPaused) {
+        _notifyMedia(playing: true, position: _position);
+      }
       // 诊断日志：记录切后台时的播放器状态（排查后台暂停问题）
       _vlog('lifecycle paused: playing=$_playing pos=${_position.inMilliseconds} interrupted=$_interrupted userPaused=$_userPaused');
     } else if (state == AppLifecycleState.resumed) {
+      _appInBackground = false;
       _vlog('lifecycle resumed: interrupted=$_interrupted userPaused=$_userPaused playing=$_playing');
       if (_interrupted && !_resuming && _seekDone) {
         _resuming = true;
