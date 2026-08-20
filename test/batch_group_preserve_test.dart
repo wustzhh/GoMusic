@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gomusic/models/music_data.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'fakes.dart';
 
@@ -24,6 +25,8 @@ void main() {
     _origDir = Directory.current;
     _tmpDir = Directory.systemTemp.createTempSync('go_group_batch_');
     Directory.current = _tmpDir;
+    SharedPreferences.setMockInitialValues({});
+    SongGroupService.resetForTest();
     SongGroupService.init();
     injectFakePlayer();
   });
@@ -104,5 +107,31 @@ void main() {
       }
     }
     expect(SongGroupService.groupOf(a1, playlistId: 'pl1'), isNull);
+  });
+
+  test('组信息 flush 后重新初始化仍保留目标歌单和组名', () async {
+    final a1 = _local('BV1', 'A');
+    final a2 = _local('BV2', 'B');
+    await SongGroupService.ensureReady();
+    SongGroupService.groupSongs([a1, a2], playlistId: 'target', name: '原组');
+    await SongGroupService.flush();
+
+    SongGroupService.resetForTest();
+    await SongGroupService.init();
+    final restored = SongGroupService.groupOf(a1, playlistId: 'target');
+    expect(restored, isNotNull);
+    expect(restored!.name, '原组');
+    expect(restored.songPaths, ['BV1', 'BV2']);
+  });
+
+  test('自定义歌单排序持久化后重新读取仍保持新顺序', () async {
+    await PlaylistService.addPlaylist('目标歌单');
+    final playlists = await PlaylistService.getPlaylists();
+    final pid = playlists.single.id;
+    await PlaylistService.addSongsToPlaylist(pid, ['BV1', 'BV2', 'BV3']);
+    await PlaylistService.reorderSongsInPlaylist(pid, ['BV2', 'BV3', 'BV1']);
+
+    final restored = (await PlaylistService.getPlaylists()).single;
+    expect(restored.songs.map((s) => s.bvid).toList(), ['BV2', 'BV3', 'BV1']);
   });
 }

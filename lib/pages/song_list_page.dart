@@ -1119,7 +1119,7 @@ class _SongListPageState extends State<SongListPage> {
           onTap: () async {
             await AudioPlayerService.addFavoritesBatch(sel);
             // 保留组关系：源歌单同组的选中歌曲（≥2首）在"我喜欢"也成同组
-            if (widget.playlist.id != 'fav') _preserveGroupsOnBatchAdd(sel, 'fav');
+            if (widget.playlist.id != 'fav') await _preserveGroupsOnBatchAdd(sel, 'fav');
             Navigator.pop(ctx);
             if (mounted) { _exitBatchMode(); _loadFavs(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已添加到我喜欢'))); }
           },
@@ -1130,7 +1130,7 @@ class _SongListPageState extends State<SongListPage> {
           onTap: () async {
             await PlaylistService.addSongsToPlaylist(pl.id, sel.map(_songKey).toList());
             // 保留组关系：源歌单同组的选中歌曲（≥2首）在目标歌单也成同组
-            if (pl.id != widget.playlist.id) _preserveGroupsOnBatchAdd(sel, pl.id);
+            if (pl.id != widget.playlist.id) await _preserveGroupsOnBatchAdd(sel, pl.id);
             Navigator.pop(ctx);
             if (mounted) { _exitBatchMode(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加到${pl.name}'))); }
           },
@@ -1141,8 +1141,9 @@ class _SongListPageState extends State<SongListPage> {
 
   /// 批量添加后保留组关系：源歌单同组的选中歌曲（≥2首）在目标歌单组成同组。
   /// 即使同组歌曲只选中了一部分，只要该组选中数量 ≥2 就要在目标歌单保持同组。
-  void _preserveGroupsOnBatchAdd(List<Song> sel, String targetPlaylistId) {
+  Future<void> _preserveGroupsOnBatchAdd(List<Song> sel, String targetPlaylistId) async {
     if (sel.length < 2) return;
+    await SongGroupService.ensureReady();
     // 按源歌单（当前歌单）中的组聚合选中的歌曲
     final byGroup = <String, List<Song>>{};
     final groupNames = <String, String>{};
@@ -1159,6 +1160,7 @@ class _SongListPageState extends State<SongListPage> {
         SongGroupService.groupSongs(e.value, playlistId: targetPlaylistId, name: groupNames[e.key]);
       }
     }
+    await SongGroupService.flush();
   }
 
   // 批量：从当前歌单移出
@@ -1222,7 +1224,7 @@ class _SongListPageState extends State<SongListPage> {
   }
 
   // 批量：组队（生成组，并把组内歌曲在歌单中真实排到一起——取消分组后依然相邻）
-  void _batchGroup() {
+  Future<void> _batchGroup() async {
     final sel = _selectedSongs();
     if (sel.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请至少选择2首歌组队')));
@@ -1235,20 +1237,21 @@ class _SongListPageState extends State<SongListPage> {
     if (firstIdx >= 0) {
       final members = sel;
       final others = _songs.where((s) => !keys.contains(_songKey(s))).toList();
-      setState(() {
-        _songs = [...others.take(firstIdx), ...members, ...others.skip(firstIdx)];
-        // 持久化新顺序（recent 由播放记录派生，不保存）
-        final newKeys = _songs.map((s) => s.bvid.isNotEmpty ? s.bvid : _songKey(s)).toList();
-        if (widget.playlist.id == 'local') {
-          SongManager.saveLocalOrder(newKeys);
-        } else if (widget.playlist.id == 'fav') {
-          AudioPlayerService.saveFavoritesOrder(newKeys);
-        } else if (widget.playlist.id != 'recent') {
-          PlaylistService.reorderSongsInPlaylist(widget.playlist.id, newKeys);
-        }
-      });
+      final reordered = [...others.take(firstIdx), ...members, ...others.skip(firstIdx)];
+      final newKeys = reordered.map((s) => s.bvid.isNotEmpty ? s.bvid : _songKey(s)).toList();
+      // 先完成持久化，再更新界面和退出批量模式，避免刷新时读回旧排序。
+      if (widget.playlist.id == 'local') {
+        await SongManager.saveLocalOrder(newKeys);
+      } else if (widget.playlist.id == 'fav') {
+        await AudioPlayerService.saveFavoritesOrder(newKeys);
+      } else if (widget.playlist.id != 'recent') {
+        await PlaylistService.reorderSongsInPlaylist(widget.playlist.id, newKeys);
+      }
+      if (!mounted) return;
+      setState(() => _songs = reordered);
     }
     SongGroupService.groupSongs(sel, playlistId: widget.playlist.id);
+    await SongGroupService.ensureReady();
     // 组内顺序同步为歌单真实位置（成员已相邻，songPaths 按歌单顺序）
     _syncGroupOrderFromPlaylist();
     if (mounted) {

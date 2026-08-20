@@ -495,14 +495,35 @@ class SongGroupService {
   static const _key = 'song_groups';
   static List<SongGroup> _cache = [];
   static bool _loaded = false;
+  static bool _dirtyBeforeInit = false;
   static SharedPreferences? _prefs;
+  static Future<void>? _initFuture;
 
   /// 启动时初始化（main 调用）：加载存储（优先 SharedPreferences，旧文件自动迁移）
-  static Future<void> init() async {
+  static Future<void> init() {
+    return _initFuture ??= _initInternal();
+  }
+
+  static Future<void> _initInternal() async {
     try {
       _prefs = await SharedPreferences.getInstance();
     } catch (_) {}
-    _ensureLoaded();
+    // 如果首次操作发生在初始化完成前，不能用旧持久化数据覆盖内存中的新组。
+    if (_dirtyBeforeInit) {
+      _loaded = true;
+      await flush();
+      _dirtyBeforeInit = false;
+    } else {
+      // 可能已经通过旧版 song_groups.json 同步加载；不要清空它。
+      if (!_loaded) _ensureLoaded();
+      if (_loaded) await flush();
+    }
+  }
+
+  /// 等待组服务可用并确认当前组数据已落盘。
+  static Future<void> ensureReady() async {
+    await init();
+    await flush();
   }
 
   /// 重置缓存（仅测试用）
@@ -510,10 +531,15 @@ class SongGroupService {
   static void resetForTest() {
     _cache = [];
     _loaded = false;
+    _dirtyBeforeInit = false;
+    _prefs = null;
+    _initFuture = null;
   }
 
   static void _ensureLoaded() {
     if (_loaded) return;
+    // SharedPreferences 尚未就绪时仍允许读取旧版文件；但不把“未读到”标记为已加载，
+    // 这样 init 完成后仍可从 SharedPreferences 接管持久化。
     try {
       String? raw;
       if (_prefs != null) raw = _prefs!.getString(_key);
@@ -546,17 +572,27 @@ class SongGroupService {
   }
 
   static void _save() {
+    if (_prefs == null) _dirtyBeforeInit = true;
     _persist();
   }
 
+  static String _encodedGroups() => jsonEncode(_cache.map((g) => {
+    'id': g.id, 'pl': g.playlistId, 'name': g.name, 'paths': g.songPaths, 'shuffle': g.shuffle,
+  }).toList());
+
   static void _persist() {
     try {
-      final raw = jsonEncode(_cache.map((g) => {
-        'id': g.id, 'pl': g.playlistId, 'name': g.name, 'paths': g.songPaths, 'shuffle': g.shuffle,
-      }).toList());
+      final raw = _encodedGroups();
       _prefs?.setString(_key, raw); // setString 立即更新内存缓存，异步落盘
-      // 兜底：私有目录也写一份（_prefs 未初始化时回退读取）
       try { File('song_groups.json').writeAsStringSync(raw); } catch (_) {}
+    } catch (_) {}
+  }
+
+  static Future<void> flush() async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    try {
+      await prefs.setString(_key, _encodedGroups());
     } catch (_) {}
   }
 
