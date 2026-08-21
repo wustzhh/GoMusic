@@ -75,7 +75,14 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/themes/
+    - assets/themes/cyber_neon/texture.png
+    - assets/themes/deep_space/texture.png
+    - assets/themes/mecha_factory/texture.png
+    - assets/themes/holographic_glass/texture.png
+    - assets/themes/pixel_arcade/texture.png
+    - assets/themes/molten_flame/texture.png
+    - assets/themes/polar_crystal/texture.png
+    - assets/themes/oriental_future/texture.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:
