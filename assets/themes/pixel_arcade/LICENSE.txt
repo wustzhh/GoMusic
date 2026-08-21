@@ -1,0 +1,4 @@
+Source: https://opengameart.org/content/64x-textures-an-overlays
+License: CC0
+Downloaded: 2026-08-21
+Selected texture from the 64x Textures and Overlays package.

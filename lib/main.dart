@@ -155,14 +155,23 @@ class _GoMusicAppState extends State<GoMusicApp> with WidgetsBindingObserver {
     final cardColor = ui.glassy
         ? scheme.surface.withValues(alpha: ui.glassOpacity)
         : scheme.surface;
-    final cardBorder = ui.glassy
-        ? BorderSide(
-            color: ui.neonGlow
-                ? skin.accent.withValues(alpha: 0.85)
-                : skin.accent.withValues(alpha: 0.30),
-            width: ui.neonGlow ? 1.6 : 1.0,
-          )
-        : BorderSide.none;
+    final cardBorder = ui.cardStyle == SkinCardStyle.neon || ui.neonGlow
+        ? BorderSide(color: ui.buttonBorder == Colors.transparent ? skin.accent.withValues(alpha: 0.85) : ui.buttonBorder, width: 1.6)
+        : ui.glassy
+            ? BorderSide(color: skin.accent.withValues(alpha: 0.30), width: 1.0)
+            : BorderSide.none;
+    final buttonShape = switch (ui.buttonShape) {
+      SkinButtonShape.capsule => const StadiumBorder(),
+      SkinButtonShape.cutCorner => const BeveledRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(2))),
+      SkinButtonShape.hexagon => const BeveledRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+      SkinButtonShape.pixel => const BeveledRectangleBorder(borderRadius: BorderRadius.zero),
+      SkinButtonShape.rounded => RoundedRectangleBorder(borderRadius: radius),
+    };
+    final buttonSide = ui.buttonBorder == Colors.transparent ? null : BorderSide(color: ui.buttonBorder, width: 1.2);
+    final buttonShadow = ui.buttonShadow == Colors.transparent ? null : [BoxShadow(color: ui.buttonShadow.withValues(alpha: 0.45), blurRadius: ui.neonGlow ? 14 : 6, spreadRadius: 1)];
+    // Flutter ThemeData 不能直接表达渐变，先确保每套主题使用独立主色；
+    // 复杂渐变由 ThemeComponents/页面局部组件提供。
+    final buttonBackground = ui.buttonStart;
     return ThemeData(
       colorScheme: scheme,
       useMaterial3: true,
@@ -173,8 +182,11 @@ class _GoMusicAppState extends State<GoMusicApp> with WidgetsBindingObserver {
       }),
       // 卡片：玻璃拟态/霓虹描边/主题圆角（全部页面 Card 自动跟随）
       cardTheme: CardThemeData(
-        color: cardColor,
-        elevation: 0,
+        color: ui.cardStyle == SkinCardStyle.metal
+            ? Color.alphaBlend(Colors.white.withValues(alpha: 0.06), cardColor)
+            : cardColor,
+        elevation: ui.cardStyle == SkinCardStyle.neon ? 4 : (ui.cardStyle == SkinCardStyle.metal ? 2 : 0),
+        shadowColor: ui.buttonShadow == Colors.transparent ? skin.accent.withValues(alpha: 0.18) : ui.buttonShadow,
         shape: RoundedRectangleBorder(borderRadius: radius, side: cardBorder),
       ),
       // AppBar：动态皮肤透明融入背景
@@ -186,30 +198,57 @@ class _GoMusicAppState extends State<GoMusicApp> with WidgetsBindingObserver {
       ),
       // 底部导航：玻璃化
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: ui.navTransparent
-            ? scheme.surface.withValues(alpha: 0.65)
-            : scheme.surface,
-        elevation: 0,
+        type: ui.navStyle == SkinNavStyle.segmented
+            ? BottomNavigationBarType.shifting
+            : BottomNavigationBarType.fixed,
+        backgroundColor: ui.navStyle == SkinNavStyle.rail
+            ? Color.alphaBlend(skin.accent.withValues(alpha: 0.16), scheme.surface)
+            : ui.navStyle == SkinNavStyle.glass || ui.navTransparent
+                ? scheme.surface.withValues(alpha: 0.65)
+                : scheme.surface,
+        elevation: ui.navStyle == SkinNavStyle.rail ? 8 : 0,
         selectedItemColor: skin.accent,
+        unselectedItemColor: scheme.onSurface.withValues(alpha: 0.6),
+        selectedIconTheme: IconThemeData(size: ui.navStyle == SkinNavStyle.rail ? 28 : 24),
       ),
       // 按钮：全局圆角随主题
       filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: radius)),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(shape: RoundedRectangleBorder(borderRadius: radius)),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: radius),
-          side: ui.glassy ? BorderSide(color: skin.accent.withValues(alpha: 0.5)) : null,
+        style: ButtonStyle(
+          shape: WidgetStatePropertyAll(buttonShape),
+          backgroundColor: WidgetStatePropertyAll(buttonBackground),
+          foregroundColor: const WidgetStatePropertyAll(Colors.white),
+          side: WidgetStatePropertyAll(buttonSide),
+          shadowColor: WidgetStatePropertyAll(ui.buttonShadow == Colors.transparent ? skin.accent : ui.buttonShadow),
+          elevation: WidgetStatePropertyAll(ui.neonGlow ? 5 : 1),
+          padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 18, vertical: 12)),
         ),
       ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ButtonStyle(
+          shape: WidgetStatePropertyAll(buttonShape),
+          backgroundColor: WidgetStatePropertyAll(buttonBackground ?? ui.buttonStart),
+          foregroundColor: const WidgetStatePropertyAll(Colors.white),
+          side: WidgetStatePropertyAll(buttonSide),
+          shadowColor: WidgetStatePropertyAll(ui.buttonShadow == Colors.transparent ? skin.accent : ui.buttonShadow),
+          elevation: WidgetStatePropertyAll(ui.neonGlow ? 5 : 2),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: ButtonStyle(
+          shape: WidgetStatePropertyAll(buttonShape),
+          side: WidgetStatePropertyAll(buttonSide ?? BorderSide(color: skin.accent.withValues(alpha: 0.6))),
+          foregroundColor: WidgetStatePropertyAll(skin.accent),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: ui.inputFill != Colors.transparent,
+        fillColor: ui.inputFill == Colors.transparent ? null : ui.inputFill,
+        border: OutlineInputBorder(borderRadius: radius, borderSide: BorderSide(color: skin.accent.withValues(alpha: 0.35))),
+        focusedBorder: OutlineInputBorder(borderRadius: radius, borderSide: BorderSide(color: skin.accent, width: 1.6)),
+      ),
       dialogTheme: DialogThemeData(
-        backgroundColor: ui.glassy
-            ? scheme.surface.withValues(alpha: 0.92)
-            : scheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: radius),
+        backgroundColor: scheme.surface.withValues(alpha: ui.dialogOpacity),
+        shape: RoundedRectangleBorder(borderRadius: radius, side: cardBorder),
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: scheme.surface,

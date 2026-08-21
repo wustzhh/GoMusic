@@ -7,6 +7,7 @@ import '../services/settings_service.dart';
 import 'player_page.dart';
 import 'video_detail_page.dart';
 import '../widgets/song_queue_list.dart';
+import '../ui/theme_components.dart';
 
 class SongListPage extends StatefulWidget {
   final Playlist playlist;
@@ -531,7 +532,7 @@ class _SongListPageState extends State<SongListPage> {
       body: Column(children: [
         if (widget.playlist.id != 'recent') ...[
         Padding(padding: const EdgeInsets.fromLTRB(8, 6, 8, 0), child: TextField(
-          decoration: InputDecoration(hintText: '搜索...', prefixIcon: const Icon(Icons.search, size: 18), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 8), isDense: true),
+          decoration: ThemeComponents.inputDecoration(context, hintText: '搜索...', prefixIcon: const Icon(Icons.search, size: 18)).copyWith(contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 8), isDense: true),
           onChanged: (v) => setState(() => _searchText = v),
         )),
         // 功能栏
@@ -982,7 +983,11 @@ class _SongListPageState extends State<SongListPage> {
       isDismissible: true,
       barrierColor: Colors.black54,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-      builder: (_) => StatefulBuilder(
+      // 播放列表弹窗独立于 SongListPage 的 widget tree；监听当前歌曲通知，
+      // 自动切歌时立即刷新当前高亮、定位和队列内容。
+      builder: (_) => AnimatedBuilder(
+        animation: _service.currentSongNotifier,
+        builder: (_, __) => StatefulBuilder(
         builder: (ctx, setSheetState) => ConstrainedBox(
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.65),
         child: Container(
@@ -1022,6 +1027,7 @@ class _SongListPageState extends State<SongListPage> {
                 )),
           ]),
         ),
+      ),
       ),
       ),
     );

@@ -18,11 +18,29 @@ class DynamicBackground extends StatelessWidget {
       builder: (context, skin, _) {
         // 素皮肤：纯色无动画，不需要 controller
         if (!skin.animated) {
-          return ColoredBox(color: skin.background);
+          return _SkinTextureBackground(skin: skin, child: ColoredBox(color: skin.background));
         }
         return _AnimatedSkinBackground(skin: skin);
       },
     );
+  }
+}
+
+class _SkinTextureBackground extends StatelessWidget {
+  final SkinStyle skin;
+  final Widget child;
+  const _SkinTextureBackground({required this.skin, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (skin.textureAsset == null) return child;
+    return Stack(fit: StackFit.expand, children: [
+      child,
+      Opacity(
+        opacity: 0.16,
+        child: Image.asset(skin.textureAsset!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+      ),
+    ]);
   }
 }
 
@@ -58,13 +76,20 @@ class _AnimatedSkinBackgroundState extends State<_AnimatedSkinBackground>
       animation: _controller,
       builder: (context, _) {
         return RepaintBoundary(
-          child: CustomPaint(
-            painter: SkinBackgroundPainter(
-              skin: widget.skin,
-              tSeconds: _controller.value * 120,
+          child: Stack(fit: StackFit.expand, children: [
+            CustomPaint(
+              painter: SkinBackgroundPainter(
+                skin: widget.skin,
+                tSeconds: _controller.value * 120,
+              ),
+              size: Size.infinite,
             ),
-            size: Size.infinite,
-          ),
+            if (widget.skin.textureAsset != null)
+              Opacity(
+                opacity: 0.14,
+                child: Image.asset(widget.skin.textureAsset!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+              ),
+          ]),
         );
       },
     );
@@ -81,16 +106,23 @@ class SkinPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!skin.animated || animation == null) {
-      return ColoredBox(color: skin.background);
+      return _SkinTextureBackground(skin: skin, child: ColoredBox(color: skin.background));
     }
     final anim = animation!;
     return AnimatedBuilder(
       animation: anim,
       builder: (context, _) {
-        return CustomPaint(
-          painter: SkinBackgroundPainter(skin: skin, tSeconds: anim.value * 120),
-          size: Size.infinite,
-        );
+        return Stack(fit: StackFit.expand, children: [
+          CustomPaint(
+            painter: SkinBackgroundPainter(skin: skin, tSeconds: anim.value * 120),
+            size: Size.infinite,
+          ),
+          if (skin.textureAsset != null)
+            Opacity(
+              opacity: 0.16,
+              child: Image.asset(skin.textureAsset!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+            ),
+        ]);
       },
     );
   }

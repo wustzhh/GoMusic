@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 import 'package:gomusic/services/settings_service.dart';
 import 'package:gomusic/ui/skin.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,6 +31,16 @@ void main() {
     expect(Skins.plainDark.animated, false);
     for (final s in Skins.all.where((s) => s.animated)) {
       expect(s.orbs, isNotEmpty, reason: '${s.name} 应有光晕');
+    }
+  });
+
+  test('完整主题令牌：每套主题都有纹理和独立按钮/卡片/导航组合', () {
+    final signatures = Skins.all.map((s) => '${s.textureAsset}|${s.ui.buttonShape}|${s.ui.cardStyle}|${s.ui.navStyle}|${s.ui.buttonStart.value}').toSet();
+    expect(signatures.length, Skins.all.length);
+    for (final s in Skins.all) {
+      expect(s.textureAsset, isNotNull, reason: '${s.name} 缺少主题纹理');
+      expect(s.ui.buttonStart, isNot(Colors.transparent));
+      expect(s.ui.buttonEnd, isNot(Colors.transparent));
     }
   });
 
