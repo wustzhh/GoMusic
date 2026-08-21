@@ -68,6 +68,11 @@ void main() {
     await Future.delayed(const Duration(milliseconds: 200));
     expect(svc.currentSong?.bvid, 'BV2');
 
+    // 旧源滞后的 completed 事件到达时，新媒体已打开，不能再次跳到 BV3
+    lastFakePlayer!.emitStaleCompleted();
+    await Future.delayed(const Duration(milliseconds: 200));
+    expect(svc.currentSong?.bvid, 'BV2');
+
     // BV2 complete → 自动切 BV3（目标组第一首；自动切歌不刷新防抖，连播不卡）
     lastFakePlayer!.emitCompleted();
     await Future.delayed(const Duration(milliseconds: 200));

@@ -162,6 +162,10 @@ class AudioPlayerService {
   /// 生产构造与测试注入共用：挂载播放器事件监听
   void _attachPlayerListeners() {
     _playerRef!.stream.completed.listen((_) {
+      // Windows 换源时旧媒体的 completed 事件可能滞后到达；如果当前播放器
+      // 已经打开了新媒体（当前 state.completed=false），必须忽略这个旧事件，
+      // 否则一次真正结束会连续执行两次 next()，表现为跳过一首。
+      if (!_player.state.completed) return;
       _playing = false;
       _autoNext();
     });
@@ -464,8 +468,11 @@ class AudioPlayerService {
   DateTime? _lastCompleteAt;
   String? _lastCompleteKey; // 上次 complete 的歌曲 key（防抖1 只拦同歌重复）
   DateTime? _lastManualPlayAt;
+  bool _autoNextRunning = false;
   Future<void> _autoNext() async {
-    if (_queue.isEmpty) return;
+    if (_queue.isEmpty || _autoNextRunning) return;
+    _autoNextRunning = true;
+    try {
     final now = DateTime.now();
     // 手动播放/切歌后 2 秒内：旧源 complete 滞后到达，不是真播完，忽略
     if (_lastManualPlayAt != null && now.difference(_lastManualPlayAt!) < const Duration(seconds: 2)) {
@@ -487,6 +494,9 @@ class AudioPlayerService {
       return;
     }
     await next();
+    } finally {
+      _autoNextRunning = false;
+    }
   }
 
   Future<void> _next() async {

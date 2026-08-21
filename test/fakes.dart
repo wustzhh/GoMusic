@@ -63,6 +63,10 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
     StreamController<String>.broadcast().stream,
   );
 
+  void emitStaleCompleted() {
+    _completedCtl.add(true);
+  }
+
   void emitCompleted() {
     completed = true;
     playing = false;
