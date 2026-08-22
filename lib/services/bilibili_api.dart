@@ -249,6 +249,40 @@ class BilibiliApi {
 
   /// 请求播放地址（wbi 接口失败时降级到非 wbi），返回解析后的 JSON
   Future<Map<String, dynamic>?> _playUrl(Map<String, String> params) async {
+    // 全局限速：playurl 是 B站风控重点接口，短时间连发会被限流(-412/超时)。
+    // 批量下载每首解析都走这里，用静态时间戳保证跨请求间隔 ≥ 2s。
+    await _throttlePlayUrl();
+    // 失败自动重试（退避）：限流/超时是瞬时性的，重试可自然恢复
+    const delays = [Duration(milliseconds: 1400), Duration(seconds: 3), Duration(seconds: 6)];
+    Map<String, dynamic>? last;
+    for (var i = 0; i <= delays.length; i++) {
+      last = await _playUrlOnce(params);
+      if (last != null) return last;
+      if (i < delays.length) {
+        await Future.delayed(delays[i]);
+        await _throttlePlayUrl();
+      }
+    }
+    return last;
+  }
+
+  static DateTime _lastPlayUrlTime = DateTime.fromMillisecondsSinceEpoch(0);
+  static const _playUrlInterval = Duration(seconds: 2);
+
+  /// 等待直到距上次 playurl 请求 ≥ 间隔（跨实例全局生效）
+  Future<void> _throttlePlayUrl() async {
+    while (true) {
+      final now = DateTime.now();
+      final wait = _playUrlInterval - now.difference(_lastPlayUrlTime);
+      if (wait <= Duration.zero) {
+        _lastPlayUrlTime = now;
+        return;
+      }
+      await Future.delayed(wait);
+    }
+  }
+
+  Future<Map<String, dynamic>?> _playUrlOnce(Map<String, String> params) async {
     try {
       var p = await _signed(params);
       var uri = Uri.parse('https://api.bilibili.com/x/player/wbi/playurl')

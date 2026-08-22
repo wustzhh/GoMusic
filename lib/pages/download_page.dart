@@ -515,10 +515,25 @@ class _DownloadPageState extends State<DownloadPage> {
         break;
       }
       item.status = ok ? _BatchStatus.done : _BatchStatus.failed;
-      if (ok) item.exists = true;
-      item.queued = false;
-      _dlQueue.remove(item);
-      _queueDone++;
+      if (ok) {
+        item.exists = true;
+        item.retryCount = 0;
+        item.queued = false;
+        _dlQueue.remove(item);
+        _queueDone++;
+      } else if (item.retryCount < 2) {
+        // 失败插回队头优先重下（风控/超时多为瞬时，重下可恢复）
+        item.retryCount++;
+        item.queued = true;
+        item.status = _BatchStatus.waiting;
+        _dlQueue.insert(0, item);
+      } else {
+        // 超过重试上限：移除并标记失败，避免死循环
+        item.retryCount = 0;
+        item.queued = false;
+        _dlQueue.remove(item);
+        _queueDone++;
+      }
       if (mounted) setState(() {});
     }
     _queueRunning = false;
@@ -1112,6 +1127,7 @@ class _BatchItem {
   bool exists;
   _BatchStatus status = _BatchStatus.waiting;
   bool queued = false;   // 已进入下载队列（等待或下载中）
+  int retryCount = 0;    // 已重试次数（失败插回队头重下，超上限移除）
   double progress = 0;   // 0~1
   double speed = 0;      // bytes/秒
   int receivedBytes = 0; // 已下载字节（total 未知时显示容量）
