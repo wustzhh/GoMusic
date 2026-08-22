@@ -616,20 +616,30 @@ class _SongListPageState extends State<SongListPage> {
             ),
           ]),
         ),
-        // 批量操作栏：Wrap 换行，按钮永不消失/溢出
+        // 批量操作栏：单行横向滚动，按钮永不换行/溢出
         if (_batchMode)
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-            child: Wrap(spacing: 2, runSpacing: 2, children: [
-              _batchBtn(Icons.copy, '复制链接', _batchCopyLinks),
-              _batchBtn(Icons.playlist_add, '添加到', _batchAddTo),
-              if (widget.playlist.id != 'local')
-                _batchBtn(Icons.playlist_remove, '移出', _batchRemove),
-              _batchBtn(Icons.group_add, '组队', _batchGroup),
-              _batchBtn(Icons.swap_vert, '反转', _reversePlaylist),
-              if (widget.playlist.id == 'local')
-                _batchBtn(Icons.delete, '删除', _batchDelete, red: true),
-            ]),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                _batchBtn(Icons.copy, '复制链接', _batchCopyLinks),
+                const SizedBox(width: 2),
+                _batchBtn(Icons.playlist_add, '添加到', _batchAddTo),
+                const SizedBox(width: 2),
+                if (widget.playlist.id != 'local') ...[
+                  _batchBtn(Icons.playlist_remove, '移出', _batchRemove),
+                  const SizedBox(width: 2),
+                ],
+                _batchBtn(Icons.group_add, '组队', _batchGroup),
+                const SizedBox(width: 2),
+                _batchBtn(Icons.swap_vert, '反转', _reversePlaylist),
+                if (widget.playlist.id == 'local') ...[
+                  const SizedBox(width: 2),
+                  _batchBtn(Icons.delete, '删除', _batchDelete, red: true),
+                ],
+              ]),
+            ),
           ),
         const Divider(height: 1),
         ],

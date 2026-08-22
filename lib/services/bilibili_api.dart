@@ -218,6 +218,17 @@ class BilibiliApi {
     }
     if (bvid == null) return null;
 
+    // 失败自动重试（view 接口网络抖动/瞬时风控会导致偶发失败，重试可恢复）
+    const delays = [Duration(milliseconds: 800), Duration(seconds: 2), Duration(seconds: 4)];
+    for (var i = 0; i <= delays.length; i++) {
+      final info = await _getVideoInfoOnce(bvid, url);
+      if (info != null) return info;
+      if (i < delays.length) await Future.delayed(delays[i]);
+    }
+    return null;
+  }
+
+  Future<BilibiliVideoInfo?> _getVideoInfoOnce(String bvid, String url) async {
     try {
       final p = await _signed({'bvid': bvid});
       final uri = Uri.parse('https://api.bilibili.com/x/web-interface/view')

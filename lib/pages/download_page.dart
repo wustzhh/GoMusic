@@ -101,6 +101,7 @@ class _DownloadPageState extends State<DownloadPage> {
 
   /// 检测剪贴板内容并填入输入框，然后自动解析
   Future<void> _pasteAndParse() async {
+    if (_isParsing) return; // 防重入：解析中不再触发新解析
     try {
       final data = await Clipboard.getData(Clipboard.kTextPlain);
       final text = data?.text?.trim() ?? '';
