@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
@@ -97,6 +98,23 @@ class _DownloadPageState extends State<DownloadPage> {
   }
 
   // ==================== 解析 ====================
+
+  /// 检测剪贴板内容并填入输入框，然后自动解析
+  Future<void> _pasteAndParse() async {
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = data?.text?.trim() ?? '';
+      if (text.isEmpty) {
+        _snack('剪贴板没有可粘贴的链接');
+        return;
+      }
+      setState(() => _urlController.text = text);
+      // 填入后自动解析（多链接一次性解析）
+      _parseUrl();
+    } catch (_) {
+      _snack('读取剪贴板失败');
+    }
+  }
 
   Future<void> _parseUrl() async {
     _urlFocus.unfocus(); // 点击解析/提交后收起键盘、失去焦点
@@ -652,6 +670,14 @@ class _DownloadPageState extends State<DownloadPage> {
     return true;
   }
 
+  /// 复制全部歌曲链接（换行拼接）
+  void _copyAllLinks() {
+    if (_batchItems.isEmpty) return;
+    final text = _batchItems.map((b) => b.info.url).join('\n');
+    Clipboard.setData(ClipboardData(text: text));
+    _snack('已复制 ${_batchItems.length} 个链接');
+  }
+
   /// 一键下载全部：未下载的歌全部入队（排队下载）
   void _startBatch() {
     _cancelNotifier = ValueNotifier(false);
@@ -719,7 +745,11 @@ class _DownloadPageState extends State<DownloadPage> {
             decoration: InputDecoration(
               hintText: '粘贴B站分享链接或视频/收藏夹链接...',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              prefixIcon: const Icon(Icons.link, size: 20),
+              prefixIcon: IconButton(
+                icon: const Icon(Icons.content_paste, size: 20, color: Colors.grey),
+                tooltip: '粘贴并解析',
+                onPressed: _pasteAndParse,
+              ),
               suffixIcon: IconButton(
                 icon: const Icon(Icons.close, size: 18, color: Colors.grey),
                 tooltip: '',
@@ -967,6 +997,17 @@ class _DownloadPageState extends State<DownloadPage> {
       const SizedBox(height: 8),
       Row(children: [
         Text('收藏夹 · ${_batchItems.length}个视频', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        const SizedBox(width: 8),
+        // 复制全部歌曲链接（换行拼接）
+        InkWell(
+          onTap: _copyAllLinks,
+          borderRadius: BorderRadius.circular(4),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.copy, size: 14, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 2),
+            Text('复制链接', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.primary)),
+          ]),
+        ),
         const Spacer(),
         Text('音频', style: const TextStyle(fontSize: 11)),
         Switch(value: _downloadAudio, onChanged: _isDownloading ? null : (v) => setState(() => _downloadAudio = v)),
