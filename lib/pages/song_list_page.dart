@@ -621,6 +621,7 @@ class _SongListPageState extends State<SongListPage> {
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
             child: Wrap(spacing: 2, runSpacing: 2, children: [
+              _batchBtn(Icons.copy, '复制链接', _batchCopyLinks),
               _batchBtn(Icons.playlist_add, '添加到', _batchAddTo),
               if (widget.playlist.id != 'local')
                 _batchBtn(Icons.playlist_remove, '移出', _batchRemove),
@@ -1107,6 +1108,21 @@ class _SongListPageState extends State<SongListPage> {
   List<Song> _selectedSongs() {
     final f = _getFiltered();
     return f.where((s) => _selectedPaths.contains(_songKey(s))).toList();
+  }
+
+  // 批量：复制选中歌曲链接（B站视频链接，换行拼接）
+  void _batchCopyLinks() {
+    final sel = _selectedSongs();
+    if (sel.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先勾选歌曲')));
+      return;
+    }
+    final links = sel.map((s) {
+      final bv = s.bvid.isNotEmpty ? s.bvid : _songKey(s);
+      return bv.startsWith('BV') ? 'https://www.bilibili.com/video/$bv' : bv;
+    }).join('\n');
+    Clipboard.setData(ClipboardData(text: links));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已复制 ${sel.length} 个链接')));
   }
 
   // 批量：添加到歌单
