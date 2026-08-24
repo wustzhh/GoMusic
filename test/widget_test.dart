@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gomusic/main.dart';
 import 'package:gomusic/services/audio_player_service.dart';
@@ -19,9 +20,9 @@ void main() {
     Directory.current = tmp;
     try {
       await tester.pumpWidget(const GoMusicApp());
-      expect(find.text('下载'), findsWidgets);
-      expect(find.text('播放'), findsWidgets);
-      expect(find.text('设置'), findsWidgets);
+      expect(find.byIcon(Icons.download), findsWidgets);
+      expect(find.byIcon(Icons.play_circle_outline), findsWidgets);
+      expect(find.byIcon(Icons.settings_outlined), findsWidgets);
     } finally {
       // 释放播放服务中的进度轮询定时器，避免测试结束时有 pending timer
       AudioPlayerService().disposeForTest();

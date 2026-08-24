@@ -18,7 +18,10 @@ class DynamicBackground extends StatelessWidget {
       builder: (context, skin, _) {
         // 素皮肤：纯色无动画，不需要 controller
         if (!skin.animated) {
-          return _SkinTextureBackground(skin: skin, child: ColoredBox(color: skin.background));
+          return _SkinTextureBackground(
+            skin: skin,
+            child: ColoredBox(color: skin.background),
+          );
         }
         return _AnimatedSkinBackground(skin: skin);
       },
@@ -34,13 +37,20 @@ class _SkinTextureBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (skin.textureAsset == null) return child;
-    return Stack(fit: StackFit.expand, children: [
-      child,
-      Opacity(
-        opacity: 0.16,
-        child: Image.asset(skin.textureAsset!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-      ),
-    ]);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child,
+        Opacity(
+          opacity: skin.ui.neonGlow ? 0.22 : 0.16,
+          child: Image.asset(
+            skin.textureAsset!,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -48,7 +58,8 @@ class _AnimatedSkinBackground extends StatefulWidget {
   final SkinStyle skin;
   const _AnimatedSkinBackground({required this.skin});
   @override
-  State<_AnimatedSkinBackground> createState() => _AnimatedSkinBackgroundState();
+  State<_AnimatedSkinBackground> createState() =>
+      _AnimatedSkinBackgroundState();
 }
 
 class _AnimatedSkinBackgroundState extends State<_AnimatedSkinBackground>
@@ -76,20 +87,27 @@ class _AnimatedSkinBackgroundState extends State<_AnimatedSkinBackground>
       animation: _controller,
       builder: (context, _) {
         return RepaintBoundary(
-          child: Stack(fit: StackFit.expand, children: [
-            CustomPaint(
-              painter: SkinBackgroundPainter(
-                skin: widget.skin,
-                tSeconds: _controller.value * 120,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CustomPaint(
+                painter: SkinBackgroundPainter(
+                  skin: widget.skin,
+                  tSeconds: _controller.value * 120,
+                ),
+                size: Size.infinite,
               ),
-              size: Size.infinite,
-            ),
-            if (widget.skin.textureAsset != null)
-              Opacity(
-                opacity: 0.14,
-                child: Image.asset(widget.skin.textureAsset!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-              ),
-          ]),
+              if (widget.skin.textureAsset != null)
+                Opacity(
+                  opacity: widget.skin.ui.neonGlow ? 0.20 : 0.14,
+                  child: Image.asset(
+                    widget.skin.textureAsset!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  ),
+                ),
+            ],
+          ),
         );
       },
     );
@@ -106,23 +124,36 @@ class SkinPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!skin.animated || animation == null) {
-      return _SkinTextureBackground(skin: skin, child: ColoredBox(color: skin.background));
+      return _SkinTextureBackground(
+        skin: skin,
+        child: ColoredBox(color: skin.background),
+      );
     }
     final anim = animation!;
     return AnimatedBuilder(
       animation: anim,
       builder: (context, _) {
-        return Stack(fit: StackFit.expand, children: [
-          CustomPaint(
-            painter: SkinBackgroundPainter(skin: skin, tSeconds: anim.value * 120),
-            size: Size.infinite,
-          ),
-          if (skin.textureAsset != null)
-            Opacity(
-              opacity: 0.16,
-              child: Image.asset(skin.textureAsset!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            CustomPaint(
+              painter: SkinBackgroundPainter(
+                skin: skin,
+                tSeconds: anim.value * 120,
+              ),
+              size: Size.infinite,
             ),
-        ]);
+            if (skin.textureAsset != null)
+              Opacity(
+                opacity: 0.16,
+                child: Image.asset(
+                  skin.textureAsset!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+          ],
+        );
       },
     );
   }
@@ -140,43 +171,43 @@ class _Rand {
 class _Star {
   final double x, y, size, speed, phase;
   _Star(_Rand r)
-      : x = r.nextDouble(),
-        y = r.nextDouble(),
-        size = 0.6 + r.nextDouble() * 1.4,
-        speed = 0.4 + r.nextDouble() * 1.2,
-        phase = r.nextDouble() * pi * 2;
+    : x = r.nextDouble(),
+      y = r.nextDouble(),
+      size = 0.6 + r.nextDouble() * 1.4,
+      speed = 0.4 + r.nextDouble() * 1.2,
+      phase = r.nextDouble() * pi * 2;
 }
 
 class _Meteor {
   final double startX, startY, dx, dy, speed, period, phase;
   _Meteor(_Rand r)
-      : startX = 0.05 + r.nextDouble() * 0.9,
-        startY = 0.02 + r.nextDouble() * 0.4,
-        dx = 0.30 + r.nextDouble() * 0.25,
-        dy = 0.22 + r.nextDouble() * 0.18,
-        speed = 0.25 + r.nextDouble() * 0.2,
-        period = 5 + r.nextDouble() * 6,
-        phase = r.nextDouble() * pi * 2;
+    : startX = 0.05 + r.nextDouble() * 0.9,
+      startY = 0.02 + r.nextDouble() * 0.4,
+      dx = 0.30 + r.nextDouble() * 0.25,
+      dy = 0.22 + r.nextDouble() * 0.18,
+      speed = 0.25 + r.nextDouble() * 0.2,
+      period = 5 + r.nextDouble() * 6,
+      phase = r.nextDouble() * pi * 2;
 }
 
 class _Ember {
   final double x, size, speed, phase;
   final int colorIdx;
   _Ember(_Rand r)
-      : x = r.nextDouble(),
-        size = 1.0 + r.nextDouble() * 2.2,
-        speed = 0.10 + r.nextDouble() * 0.25,
-        phase = r.nextDouble() * pi * 2,
-        colorIdx = r.nextDouble() < 0.6 ? 0 : 1;
+    : x = r.nextDouble(),
+      size = 1.0 + r.nextDouble() * 2.2,
+      speed = 0.10 + r.nextDouble() * 0.25,
+      phase = r.nextDouble() * pi * 2,
+      colorIdx = r.nextDouble() < 0.6 ? 0 : 1;
 }
 
 class _Spark {
   final double x, y, size, phase;
   _Spark(_Rand r)
-      : x = r.nextDouble(),
-        y = r.nextDouble(),
-        size = 1.0 + r.nextDouble() * 1.6,
-        phase = r.nextDouble() * pi * 2;
+    : x = r.nextDouble(),
+      y = r.nextDouble(),
+      size = 1.0 + r.nextDouble() * 1.6,
+      phase = r.nextDouble() * pi * 2;
 }
 
 /// 每套皮肤的粒子集合（按 skin id 静态缓存，painter 每帧重建也不重复生成）
@@ -186,10 +217,10 @@ class _ParticleSet {
   final List<_Ember> embers;
   final List<_Spark> sparks;
   _ParticleSet(String id)
-      : stars = _gen(id, 55, (r) => _Star(r)),
-        meteors = _gen(id, 5, (r) => _Meteor(r)),
-        embers = _gen(id, 28, (r) => _Ember(r)),
-        sparks = _gen(id, 10, (r) => _Spark(r));
+    : stars = _gen(id, 55, (r) => _Star(r)),
+      meteors = _gen(id, 5, (r) => _Meteor(r)),
+      embers = _gen(id, 28, (r) => _Ember(r)),
+      sparks = _gen(id, 10, (r) => _Spark(r));
 
   static List<T> _gen<T>(String id, int n, T Function(_Rand) make) {
     final r = _Rand(id.hashCode.abs());
@@ -224,9 +255,11 @@ class SkinBackgroundPainter extends CustomPainter {
 
     // 1. 漂移光晕（径向渐变，GPU 合成，无 blur）
     for (final orb in skin.orbs) {
-      final rawPx = orb.cx * size.width +
+      final rawPx =
+          orb.cx * size.width +
           sin(t / orb.period * pi * 2 + orb.phase) * orb.ampX * short;
-      final rawPy = orb.cy * size.height +
+      final rawPy =
+          orb.cy * size.height +
           cos(t / orb.period * pi * 2 + orb.phase) * orb.ampY * short;
       // 防御：shader 中心必须保持在画布内（部分渲染路径不绘制画布外的中心）
       final px = rawPx.clamp(size.width * 0.05, size.width * 0.95);
@@ -309,27 +342,48 @@ class SkinBackgroundPainter extends CustomPainter {
     for (var i = 0; i < 12; i++) {
       final p = (i + scroll) / 12;
       final y = horizon + (h - horizon) * p * p;
-      canvas.drawLine(Offset(0, y), Offset(w, y),
-          Paint()..color = lineColor..strokeWidth = 1);
+      canvas.drawLine(
+        Offset(0, y),
+        Offset(w, y),
+        Paint()
+          ..color = lineColor
+          ..strokeWidth = 1,
+      );
     }
     // 放射线（通向消失点）
     for (var i = 0; i <= 16; i++) {
       final x = w * i / 16;
-      canvas.drawLine(vp, Offset(x, h),
-          Paint()..color = lineColor..strokeWidth = 1);
+      canvas.drawLine(
+        vp,
+        Offset(x, h),
+        Paint()
+          ..color = lineColor
+          ..strokeWidth = 1,
+      );
     }
     // 地平线：亮线 + 光晕
-    canvas.drawLine(Offset(0, horizon), Offset(w, horizon),
-        Paint()..color = glowColor..strokeWidth = 2);
+    canvas.drawLine(
+      Offset(0, horizon),
+      Offset(w, horizon),
+      Paint()
+        ..color = glowColor
+        ..strokeWidth = 2,
+    );
     final haloRect = Rect.fromCenter(
-        center: Offset(w / 2, horizon), width: w * 0.9, height: h * 0.14);
+      center: Offset(w / 2, horizon),
+      width: w * 0.9,
+      height: h * 0.14,
+    );
     canvas.drawRect(
-        haloRect,
-        Paint()
-          ..shader = RadialGradient(colors: [
+      haloRect,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
             skin.accent.withValues(alpha: 0.30),
             skin.accent.withValues(alpha: 0),
-          ]).createShader(haloRect));
+          ],
+        ).createShader(haloRect),
+    );
   }
 
   /// 扫描线：亮带从上到下循环扫描（科技感）
@@ -338,17 +392,18 @@ class SkinBackgroundPainter extends CustomPainter {
     final y = cycle * size.height;
     final rect = Rect.fromLTWH(0, y - 34, size.width, 68);
     canvas.drawRect(
-        rect,
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              skin.accent.withValues(alpha: 0),
-              skin.accent.withValues(alpha: 0.22),
-              skin.accent.withValues(alpha: 0),
-            ],
-          ).createShader(rect));
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            skin.accent.withValues(alpha: 0),
+            skin.accent.withValues(alpha: 0.22),
+            skin.accent.withValues(alpha: 0),
+          ],
+        ).createShader(rect),
+    );
   }
 
   /// 电路纹路：曼哈顿风格折线 + 呼吸节点（电光皮肤）
@@ -370,16 +425,17 @@ class SkinBackgroundPainter extends CustomPainter {
         path.lineTo(x, y);
       }
       canvas.drawPath(
-          path,
-          Paint()
-            ..color = skin.accent.withValues(alpha: lineAlpha)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 1.2);
+        path,
+        Paint()
+          ..color = skin.accent.withValues(alpha: lineAlpha)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2,
+      );
       canvas.drawCircle(
-          Offset(x, y),
-          2.4,
-          Paint()
-            ..color = skin.accent.withValues(alpha: 0.25 + 0.5 * breath));
+        Offset(x, y),
+        2.4,
+        Paint()..color = skin.accent.withValues(alpha: 0.25 + 0.5 * breath),
+      );
     }
   }
 
@@ -387,8 +443,12 @@ class SkinBackgroundPainter extends CustomPainter {
   void _paintRibbons(Canvas canvas, Size size, double t) {
     final colors = skin.id == 'rainbow'
         ? const [
-            Color(0xFFFF5252), Color(0xFFFFA726), Color(0xFFFFEE58),
-            Color(0xFF66BB6A), Color(0xFF29B6F6), Color(0xFFAB47BC),
+            Color(0xFFFF5252),
+            Color(0xFFFFA726),
+            Color(0xFFFFEE58),
+            Color(0xFF66BB6A),
+            Color(0xFF29B6F6),
+            Color(0xFFAB47BC),
           ]
         : [skin.accent, const Color(0xFF00E5A0), const Color(0xFFB388FF)];
     for (var i = 0; i < colors.length; i++) {
@@ -397,9 +457,11 @@ class SkinBackgroundPainter extends CustomPainter {
       const steps = 64;
       for (var s = 0; s <= steps; s++) {
         final x = size.width * s / steps;
-        final y = baseY +
+        final y =
+            baseY +
             sin(x / size.width * pi * 2.2 + t * 0.45 + i * 1.7) *
-                size.height * 0.055 +
+                size.height *
+                0.055 +
             sin(x / size.width * pi * 5.0 + t * 0.28 + i) * size.height * 0.018;
         if (s == 0) {
           path.moveTo(x, y);
@@ -408,12 +470,13 @@ class SkinBackgroundPainter extends CustomPainter {
         }
       }
       canvas.drawPath(
-          path,
-          Paint()
-            ..color = colors[i].withValues(alpha: 0.30)
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = 9.0 + i * 1.6
-            ..strokeCap = StrokeCap.round);
+        path,
+        Paint()
+          ..color = colors[i].withValues(alpha: 0.30)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 9.0 + i * 1.6
+          ..strokeCap = StrokeCap.round,
+      );
     }
   }
 
@@ -438,19 +501,21 @@ class SkinBackgroundPainter extends CustomPainter {
       }
     }
     canvas.drawPath(
-        path,
-        Paint()
-          ..color = const Color(0xFF8C9EFF).withValues(alpha: 0.28)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 20
-          ..strokeCap = StrokeCap.round);
+      path,
+      Paint()
+        ..color = const Color(0xFF8C9EFF).withValues(alpha: 0.28)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 20
+        ..strokeCap = StrokeCap.round,
+    );
     canvas.drawPath(
-        path,
-        Paint()
-          ..color = skin.accent.withValues(alpha: 0.45)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 6
-          ..strokeCap = StrokeCap.round);
+      path,
+      Paint()
+        ..color = skin.accent.withValues(alpha: 0.45)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 6
+        ..strokeCap = StrokeCap.round,
+    );
   }
 
   void _paintStars(Canvas canvas, Size size, double t) {
@@ -475,7 +540,10 @@ class SkinBackgroundPainter extends CustomPainter {
       final sx = m.startX * size.width + p * m.dx * size.width;
       final sy = m.startY * size.height + p * m.dy * size.height;
       final fade = sin(p * pi); // 中段最亮
-      final tail = Offset(sx - m.dx * size.width * 0.16, sy - m.dy * size.height * 0.16);
+      final tail = Offset(
+        sx - m.dx * size.width * 0.16,
+        sy - m.dy * size.height * 0.16,
+      );
       final paint = Paint()
         ..shader = LinearGradient(
           colors: [
@@ -544,7 +612,6 @@ class SkinBackgroundPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant SkinBackgroundPainter oldDelegate) {
-    return oldDelegate.skin.id != skin.id ||
-        oldDelegate.tSeconds != tSeconds;
+    return oldDelegate.skin.id != skin.id || oldDelegate.tSeconds != tSeconds;
   }
 }

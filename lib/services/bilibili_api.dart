@@ -79,7 +79,8 @@ class BilibiliVideoInfo {
 
   String get audioSizeText {
     if (audioSize <= 0) return '未知';
-    if (audioSize < 1048576) return '${(audioSize / 1024).toStringAsFixed(0)}KB';
+    if (audioSize < 1048576)
+      return '${(audioSize / 1024).toStringAsFixed(0)}KB';
     return '${(audioSize / 1048576).toStringAsFixed(1)}MB';
   }
 }
@@ -129,6 +130,20 @@ class BilibiliApi {
     return m?.group(0);
   }
 
+  /// Extract every unique URL from pasted text, preserving input order.
+  static List<String> extractUrls(String text) {
+    final seen = <String>{};
+    return RegExp(r'https?://.*?(?=https?://|\s|["<>]|$)')
+        .allMatches(text)
+        .map((m) {
+          return m
+              .group(0)!
+              .replaceFirst(RegExp(r'[^A-Za-z0-9/:_?=&.%-]+$'), '');
+        })
+        .where((url) => url.isNotEmpty && seen.add(url))
+        .toList();
+  }
+
   /// 解析 b23.tv 短链：跟随重定向返回真实 URL（含 BV 号/合集ID）。
   /// 非短链直接返回原 URL；失败也返回原 URL（由后续逻辑兜底）。
   static Future<String> resolveShortUrl(String url) async {
@@ -145,7 +160,9 @@ class BilibiliApi {
           : t;
       // location 可能是相对路径（如 /video/BVxxx），补全为完整 URL
       if (finalUrl.startsWith('/')) {
-        final base = resp.redirects.isNotEmpty ? resp.redirects.first.location : Uri.parse(t);
+        final base = resp.redirects.isNotEmpty
+            ? resp.redirects.first.location
+            : Uri.parse(t);
         final host = base.host.isEmpty ? Uri.parse(t).host : base.host;
         finalUrl = 'https://$host$finalUrl';
       }
@@ -163,21 +180,91 @@ class BilibiliApi {
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if (_mixinKey != null && now < _mixinKeyExpire) return _mixinKey!;
     try {
-      final r = await http.get(
-        Uri.parse('https://api.bilibili.com/x/web-interface/nav'),
-        headers: _headers,
-      ).timeout(const Duration(seconds: 5));
+      final r = await http
+          .get(
+            Uri.parse('https://api.bilibili.com/x/web-interface/nav'),
+            headers: _headers,
+          )
+          .timeout(const Duration(seconds: 5));
       if (r.statusCode == 200) {
         final d = jsonDecode(r.body);
         final w = d['data']['wbi_img'] ?? {};
-        final a = (w['img_url'] as String? ?? '').split('/').last.split('.').first;
-        final b = (w['sub_url'] as String? ?? '').split('/').last.split('.').first;
+        final a = (w['img_url'] as String? ?? '')
+            .split('/')
+            .last
+            .split('.')
+            .first;
+        final b = (w['sub_url'] as String? ?? '')
+            .split('/')
+            .last
+            .split('.')
+            .first;
         final s = a + b;
         const map = [
-          46,47,18,2,53,8,23,32,15,50,10,31,58,3,45,35,
-          27,43,5,49,33,9,42,19,29,28,14,39,12,38,41,13,
-          37,48,7,16,24,55,40,61,26,17,0,1,60,51,30,4,
-          22,25,54,21,56,59,6,63,57,62,11,36,20,34,44,52,
+          46,
+          47,
+          18,
+          2,
+          53,
+          8,
+          23,
+          32,
+          15,
+          50,
+          10,
+          31,
+          58,
+          3,
+          45,
+          35,
+          27,
+          43,
+          5,
+          49,
+          33,
+          9,
+          42,
+          19,
+          29,
+          28,
+          14,
+          39,
+          12,
+          38,
+          41,
+          13,
+          37,
+          48,
+          7,
+          16,
+          24,
+          55,
+          40,
+          61,
+          26,
+          17,
+          0,
+          1,
+          60,
+          51,
+          30,
+          4,
+          22,
+          25,
+          54,
+          21,
+          56,
+          59,
+          6,
+          63,
+          57,
+          62,
+          11,
+          36,
+          20,
+          34,
+          44,
+          52,
         ];
         final buf = StringBuffer();
         for (final i in map) {
@@ -209,7 +296,10 @@ class BilibiliApi {
   // ---- API ----
 
   /// 获取视频信息（含流大小）
-  Future<BilibiliVideoInfo?> getVideoInfo(String url) async {
+  Future<BilibiliVideoInfo?> getVideoInfo(
+    String url, {
+    bool includeStreams = true,
+  }) async {
     // b23.tv 短链：先解析出真实 URL 再提取 BV 号
     var bvid = extractBvid(url);
     if (bvid == null && url.contains('b23.tv')) {
@@ -219,22 +309,40 @@ class BilibiliApi {
     if (bvid == null) return null;
 
     // 失败自动重试（view 接口网络抖动/瞬时风控会导致偶发失败，重试可恢复）
-    const delays = [Duration(milliseconds: 800), Duration(seconds: 2), Duration(seconds: 4)];
+    const delays = [
+      Duration(milliseconds: 800),
+      Duration(seconds: 2),
+      Duration(seconds: 4),
+    ];
     for (var i = 0; i <= delays.length; i++) {
-      final info = await _getVideoInfoOnce(bvid, url);
+      final info = await _getVideoInfoOnce(
+        bvid,
+        url,
+        includeStreams: includeStreams,
+      );
       if (info != null) return info;
       if (i < delays.length) await Future.delayed(delays[i]);
     }
     return null;
   }
 
-  Future<BilibiliVideoInfo?> _getVideoInfoOnce(String bvid, String url) async {
+  /// Loads download streams separately from the lightweight metadata parse.
+  Future<void> loadStreams(BilibiliVideoInfo info) => _fetchStreams(info);
+
+  Future<BilibiliVideoInfo?> _getVideoInfoOnce(
+    String bvid,
+    String url, {
+    required bool includeStreams,
+  }) async {
     try {
       final p = await _signed({'bvid': bvid});
-      final uri = Uri.parse('https://api.bilibili.com/x/web-interface/view')
-          .replace(queryParameters: p);
+      final uri = Uri.parse(
+        'https://api.bilibili.com/x/web-interface/view',
+      ).replace(queryParameters: p);
 
-      final r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 15));
+      final r = await http
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 15));
       if (r.statusCode != 200) return null;
 
       final d = jsonDecode(r.body);
@@ -251,7 +359,7 @@ class BilibiliApi {
         cid: v['cid'] as int? ?? (v['pages']?[0]?['cid'] as int? ?? 0),
       );
 
-      await _fetchStreams(info);
+      if (includeStreams) await _fetchStreams(info);
       return info;
     } catch (_) {
       return null;
@@ -264,7 +372,11 @@ class BilibiliApi {
     // 批量下载每首解析都走这里，用静态时间戳保证跨请求间隔 ≥ 2s。
     await _throttlePlayUrl();
     // 失败自动重试（退避）：限流/超时是瞬时性的，重试可自然恢复
-    const delays = [Duration(milliseconds: 1400), Duration(seconds: 3), Duration(seconds: 6)];
+    const delays = [
+      Duration(milliseconds: 1400),
+      Duration(seconds: 3),
+      Duration(seconds: 6),
+    ];
     Map<String, dynamic>? last;
     for (var i = 0; i <= delays.length; i++) {
       last = await _playUrlOnce(params);
@@ -296,17 +408,24 @@ class BilibiliApi {
   Future<Map<String, dynamic>?> _playUrlOnce(Map<String, String> params) async {
     try {
       var p = await _signed(params);
-      var uri = Uri.parse('https://api.bilibili.com/x/player/wbi/playurl')
-          .replace(queryParameters: p);
-      var r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 8));
+      var uri = Uri.parse(
+        'https://api.bilibili.com/x/player/wbi/playurl',
+      ).replace(queryParameters: p);
+      var r = await http
+          .get(uri, headers: _headers)
+          .timeout(const Duration(seconds: 8));
       // 签名可能过期/被风控：刷新 mixinKey 重试一次（不降级到无签名接口，避免清晰度受限）
-      if (r.statusCode != 200 || (jsonDecode(r.body)['code'] != 0 && r.body.isNotEmpty)) {
+      if (r.statusCode != 200 ||
+          (jsonDecode(r.body)['code'] != 0 && r.body.isNotEmpty)) {
         _mixinKey = null;
         _mixinKeyExpire = 0;
         p = await _signed(params);
-        uri = Uri.parse('https://api.bilibili.com/x/player/wbi/playurl')
-            .replace(queryParameters: p);
-        r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 8));
+        uri = Uri.parse(
+          'https://api.bilibili.com/x/player/wbi/playurl',
+        ).replace(queryParameters: p);
+        r = await http
+            .get(uri, headers: _headers)
+            .timeout(const Duration(seconds: 8));
       }
       if (r.statusCode != 200) return null;
       final d = jsonDecode(r.body);
@@ -333,7 +452,10 @@ class BilibiliApi {
       if (d == null) return null;
       final durls = (d['data']['durl'] as List?) ?? [];
       if (durls.isEmpty) return null;
-      final u = (durls.first['url'] as String? ?? '').replaceAll('http:', 'https:');
+      final u = (durls.first['url'] as String? ?? '').replaceAll(
+        'http:',
+        'https:',
+      );
       return u.isEmpty ? null : u;
     } catch (_) {
       return null;
@@ -361,64 +483,78 @@ class BilibiliApi {
 
       // 视频分辨率列表（DASH 无声流，解析期仅用于展示；下载时换 durl 带音轨）
       final videos = (dash['video'] as List?) ?? [];
-      info.videoStreams = videos.map((v) => VideoStream(
-        id: (v['id'] as int?) ?? 0,
-        bandwidth: (v['bandwidth'] as int?) ?? 0,
-        width: (v['width'] as int?) ?? 0,
-        height: (v['height'] as int?) ?? 0,
-        codecs: (v['codecs'] as String?) ?? '',
-        baseUrl: ((v['baseUrl'] ?? v['base_url']) as String?)?.replaceAll('http:', 'https:'),
-        size: (v['size'] as int?) ?? 0,
-      )).toList()
-        ..sort((a, b) => (b.width * b.height).compareTo(a.width * a.height));
+      info.videoStreams =
+          videos
+              .map(
+                (v) => VideoStream(
+                  id: (v['id'] as int?) ?? 0,
+                  bandwidth: (v['bandwidth'] as int?) ?? 0,
+                  width: (v['width'] as int?) ?? 0,
+                  height: (v['height'] as int?) ?? 0,
+                  codecs: (v['codecs'] as String?) ?? '',
+                  baseUrl: ((v['baseUrl'] ?? v['base_url']) as String?)
+                      ?.replaceAll('http:', 'https:'),
+                  size: (v['size'] as int?) ?? 0,
+                ),
+              )
+              .toList()
+            ..sort(
+              (a, b) => (b.width * b.height).compareTo(a.width * a.height),
+            );
 
       // 最佳音频流（DASH m4a）
       Map<String, dynamic>? best;
       final audios = (dash['audio'] as List?) ?? [];
       if (audios.isNotEmpty) {
-        audios.sort((a, b) =>
-            ((b['bandwidth'] as int?) ?? 0).compareTo((a['bandwidth'] as int?) ?? 0));
+        audios.sort(
+          (a, b) => ((b['bandwidth'] as int?) ?? 0).compareTo(
+            (a['bandwidth'] as int?) ?? 0,
+          ),
+        );
         final b = audios.first as Map<String, dynamic>;
         best = b;
         final bestUrl = (b['baseUrl'] ?? b['base_url']) as String?;
         info.audioUrl = bestUrl?.replaceAll('http:', 'https:');
         info.audioSize = (b['size'] as int?) ?? 0;
-      // 探测音视频真实体积（Range bytes=0-0 读 Content-Range）
-      final probeHeaders = {
-        'User-Agent': _ua,
-        'Referer': 'https://www.bilibili.com/',
-        'Range': 'bytes=0-0',
-        if (cookie != null && cookie!.isNotEmpty) 'Cookie': cookie!,
-      };
-      Future<void> probe(String? url, void Function(int) setSize) async {
-        if (url == null || url.isEmpty) return;
-        try {
-          final req = http.Request('GET', Uri.parse(url));
-          req.headers.addAll(probeHeaders);
-          final r = await req.send().timeout(const Duration(seconds: 5));
-          final cr = r.headers['content-range'];
-          if (cr != null && cr.contains('/')) {
-            final len = int.tryParse(cr.split('/').last);
-            if (len != null && len > 0) setSize(len);
-          }
-          r.stream.drain<void>();
-        } catch (_) {}
-      }
-      final probes = <Future<void>>[
-        probe(info.audioUrl, (v) => info.audioSize = v),
-        ...info.videoStreams.map((vs) => probe(vs.baseUrl, (v) => vs.size = v)),
-      ];
-      await Future.wait(probes);
-      // 探测失败：用码率×时长估算
-      if (info.audioSize <= 0 && info.durationSeconds > 0) {
-        final bw = best?['bandwidth'] as int? ?? 0;
-        if (bw > 0) info.audioSize = (bw ~/ 8) * info.durationSeconds;
-      }
-      for (final vs in info.videoStreams) {
-        if (vs.size <= 0 && info.durationSeconds > 0 && vs.bandwidth > 0) {
-          vs.size = (vs.bandwidth ~/ 8) * info.durationSeconds;
+        // 探测音视频真实体积（Range bytes=0-0 读 Content-Range）
+        final probeHeaders = {
+          'User-Agent': _ua,
+          'Referer': 'https://www.bilibili.com/',
+          'Range': 'bytes=0-0',
+          if (cookie != null && cookie!.isNotEmpty) 'Cookie': cookie!,
+        };
+        Future<void> probe(String? url, void Function(int) setSize) async {
+          if (url == null || url.isEmpty) return;
+          try {
+            final req = http.Request('GET', Uri.parse(url));
+            req.headers.addAll(probeHeaders);
+            final r = await req.send().timeout(const Duration(seconds: 5));
+            final cr = r.headers['content-range'];
+            if (cr != null && cr.contains('/')) {
+              final len = int.tryParse(cr.split('/').last);
+              if (len != null && len > 0) setSize(len);
+            }
+            r.stream.drain<void>();
+          } catch (_) {}
         }
-      }
+
+        final probes = <Future<void>>[
+          probe(info.audioUrl, (v) => info.audioSize = v),
+          ...info.videoStreams.map(
+            (vs) => probe(vs.baseUrl, (v) => vs.size = v),
+          ),
+        ];
+        await Future.wait(probes);
+        // 探测失败：用码率×时长估算
+        if (info.audioSize <= 0 && info.durationSeconds > 0) {
+          final bw = best?['bandwidth'] as int? ?? 0;
+          if (bw > 0) info.audioSize = (bw ~/ 8) * info.durationSeconds;
+        }
+        for (final vs in info.videoStreams) {
+          if (vs.size <= 0 && info.durationSeconds > 0 && vs.bandwidth > 0) {
+            vs.size = (vs.bandwidth ~/ 8) * info.durationSeconds;
+          }
+        }
       }
     } catch (_) {}
   }
@@ -444,9 +580,20 @@ class BilibiliApi {
         final uid = uidMatch.group(1)!;
         var pn = 1;
         while (true) {
-          final uri = Uri.parse('https://api.bilibili.com/x/polymer/web-space/seasons_archives_list')
-              .replace(queryParameters: {'mid': uid, 'season_id': seasonId, 'page_num': pn.toString(), 'page_size': '30'});
-          final r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 15));
+          final uri =
+              Uri.parse(
+                'https://api.bilibili.com/x/polymer/web-space/seasons_archives_list',
+              ).replace(
+                queryParameters: {
+                  'mid': uid,
+                  'season_id': seasonId,
+                  'page_num': pn.toString(),
+                  'page_size': '30',
+                },
+              );
+          final r = await http
+              .get(uri, headers: _headers)
+              .timeout(const Duration(seconds: 15));
           if (r.statusCode != 200) break;
           final d = jsonDecode(r.body);
           if (d['code'] != 0) break;
@@ -461,9 +608,12 @@ class BilibiliApi {
         // 合集: https://api.bilibili.com/x/v1/medialist/info?type=1&biz_id=xxx
         final mlId = int.parse(mlMatch.group(1)!);
         final p = await _signed({'type': '1', 'biz_id': mlId.toString()});
-        final uri = Uri.parse('https://api.bilibili.com/x/v1/medialist/info')
-            .replace(queryParameters: p);
-        final r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 15));
+        final uri = Uri.parse(
+          'https://api.bilibili.com/x/v1/medialist/info',
+        ).replace(queryParameters: p);
+        final r = await http
+            .get(uri, headers: _headers)
+            .timeout(const Duration(seconds: 15));
         if (r.statusCode == 200) {
           final d = jsonDecode(r.body);
           if (d['code'] == 0) {
@@ -477,12 +627,28 @@ class BilibiliApi {
         var fails = 0;
         while (true) {
           try {
-            final uri = Uri.parse('https://api.bilibili.com/x/v3/fav/resource/list')
-                .replace(queryParameters: {'media_id': fid, 'ps': '20', 'pn': pn.toString()});
-            final r = await http.get(uri, headers: _headers).timeout(const Duration(seconds: 20));
-            if (r.statusCode != 200) { if (++fails >= 3) break; continue; }
+            final uri =
+                Uri.parse(
+                  'https://api.bilibili.com/x/v3/fav/resource/list',
+                ).replace(
+                  queryParameters: {
+                    'media_id': fid,
+                    'ps': '20',
+                    'pn': pn.toString(),
+                  },
+                );
+            final r = await http
+                .get(uri, headers: _headers)
+                .timeout(const Duration(seconds: 20));
+            if (r.statusCode != 200) {
+              if (++fails >= 3) break;
+              continue;
+            }
             final d = jsonDecode(r.body);
-            if (d['code'] != 0) { if (++fails >= 3) break; continue; }
+            if (d['code'] != 0) {
+              if (++fails >= 3) break;
+              continue;
+            }
             final medias = d['data']['medias'] as List?;
             if (medias != null && medias.isNotEmpty) videoList.addAll(medias);
             fails = 0;
@@ -497,34 +663,48 @@ class BilibiliApi {
       if (videoList.isEmpty) return null;
 
       return videoList
-          .where((v) => (v['bvid'] as String? ?? '').isNotEmpty) // 过滤空 bvid（失效视频）
+          .where(
+            (v) => (v['bvid'] as String? ?? '').isNotEmpty,
+          ) // 过滤空 bvid（失效视频）
           .map((v) {
-        final bvid = v['bvid'] as String? ?? '';
-        final baseUrl = 'https://www.bilibili.com/video/$bvid';
-        return BilibiliVideoInfo(
-          bvid: bvid,
-          title: v['title'] as String? ?? '',
-          author: v['upper']?['name'] as String? ?? v['owner']?['name'] as String? ?? '',
-          coverUrl: (v['cover'] as String? ?? '').replaceAll('http:', 'https:'),
-          durationSeconds: v['duration'] as int? ?? 0,
-          url: baseUrl,
-          // 收藏夹 API 的 cid 在 ugc.first_cid 里（v['cid'] 不存在）
-          cid: (v['ugc'] as Map?)?['first_cid'] as int? ?? 0,
-        );
-      }).toList();
+            final bvid = v['bvid'] as String? ?? '';
+            final baseUrl = 'https://www.bilibili.com/video/$bvid';
+            return BilibiliVideoInfo(
+              bvid: bvid,
+              title: v['title'] as String? ?? '',
+              author:
+                  v['upper']?['name'] as String? ??
+                  v['owner']?['name'] as String? ??
+                  '',
+              coverUrl: (v['cover'] as String? ?? '').replaceAll(
+                'http:',
+                'https:',
+              ),
+              durationSeconds: v['duration'] as int? ?? 0,
+              url: baseUrl,
+              // 收藏夹 API 的 cid 在 ugc.first_cid 里（v['cid'] 不存在）
+              cid: (v['ugc'] as Map?)?['first_cid'] as int? ?? 0,
+            );
+          })
+          .toList();
     } catch (_) {
       return null;
     }
-}
+  }
 
   /// 快速探测音频大小（收藏夹/合集条目已有 cid，省去 view API）
   Future<int> probeAudioSizeQuick(String bvid, int cid) async {
     void log(String msg) {
       try {
-        File('${Directory.systemTemp.path}/gomusic_debug.log')
-            .writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] [probe] $msg\n', mode: FileMode.append);
+        File(
+          '${Directory.systemTemp.path}/gomusic_debug.log',
+        ).writeAsStringSync(
+          '[${DateTime.now().toIso8601String().substring(11, 19)}] [probe] $msg\n',
+          mode: FileMode.append,
+        );
       } catch (_) {}
     }
+
     try {
       // durl 模式：一次请求直接返回 size（带音轨的视频文件大小，即歌曲总体积）
       final d = await _playUrl({'bvid': bvid, 'cid': '$cid', 'qn': '64'});
@@ -552,19 +732,27 @@ class StreamDownloader {
     try {
       // 缓存区：下载到独立临时目录，完成后才移动到目标目录并命名
       final saveFile = File(savePath);
-      final tmpDir = Directory('${saveFile.parent.path}${Platform.pathSeparator}.tmp');
+      final tmpDir = Directory(
+        '${saveFile.parent.path}${Platform.pathSeparator}.tmp',
+      );
       tmpDir.createSync(recursive: true);
-      final partFile = File('${tmpDir.path}${Platform.pathSeparator}${saveFile.uri.pathSegments.last}.part');
+      final partFile = File(
+        '${tmpDir.path}${Platform.pathSeparator}${saveFile.uri.pathSegments.last}.part',
+      );
       var existing = partFile.existsSync() ? partFile.lengthSync() : 0;
 
       var attempt = 0;
       while (attempt < 2) {
         attempt++;
-        final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+        final client = HttpClient()
+          ..connectionTimeout = const Duration(seconds: 20);
         try {
           final uri = Uri.parse(url);
           final request = await client.getUrl(uri);
-          request.headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+          request.headers.set(
+            'User-Agent',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          );
           request.headers.set('Referer', 'https://www.bilibili.com/');
           if (existing > 0) request.headers.set('Range', 'bytes=$existing-');
           if (BilibiliApi.cookie != null && BilibiliApi.cookie!.isNotEmpty) {
@@ -574,14 +762,22 @@ class StreamDownloader {
           void onCancel() {
             if (cancel?.value == true) client.close(force: true);
           }
+
           cancel?.addListener(onCancel);
-          final streamed = await request.close().timeout(const Duration(seconds: 30));
+          final streamed = await request.close().timeout(
+            const Duration(seconds: 30),
+          );
           if (cancel?.value == true) {
-            try { if (partFile.existsSync()) partFile.deleteSync(); } catch (_) {}
+            try {
+              if (partFile.existsSync()) partFile.deleteSync();
+            } catch (_) {}
             return false;
           }
           try {
-            File('${saveFile.parent.path}/debug.log').writeAsStringSync('[${DateTime.now().toIso8601String().substring(11, 19)}] dl status=${streamed.statusCode} len=${streamed.contentLength} range=$existing part=${partFile.path}\n', mode: FileMode.append);
+            File('${saveFile.parent.path}/debug.log').writeAsStringSync(
+              '[${DateTime.now().toIso8601String().substring(11, 19)}] dl status=${streamed.statusCode} len=${streamed.contentLength} range=$existing part=${partFile.path}\n',
+              mode: FileMode.append,
+            );
           } catch (_) {}
           if (streamed.statusCode == 416) {
             // Range 越界：缓存损坏，删除后从头重下
@@ -599,13 +795,17 @@ class StreamDownloader {
           final total = streamed.contentLength + (append ? existing : 0);
           var received = append ? existing : 0;
 
-          final sink = partFile.openWrite(mode: append ? FileMode.append : FileMode.write);
+          final sink = partFile.openWrite(
+            mode: append ? FileMode.append : FileMode.write,
+          );
           var lastLog = DateTime.now();
           try {
             await for (final chunk in streamed) {
               if (cancel?.value == true) {
                 await sink.close();
-                try { if (partFile.existsSync()) partFile.deleteSync(); } catch (_) {}
+                try {
+                  if (partFile.existsSync()) partFile.deleteSync();
+                } catch (_) {}
                 return false;
               }
               sink.add(chunk);
@@ -621,7 +821,10 @@ class StreamDownloader {
               if (now.difference(lastLog).inSeconds >= 2) {
                 lastLog = now;
                 try {
-                  File('${saveFile.parent.path}/debug.log').writeAsStringSync('[${now.toIso8601String().substring(11, 19)}] prog recv=$received total=$total cl=${streamed.contentLength} exp=$expectedSize\n', mode: FileMode.append);
+                  File('${saveFile.parent.path}/debug.log').writeAsStringSync(
+                    '[${now.toIso8601String().substring(11, 19)}] prog recv=$received total=$total cl=${streamed.contentLength} exp=$expectedSize\n',
+                    mode: FileMode.append,
+                  );
                 } catch (_) {}
               }
             }
@@ -630,7 +833,9 @@ class StreamDownloader {
           }
           await sink.close();
           if (cancel?.value == true) {
-            try { if (partFile.existsSync()) partFile.deleteSync(); } catch (_) {}
+            try {
+              if (partFile.existsSync()) partFile.deleteSync();
+            } catch (_) {}
             return false;
           }
           if (total > 0 && received < total) {

@@ -4,6 +4,7 @@ import '../main.dart';
 import '../models/music_data.dart';
 import '../services/settings_service.dart';
 import '../services/audio_player_service.dart';
+import '../ui/theme_components.dart';
 import 'song_list_page.dart';
 
 class PlaylistPage extends StatefulWidget {
@@ -26,7 +27,9 @@ class PlaylistPageState extends State<PlaylistPage> {
 
   @override
   void dispose() {
-    AudioPlayerService().favoritesChangedNotifier.removeListener(() => refresh());
+    AudioPlayerService().favoritesChangedNotifier.removeListener(
+      () => refresh(),
+    );
     downloadsChangedNotifier.removeListener(_onDownloadsChanged);
     super.dispose();
   }
@@ -47,13 +50,31 @@ class PlaylistPageState extends State<PlaylistPage> {
     final localSongs = await scanLocalAudioFiles(dir);
     final recentBvids = await RecentlyPlayedService.getRecentBvids();
     final recentSongs = recentBvids.map((bv) {
-      return localSongs.where((s) => s.bvid == bv || _fileNameKey(s) == bv).firstOrNull ??
-          Song(id: bv, title: bv, uploader: '', duration: Duration.zero, bvid: bv, filePath: ''); // 占位：数量保持真实
+      return localSongs
+              .where((s) => s.bvid == bv || _fileNameKey(s) == bv)
+              .firstOrNull ??
+          Song(
+            id: bv,
+            title: bv,
+            uploader: '',
+            duration: Duration.zero,
+            bvid: bv,
+            filePath: '',
+          ); // 占位：数量保持真实
     }).toList();
     final favPaths = await AudioPlayerService.getFavorites();
     final favSongs = favPaths.map((k) {
-      return localSongs.where((s) => s.bvid == k || _fileNameKey(s) == k).firstOrNull ??
-          Song(id: k, title: k, uploader: '', duration: Duration.zero, bvid: k, filePath: ''); // 占位：数量保持真实
+      return localSongs
+              .where((s) => s.bvid == k || _fileNameKey(s) == k)
+              .firstOrNull ??
+          Song(
+            id: k,
+            title: k,
+            uploader: '',
+            duration: Duration.zero,
+            bvid: k,
+            filePath: '',
+          ); // 占位：数量保持真实
     }).toList();
     var customPls = await PlaylistService.getPlaylists();
     // 本地歌单：拖动过则应用拖动顺序；否则按添加顺序（mtime 倒序，最后添加的放最上面）
@@ -64,7 +85,10 @@ class PlaylistPageState extends State<PlaylistPage> {
       final ordered = <Song>[];
       for (final k in localOrder) {
         final s = byKey[k];
-        if (s != null) { ordered.add(s); byKey.remove(k); }
+        if (s != null) {
+          ordered.add(s);
+          byKey.remove(k);
+        }
       }
       // 未记录的新歌（如刚下载的）：按添加顺序（mtime 倒序）插到最前
       final rest = byKey.values.toList()
@@ -72,11 +96,12 @@ class PlaylistPageState extends State<PlaylistPage> {
       ordered.insertAll(0, rest);
       localList = ordered;
     } else {
-      localList = List.from(localSongs)..sort((a, b) {
-        final ma = _mtimeOf(a.filePath);
-        final mb = _mtimeOf(b.filePath);
-        return mb.compareTo(ma);
-      });
+      localList = List.from(localSongs)
+        ..sort((a, b) {
+          final ma = _mtimeOf(a.filePath);
+          final mb = _mtimeOf(b.filePath);
+          return mb.compareTo(ma);
+        });
     }
     // 补全自定义歌单歌曲信息（标题/封面，用BV号匹配本地对照表）
     for (var i = 0; i < customPls.length; i++) {
@@ -85,10 +110,17 @@ class PlaylistPageState extends State<PlaylistPage> {
         final bv = s.bvid.isNotEmpty
             ? s.bvid
             : s.filePath.split('\\').last.split('/').last.split('.').first;
-        final full = localSongs.where((x) => x.bvid == bv || _fileNameKey(x) == bv).firstOrNull;
+        final full = localSongs
+            .where((x) => x.bvid == bv || _fileNameKey(x) == bv)
+            .firstOrNull;
         return full ?? s;
       }).toList();
-      customPls[i] = Playlist(id: pl.id, name: pl.name, icon: pl.icon, songs: songs);
+      customPls[i] = Playlist(
+        id: pl.id,
+        name: pl.name,
+        icon: pl.icon,
+        songs: songs,
+      );
     }
 
     if (!mounted) return;
@@ -103,12 +135,13 @@ class PlaylistPageState extends State<PlaylistPage> {
     });
   }
 
-
   /// 文件修改时间（不存在返回 epoch）
   DateTime _mtimeOf(String path) {
     try {
       final f = File(path);
-      return f.existsSync() ? f.statSync().modified : DateTime.fromMillisecondsSinceEpoch(0);
+      return f.existsSync()
+          ? f.statSync().modified
+          : DateTime.fromMillisecondsSinceEpoch(0);
     } catch (_) {
       return DateTime.fromMillisecondsSinceEpoch(0);
     }
@@ -120,13 +153,17 @@ class PlaylistPageState extends State<PlaylistPage> {
     final dot = name.lastIndexOf('.');
     return dot > 0 ? name.substring(0, dot) : name;
   }
+
   Widget _playlistCover(Playlist pl) {
     if (pl.songs.isNotEmpty) {
       final first = pl.songs.first;
       if (first.coverUrl != null && first.coverUrl!.isNotEmpty) {
         final f = File(first.coverUrl!);
         if (f.existsSync() && f.lengthSync() > 0) {
-          return ClipRRect(borderRadius: BorderRadius.circular(6), child: Image.file(f, width: 40, height: 40, fit: BoxFit.cover));
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Image.file(f, width: 40, height: 40, fit: BoxFit.cover),
+          );
         }
       }
     }
@@ -144,42 +181,117 @@ class PlaylistPageState extends State<PlaylistPage> {
           content: SizedBox(
             width: 320,
             child: custom.isEmpty
-              ? const Text('暂无自定义歌单', style: TextStyle(color: Colors.grey))
-              : ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: custom.length,
-                  itemBuilder: (_, i) {
-                    final pl = custom[i];
-                    return ListTile(
-                      dense: true,
-                      leading: Text(pl.icon, style: const TextStyle(fontSize: 22)),
-                      title: Text(pl.name, style: const TextStyle(fontSize: 14)),
-                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                        IconButton(icon: const Icon(Icons.arrow_upward, size: 16), tooltip: '', onPressed: i == 0 ? null : () async {
-                          await PlaylistService.movePlaylist(i, i - 1);
-                          setDlg(() {});
-                          refresh();
-                        }),
-                        IconButton(icon: const Icon(Icons.arrow_downward, size: 16), tooltip: '', onPressed: i == custom.length - 1 ? null : () async {
-                          await PlaylistService.movePlaylist(i, i + 1);
-                          setDlg(() {});
-                          refresh();
-                        }),
-                        PopupMenuButton<String>(
-                          icon: const Icon(Icons.emoji_emotions_outlined, size: 16),
-                          onSelected: (icon) async {
-                            await PlaylistService.setPlaylistIcon(pl.id, icon);
-                            setDlg(() {});
-                            refresh();
-                          },
-                          itemBuilder: (_) => ['📋','🎵','🎧','⭐','🔥','💿','📀','🎤','🎸','🎹','🎻','🥁','🪕','🎺','🎷','🫧','💜','💙','💚','💛','🧡','🖤','🤍'].map((e) => PopupMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 20)))).toList(),
+                ? const Text('暂无自定义歌单', style: TextStyle(color: Colors.grey))
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: custom.length,
+                    itemBuilder: (_, i) {
+                      final pl = custom[i];
+                      return ListTile(
+                        dense: true,
+                        leading: Text(
+                          pl.icon,
+                          style: const TextStyle(fontSize: 22),
                         ),
-                      ]),
-                    );
-                  },
-                ),
+                        title: Text(
+                          pl.name,
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.arrow_upward, size: 16),
+                              tooltip: '',
+                              onPressed: i == 0
+                                  ? null
+                                  : () async {
+                                      await PlaylistService.movePlaylist(
+                                        i,
+                                        i - 1,
+                                      );
+                                      setDlg(() {});
+                                      refresh();
+                                    },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.arrow_downward, size: 16),
+                              tooltip: '',
+                              onPressed: i == custom.length - 1
+                                  ? null
+                                  : () async {
+                                      await PlaylistService.movePlaylist(
+                                        i,
+                                        i + 1,
+                                      );
+                                      setDlg(() {});
+                                      refresh();
+                                    },
+                            ),
+                            PopupMenuButton<String>(
+                              icon: const Icon(
+                                Icons.emoji_emotions_outlined,
+                                size: 16,
+                              ),
+                              onSelected: (icon) async {
+                                await PlaylistService.setPlaylistIcon(
+                                  pl.id,
+                                  icon,
+                                );
+                                setDlg(() {});
+                                refresh();
+                              },
+                              itemBuilder: (_) =>
+                                  [
+                                        '📋',
+                                        '🎵',
+                                        '🎧',
+                                        '⭐',
+                                        '🔥',
+                                        '💿',
+                                        '📀',
+                                        '🎤',
+                                        '🎸',
+                                        '🎹',
+                                        '🎻',
+                                        '🥁',
+                                        '🪕',
+                                        '🎺',
+                                        '🎷',
+                                        '🫧',
+                                        '💜',
+                                        '💙',
+                                        '💚',
+                                        '💛',
+                                        '🧡',
+                                        '🖤',
+                                        '🤍',
+                                      ]
+                                      .map(
+                                        (e) => PopupMenuItem(
+                                          value: e,
+                                          child: Text(
+                                            e,
+                                            style: const TextStyle(
+                                              fontSize: 20,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
           ),
-          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('关闭'),
+            ),
+          ],
         ),
       ),
     );
@@ -202,7 +314,11 @@ class PlaylistPageState extends State<PlaylistPage> {
         title: const Text('播放列表'),
         centerTitle: true,
         actions: [
-          IconButton(icon: const Icon(Icons.tune, size: 20), tooltip: '', onPressed: _showSettings),
+          IconButton(
+            icon: const Icon(Icons.tune, size: 20),
+            tooltip: '',
+            onPressed: _showSettings,
+          ),
         ],
       ),
       body: ListView.builder(
@@ -211,45 +327,73 @@ class PlaylistPageState extends State<PlaylistPage> {
         itemBuilder: (context, index) {
           if (index < _playlists.length) {
             final pl = _playlists[index];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
+            return ThemeComponents.panel(
+              context,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: EdgeInsets.zero,
               child: ListTile(
                 leading: _playlistCover(pl),
                 title: Text(pl.name, style: const TextStyle(fontSize: 16)),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('${pl.songs.length}首', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                    Text(
+                      '${pl.songs.length}首',
+                      style: const TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
                     const SizedBox(width: 4),
                     const Icon(Icons.chevron_right, color: Colors.grey),
                   ],
                 ),
                 onTap: () {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => SongListPage(playlist: pl),
-                  )).then((_) => refresh());
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SongListPage(playlist: pl),
+                    ),
+                  ).then((_) => refresh());
                 },
               ),
             );
           } else {
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
+            return ThemeComponents.panel(
+              context,
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: EdgeInsets.zero,
               child: ListTile(
-                leading: const Icon(Icons.add_circle_outline, color: Colors.blue, size: 28),
-                title: const Text('新建播放列表', style: TextStyle(fontSize: 16, color: Colors.blue)),
+                leading: const Icon(
+                  Icons.add_circle_outline,
+                  color: Colors.blue,
+                  size: 28,
+                ),
+                title: const Text(
+                  '新建播放列表',
+                  style: TextStyle(fontSize: 16, color: Colors.blue),
+                ),
                 onTap: () {
                   final ctrl = TextEditingController();
                   showDialog(
                     context: context,
                     builder: (ctx) => AlertDialog(
                       title: const Text('新建播放列表'),
-                      content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: '输入列表名称', border: OutlineInputBorder())),
+                      content: TextField(
+                        controller: ctrl,
+                        decoration: const InputDecoration(
+                          hintText: '输入列表名称',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
                       actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('取消'),
+                        ),
                         FilledButton(
                           onPressed: () async {
                             if (ctrl.text.trim().isNotEmpty) {
-                              await PlaylistService.addPlaylist(ctrl.text.trim());
+                              await PlaylistService.addPlaylist(
+                                ctrl.text.trim(),
+                              );
                             }
                             Navigator.pop(ctx);
                             refresh();
