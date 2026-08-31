@@ -265,7 +265,12 @@ class PlaylistPageState extends State<PlaylistPage> {
           }
         }
       }
+      final oldPath = pl.coverPath;
       await PlaylistService.setPlaylistCover(pl.id, savedPath);
+      if (oldPath != null && oldPath.isNotEmpty && oldPath != savedPath &&
+          !oldPath.startsWith('http://') && !oldPath.startsWith('https://')) {
+        try { await _coverManager.deleteCover(oldPath); } catch (_) {}
+      }
       await refresh();
     } catch (_) {
       if (mounted)
