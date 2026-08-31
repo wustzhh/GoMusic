@@ -6,6 +6,7 @@ import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
 import '../services/bilibili_api.dart';
 import '../services/playlist_link_importer.dart';
+import '../services/playlist_cover_manager.dart';
 import 'player_page.dart';
 import 'video_detail_page.dart';
 import '../widgets/song_queue_list.dart';
@@ -21,8 +22,10 @@ class SongListPage extends StatefulWidget {
 
 class _SongListPageState extends State<SongListPage> {
   final _service = AudioPlayerService();
+  final PlaylistCoverManager _coverManager = PlaylistCoverManager();
 
   late List<Song> _songs;
+  String? _playlistCoverPath;
   Set<String> _favs = {};
   String _searchText = '';
   Duration _position = Duration.zero;
@@ -33,10 +36,16 @@ class _SongListPageState extends State<SongListPage> {
   final ScrollController _mainScrollCtrl = ScrollController();
   final GlobalKey _playingRowKey = GlobalKey();
 
+  bool get _isBuiltInPlaylist =>
+      widget.playlist.id == 'fav' ||
+      widget.playlist.id == 'local' ||
+      widget.playlist.id == 'recent';
+
   @override
   void initState() {
     super.initState();
     _songs = List.from(widget.playlist.songs);
+    _playlistCoverPath = widget.playlist.coverPath;
     // 从存储读取最新顺序（拖动排序持久化后重进歌单仍保持）：
     // local 读本地拖动顺序，自定义歌单读存储顺序；无保存顺序则用传入列表
     _applyPersistedOrder();
@@ -246,7 +255,7 @@ class _SongListPageState extends State<SongListPage> {
     } catch (_) {}
   }
 
-  void _playSong(Song song) {
+  Future<void> _playSong(Song song) async {
     // 队列始终用完整歌单（搜索只是显示筛选，不影响播放列表）
     final idx = _songs.indexWhere((s) => _songKey(s) == _songKey(song));
     _service.setQueue(
@@ -258,12 +267,100 @@ class _SongListPageState extends State<SongListPage> {
     // 点击播放的队列调整：组内歌曲→点击的排组内第一首；随机模式→整组前置
     _service.prepareClickedSong(song);
     _service.playSong(song);
+    if (widget.playlist.id != 'fav' &&
+        widget.playlist.id != 'local' &&
+        widget.playlist.id != 'recent') {
+      await PlaylistService.markPlayed(widget.playlist.id);
+    }
     // 点击歌曲直接进入播放界面
     if (mounted) {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const PlayerPage()),
       );
+    }
+  }
+
+  Widget _playlistCover() {
+    final path = _playlistCoverPath;
+    if (path != null && path.isNotEmpty) {
+      if (path.startsWith('http://') || path.startsWith('https://')) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(5),
+          child: Image.network(path, width: 32, height: 32, fit: BoxFit.cover),
+        );
+      }
+      final file = File(path);
+      if (file.existsSync() && file.lengthSync() > 0) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(5),
+          child: Image.file(file, width: 32, height: 32, fit: BoxFit.cover),
+        );
+      }
+    }
+    return Text(widget.playlist.icon, style: const TextStyle(fontSize: 24));
+  }
+
+  Future<void> _showPlaylistCoverDialog() async {
+    final controller = TextEditingController(text: _playlistCoverPath ?? '');
+    final path = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('设置歌单封面'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: '输入本地图片路径或 http(s) 图片地址，留空清除',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (path == null) return;
+    try {
+      String? savedPath;
+      if (path.isNotEmpty) {
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+          savedPath = path;
+        } else {
+          savedPath = await _coverManager.copyLocalCover(
+            path,
+            ownerId: widget.playlist.id,
+          );
+          final oldPath = _playlistCoverPath;
+          if (oldPath != null &&
+              oldPath != savedPath &&
+              !(oldPath.startsWith('http://') ||
+                  oldPath.startsWith('https://'))) {
+            try {
+              await _coverManager.deleteCover(oldPath);
+            } catch (_) {}
+          }
+        }
+      }
+      if (_isBuiltInPlaylist) {
+        await PlaylistService.setDefaultPlaylistCover(widget.playlist.id, savedPath);
+      } else {
+        await PlaylistService.setPlaylistCover(widget.playlist.id, savedPath);
+      }
+      if (mounted) setState(() => _playlistCoverPath = savedPath);
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('封面保存失败，请检查图片路径')));
     }
   }
 
@@ -789,6 +886,12 @@ class _SongListPageState extends State<SongListPage> {
                 )
               : null,
           actions: [
+            IconButton(
+                key: const ValueKey('playlist-cover-button'),
+                icon: const Icon(Icons.image_outlined),
+                tooltip: '设置封面',
+                onPressed: _showPlaylistCoverDialog,
+            ),
             if (widget.playlist.id != 'local' &&
                 widget.playlist.id != 'recent' &&
                 widget.playlist.id != 'fav')
@@ -807,6 +910,11 @@ class _SongListPageState extends State<SongListPage> {
         ),
         body: Column(
           children: [
+            if (_playlistCoverPath != null && _playlistCoverPath!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: _playlistCover(),
+              ),
             if (widget.playlist.id != 'recent') ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),

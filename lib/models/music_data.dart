@@ -344,6 +344,7 @@ class RecentlyPlayedService {
 
 class PlaylistService {
   static const _key = 'custom_playlists';
+  static const _defaultCoverKey = 'default_playlist_covers';
 
   static List<String> _normaliseParts(String raw) {
     final parts = raw.split('|||');
@@ -460,6 +461,38 @@ class PlaylistService {
     }
   }
 
+  /// Covers for built-in playlists are stored separately from custom playlist records.
+  static Future<String?> getDefaultPlaylistCover(String pid) async {
+    final p = await SharedPreferences.getInstance();
+    final covers = p.getStringList(_defaultCoverKey) ?? [];
+    for (final entry in covers) {
+      final split = entry.indexOf('|||');
+      if (split > 0 && entry.substring(0, split) == pid) {
+        final value = entry.substring(split + 3);
+        return value.isEmpty ? null : value;
+      }
+    }
+    return null;
+  }
+
+  static Future<void> setDefaultPlaylistCover(
+    String pid,
+    String? coverPath,
+  ) async {
+    final p = await SharedPreferences.getInstance();
+    final covers = List<String>.from(p.getStringList(_defaultCoverKey) ?? []);
+    final prefix = '$pid|||';
+    covers.removeWhere((entry) => entry.startsWith(prefix));
+    if (coverPath != null && coverPath.isNotEmpty) {
+      covers.add('$prefix$coverPath');
+    }
+    await p.setStringList(_defaultCoverKey, covers);
+  }
+
+  static Future<void> deleteDefaultPlaylistCover(String pid) async {
+    await setDefaultPlaylistCover(pid, null);
+  }
+
   static Future<void> addSongToPlaylist(String pid, String bvid) =>
       addSongsToPlaylist(pid, [bvid]);
 
@@ -528,9 +561,24 @@ class PlaylistService {
   static Future<void> movePlaylist(int from, int to) async {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(_key) ?? [];
-    if (from < 0 || from >= list.length || to < 0 || to >= list.length) return;
-    final item = list.removeAt(from);
-    list.insert(to, item);
+    final visible = await getPlaylists();
+    if (from < 0 || from >= visible.length || to < 0 || to >= visible.length)
+      return;
+    final orderedIds = visible.map((playlist) => playlist.id).toList();
+    final id = orderedIds.removeAt(from);
+    orderedIds.insert(to, id);
+    final byId = <String, String>{
+      for (final raw in list) _normaliseParts(raw)[0]: raw,
+    };
+    final reordered = <String>[];
+    for (final playlistId in orderedIds) {
+      final raw = byId.remove(playlistId);
+      if (raw != null) reordered.add(raw);
+    }
+    reordered.addAll(byId.values);
+    list
+      ..clear()
+      ..addAll(reordered);
     await p.setStringList(_key, list);
   }
 

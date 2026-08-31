@@ -91,4 +91,34 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getStringList('favorites'), ['BV1']);
   });
+
+  test(
+    'default playlist covers persist independently and defaults cannot be deleted',
+    () async {
+      await PlaylistService.setDefaultPlaylistCover(
+        'fav',
+        'https://example.com/fav.jpg',
+      );
+      await PlaylistService.setDefaultPlaylistCover('local', 'local-cover.jpg');
+
+      expect(
+        await PlaylistService.getDefaultPlaylistCover('fav'),
+        'https://example.com/fav.jpg',
+      );
+      expect(
+        await PlaylistService.getDefaultPlaylistCover('local'),
+        'local-cover.jpg',
+      );
+      expect(await PlaylistService.getDefaultPlaylistCover('recent'), isNull);
+
+      await PlaylistService.deletePlaylist('fav');
+      expect(
+        await PlaylistService.getDefaultPlaylistCover('fav'),
+        'https://example.com/fav.jpg',
+      );
+
+      await PlaylistService.deleteDefaultPlaylistCover('fav');
+      expect(await PlaylistService.getDefaultPlaylistCover('fav'), isNull);
+    },
+  );
 }

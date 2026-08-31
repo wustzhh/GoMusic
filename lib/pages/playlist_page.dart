@@ -4,6 +4,7 @@ import '../main.dart';
 import '../models/music_data.dart';
 import '../services/settings_service.dart';
 import '../services/audio_player_service.dart';
+import '../services/playlist_cover_manager.dart';
 import '../ui/theme_components.dart';
 import 'song_list_page.dart';
 
@@ -16,6 +17,7 @@ class PlaylistPage extends StatefulWidget {
 class PlaylistPageState extends State<PlaylistPage> {
   List<Playlist> _playlists = [];
   bool _loaded = false;
+  final PlaylistCoverManager _coverManager = PlaylistCoverManager();
 
   @override
   void initState() {
@@ -77,6 +79,11 @@ class PlaylistPageState extends State<PlaylistPage> {
           ); // 占位：数量保持真实
     }).toList();
     var customPls = await PlaylistService.getPlaylists();
+    final defaultCovers = <String, String?>{
+      'fav': await PlaylistService.getDefaultPlaylistCover('fav'),
+      'local': await PlaylistService.getDefaultPlaylistCover('local'),
+      'recent': await PlaylistService.getDefaultPlaylistCover('recent'),
+    };
     // 本地歌单：拖动过则应用拖动顺序；否则按添加顺序（mtime 倒序，最后添加的放最上面）
     final localOrder = await SongManager.getLocalOrder();
     List<Song> localList;
@@ -120,16 +127,36 @@ class PlaylistPageState extends State<PlaylistPage> {
         name: pl.name,
         icon: pl.icon,
         songs: songs,
+        coverPath: pl.coverPath,
+        lastPlayedAt: pl.lastPlayedAt,
       );
     }
 
     if (!mounted) return;
     setState(() {
       _playlists = [
-        Playlist(id: 'fav', name: '我喜欢', icon: '❤️', songs: favSongs),
+        Playlist(
+          id: 'fav',
+          name: '我喜欢',
+          icon: '❤️',
+          songs: favSongs,
+          coverPath: defaultCovers['fav'],
+        ),
         ...customPls,
-        Playlist(id: 'local', name: '本地歌单', icon: '📁', songs: localList),
-        Playlist(id: 'recent', name: '最近播放', icon: '🕐', songs: recentSongs),
+        Playlist(
+          id: 'local',
+          name: '本地歌单',
+          icon: '📁',
+          songs: localList,
+          coverPath: defaultCovers['local'],
+        ),
+        Playlist(
+          id: 'recent',
+          name: '最近播放',
+          icon: '🕐',
+          songs: recentSongs,
+          coverPath: defaultCovers['recent'],
+        ),
       ];
       _loaded = true;
     });
@@ -155,6 +182,29 @@ class PlaylistPageState extends State<PlaylistPage> {
   }
 
   Widget _playlistCover(Playlist pl) {
+    final coverPath = pl.coverPath;
+    if (coverPath != null && coverPath.isNotEmpty) {
+      if (coverPath.startsWith('http://') || coverPath.startsWith('https://')) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: Image.network(
+            coverPath,
+            width: 40,
+            height: 40,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) =>
+                Text(pl.icon, style: const TextStyle(fontSize: 28)),
+          ),
+        );
+      }
+      final cover = File(coverPath);
+      if (cover.existsSync() && cover.lengthSync() > 0) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: Image.file(cover, width: 40, height: 40, fit: BoxFit.cover),
+        );
+      }
+    }
     if (pl.songs.isNotEmpty) {
       final first = pl.songs.first;
       if (first.coverUrl != null && first.coverUrl!.isNotEmpty) {
@@ -168,6 +218,96 @@ class PlaylistPageState extends State<PlaylistPage> {
       }
     }
     return Text(pl.icon, style: const TextStyle(fontSize: 28));
+  }
+
+  Future<void> _setCustomCover(Playlist pl) async {
+    final controller = TextEditingController(text: pl.coverPath ?? '');
+    final path = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('设置歌单封面'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: '输入本地图片路径或 http(s) 图片地址，留空清除',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (path == null) return;
+    try {
+      String? savedPath;
+      if (path.isNotEmpty) {
+        if (path.startsWith('http://') || path.startsWith('https://')) {
+          savedPath = path;
+        } else {
+          savedPath = await _coverManager.copyLocalCover(path, ownerId: pl.id);
+          if (pl.coverPath != null &&
+              pl.coverPath != savedPath &&
+              !(pl.coverPath!.startsWith('http://') ||
+                  pl.coverPath!.startsWith('https://'))) {
+            try {
+              await _coverManager.deleteCover(pl.coverPath!);
+            } catch (_) {}
+          }
+        }
+      }
+      await PlaylistService.setPlaylistCover(pl.id, savedPath);
+      await refresh();
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('封面保存失败，请检查图片路径')));
+    }
+  }
+
+  Future<void> _deleteCustomPlaylist(
+    Playlist pl,
+    BuildContext settingsContext,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除歌单'),
+        content: Text('确定删除“${pl.name}”吗？歌曲文件不会被删除。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await PlaylistService.deletePlaylist(pl.id);
+    final cover = pl.coverPath;
+    if (cover != null &&
+        cover.isNotEmpty &&
+        !(cover.startsWith('http://') || cover.startsWith('https://'))) {
+      try {
+        await _coverManager.deleteCover(cover);
+      } catch (_) {}
+    }
+    if (settingsContext.mounted) Navigator.pop(settingsContext);
+    await refresh();
   }
 
   void _showSettings() async {
@@ -280,6 +420,26 @@ class PlaylistPageState extends State<PlaylistPage> {
                                       )
                                       .toList(),
                             ),
+                            IconButton(
+                              key: ValueKey('playlist-cover-${pl.id}'),
+                              icon: const Icon(Icons.image_outlined, size: 16),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 30),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => _setCustomCover(pl),
+                            ),
+                            IconButton(
+                              key: ValueKey('playlist-delete-${pl.id}'),
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                size: 16,
+                                color: Colors.red,
+                              ),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 30),
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => _deleteCustomPlaylist(pl, ctx),
+                            ),
                           ],
                         ),
                       );
@@ -316,7 +476,7 @@ class PlaylistPageState extends State<PlaylistPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.tune, size: 20),
-            tooltip: '',
+            tooltip: '歌单设置',
             onPressed: _showSettings,
           ),
         ],
