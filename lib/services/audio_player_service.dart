@@ -207,12 +207,15 @@ class AudioPlayerService {
         SongManager.updateDuration(_currentSong!.filePath, d.inSeconds);
       }
     });
+    _positionSubscription?.cancel();
+    _positionSubscription = _playerRef!.stream.position.listen((p) {
+      if (_currentSong == null) return;
+      _lastPosition = p;
+      if (!_positionController.isClosed) _positionController.add(p);
+    });
     int _saveCounter = 0;
     _pollTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
       if (_currentSong != null && _playing) {
-        final p = _playerRef!.state.position;
-        _lastPosition = p;
-        _positionController.add(p);
         _saveCounter++;
         if (_saveCounter % 4 == 0) _saveState();
       }
@@ -220,12 +223,15 @@ class AudioPlayerService {
   }
 
   Timer? _pollTimer;
+  StreamSubscription<Duration>? _positionSubscription;
 
   /// 释放轮询定时器（仅测试用；正常生命周期跟随进程，无需调用）。
   @visibleForTesting
   void disposeForTest() {
     _pollTimer?.cancel();
     _pollTimer = null;
+    _positionSubscription?.cancel();
+    _positionSubscription = null;
   }
 
   bool _sourceLoaded = false;

@@ -88,6 +88,13 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
     _completedCtl.add(true);
   }
 
+  /// 发出实时播放进度，但刻意不更新 state.position，模拟 media_kit
+  /// 状态快照尚未刷新时的事件顺序。
+  void emitPosition(Duration d) {
+    position = d;
+    _positionCtl.add(d);
+  }
+
   @override
   Future<void> open(mk.Playable playable, {bool play = true}) async {
     completed = false;
