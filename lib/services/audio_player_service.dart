@@ -207,6 +207,12 @@ class AudioPlayerService {
         SongManager.updateDuration(_currentSong!.filePath, d.inSeconds);
       }
     });
+    _playerRef!.stream.error.listen((message) {
+      _logPlayback('player error: $message');
+      _sourceLoaded = false;
+      _playing = false;
+      currentSongNotifier.notifyListeners();
+    });
     _positionSubscription?.cancel();
     _positionSubscription = _playerRef!.stream.position.listen((p) {
       if (_currentSong == null) return;
@@ -220,6 +226,17 @@ class AudioPlayerService {
         if (_saveCounter % 4 == 0) _saveState();
       }
     });
+  }
+
+  void _logPlayback(String message) {
+    try {
+      File(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}gomusic_debug.log',
+      ).writeAsStringSync(
+        '[${DateTime.now().toIso8601String().substring(11, 19)}] [AUDIO] $message\n',
+        mode: FileMode.append,
+      );
+    } catch (_) {}
   }
 
   Timer? _pollTimer;
@@ -311,6 +328,13 @@ class AudioPlayerService {
         await _playFile(song.filePath);
         _sourceLoaded = true;
         _playing = true;
+      } else if (!_sourceLoaded) {
+        await _playFile(
+          song.filePath,
+          position: _lastPosition > Duration.zero ? _lastPosition : null,
+        );
+        _sourceLoaded = true;
+        _playing = true;
       } else {
         // 暂停中：优先 resume 续播（不重新加载、不回 0）
         _requestAudioFocus();
@@ -341,6 +365,7 @@ class AudioPlayerService {
       _lastManualPlayAt = DateTime.now();
     }
     _lastPosition = Duration.zero;
+    _sourceLoaded = false;
     _currentSong = song;
     currentSongNotifier.value = song;
     _requestAudioFocus();
@@ -350,6 +375,7 @@ class AudioPlayerService {
       _playing = true;
     } catch (e) {
       // 播放失败：跳过该曲（下一曲容错）
+      _sourceLoaded = false;
       _playing = false;
       Future.delayed(const Duration(milliseconds: 300), () => next());
       return;
@@ -364,7 +390,6 @@ class AudioPlayerService {
 
   void togglePause() async {
     if (_playing) {
-      _lastPosition = _player.state.position;
       _player.pause();
       _playing = false;
     } else {
