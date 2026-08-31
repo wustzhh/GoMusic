@@ -32,7 +32,7 @@ void main() {
     expect(taps, 1);
     expect(after, before);
   });
-  testWidgets('player page exposes an independent volume slider', (
+  testWidgets('player page keeps volume controls out of the playback view', (
     tester,
   ) async {
     final file = File('${Directory.systemTemp.path}\\gomusic-volume-test.m4a');
@@ -56,7 +56,7 @@ void main() {
     );
 
     await tester.pumpWidget(const MaterialApp(home: PlayerPage()));
-    expect(find.byKey(const ValueKey('player-volume-slider')), findsOneWidget);
+    expect(find.byKey(const ValueKey('player-volume-slider')), findsNothing);
     AudioPlayerService().disposeForTest();
   });
 }

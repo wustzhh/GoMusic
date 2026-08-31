@@ -65,9 +65,12 @@ void main() {
     final p = await SharedPreferences.getInstance();
     expect(p.getDouble('windows_volume'), 142.0);
   });
-  test('setVolume forwards 200 percent to player backend', () async {
-    final s = AudioPlayerService();
-    await s.setVolume(200);
-    expect(lastFakePlayer?.appliedVolume, 200.0);
-  });
+  test(
+    'setVolume caps backend output at 100 percent for boosted volume',
+    () async {
+      final s = AudioPlayerService();
+      await s.setVolume(200);
+      expect(lastFakePlayer?.appliedVolume, 100.0);
+    },
+  );
 }

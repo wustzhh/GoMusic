@@ -37,7 +37,10 @@ class AudioPlayerService {
     _volume = clamped;
     volumeNotifier.value = clamped;
     try {
-      await _player.setVolume(clamped);
+      // 保持 mpv 的主音量不超过 100%，避免直接把数字增益送入输出而削波。
+      // 100% 以上的 App 音量通过受限的 lavfi 增益实现，峰值由 alimiter 保护。
+      await _player.setVolume(_backendVolume(clamped));
+      await _applyBoostFilter(clamped);
     } catch (_) {}
     try {
       final p = await SharedPreferences.getInstance();
@@ -56,9 +59,27 @@ class AudioPlayerService {
       _volume = saved.clamp(5.0, 200.0);
       volumeNotifier.value = _volume;
       try {
-        await _player.setVolume(_volume);
+        await _player.setVolume(_backendVolume(_volume));
+        await _applyBoostFilter(_volume);
       } catch (_) {}
     } catch (_) {}
+  }
+
+  static double _backendVolume(double appVolume) =>
+      appVolume.clamp(5.0, 100.0).toDouble();
+
+  static String? _boostFilter(double appVolume) {
+    if (appVolume <= 100.0) return null;
+    final gainDb = 20 * (log(appVolume / 100.0) / ln10);
+    return 'lavfi=[volume=${gainDb.toStringAsFixed(4)}dB,alimiter=limit=0.95]';
+  }
+
+  Future<void> _applyBoostFilter(double appVolume) async {
+    // setProperty 是 media_kit native player 的扩展 API；在 fake/web 平台上
+    // 不存在时由上层统一吞掉，主音量的安全限制仍然生效。
+    final filter = _boostFilter(appVolume) ?? '';
+    final dynamic platform = _player.platform;
+    await platform.setProperty('af', filter);
   }
 
   void _ensurePlayer() {
@@ -609,11 +630,6 @@ class AudioPlayerService {
 
   Future<void> prev() async {
     if (_queue.isEmpty) return;
-    final pos = _player.state.position;
-    if (pos != null && pos.inSeconds > 3) {
-      await _player.seek(Duration.zero);
-      return;
-    }
     _queueIndex = (_queueIndex - 1 + _queue.length) % _queue.length;
     await playSong(_queue[_queueIndex]);
   }

@@ -306,46 +306,6 @@ class _PlayerPageState extends State<PlayerPage>
                   ),
                 ),
 
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(40, 12, 40, 0),
-                  child: ValueListenableBuilder<double>(
-                    valueListenable: _service.volumeNotifier,
-                    builder: (context, volume, _) => Row(
-                      children: [
-                        Icon(
-                          volume <= 5
-                              ? Icons.volume_off_outlined
-                              : Icons.volume_up_outlined,
-                          size: 20,
-                          color: Colors.grey,
-                        ),
-                        Expanded(
-                          child: Slider(
-                            key: const ValueKey('player-volume-slider'),
-                            value: volume,
-                            min: 5,
-                            max: 200,
-                            divisions: 39,
-                            label: '${volume.round()}%',
-                            onChanged: (value) => _service.setVolume(value),
-                          ),
-                        ),
-                        SizedBox(
-                          width: 48,
-                          child: Text(
-                            '${volume.round()}%',
-                            textAlign: TextAlign.end,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
                 const SizedBox(height: 24),
 
                 Row(
