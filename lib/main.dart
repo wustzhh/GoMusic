@@ -69,9 +69,9 @@ void main() async {
   // 恢复上次播放状态
   final audioService = AudioPlayerService();
   await audioService.restoreLastSong();
-  // Windows 独立音量恢复 + 全局快捷键注册（Ctrl+Alt+方向键）
+  // 恢复 App 独立音量；Windows 额外注册全局快捷键
+  await audioService.restoreVolume();
   if (Platform.isWindows) {
-    await audioService.restoreVolume();
     await HotkeyService.instance.init();
   }
 
@@ -203,9 +203,8 @@ class _GoMusicAppState extends State<GoMusicApp> with WidgetsBindingObserver {
     // Flutter 要求只有显式 letterSpacing 的 TextStyle 才能使用非 1.0
     // letterSpacingFactor。Material 默认主题中有些样式的 letterSpacing 为 null，
     // 先把它们归一化为 0，再应用每套主题的字距倍率，避免启动阶段断言崩溃。
-    TextStyle? normalizeLetterSpacing(TextStyle? style) => style?.copyWith(
-      letterSpacing: style.letterSpacing ?? 0,
-    );
+    TextStyle? normalizeLetterSpacing(TextStyle? style) =>
+        style?.copyWith(letterSpacing: style.letterSpacing ?? 0);
     final normalizedTextTheme = baseTextTheme.copyWith(
       displayLarge: normalizeLetterSpacing(baseTextTheme.displayLarge),
       displayMedium: normalizeLetterSpacing(baseTextTheme.displayMedium),

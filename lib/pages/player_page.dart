@@ -191,202 +191,258 @@ class _PlayerPageState extends State<PlayerPage>
         ],
       ),
 
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Spacer(),
-
-          // 封面：流光旋转边框 + 播放时呼吸，点击大图无动作
-          AnimatedBuilder(
-            animation: _fxController,
-            builder: (context, _) {
-              final breathe = _isPlaying
-                  ? 1.0 + 0.015 * sin(_fxController.value * pi * 2)
-                  : 1.0;
-              return Transform.scale(
-                scale: breathe,
-                child: _GlowBorder(
-                  active: _isPlaying,
-                  angle: _fxController.value * pi * 2,
-                  child: Container(
-                    width: 260,
-                    height: 260,
-                    margin: const EdgeInsets.symmetric(horizontal: 40),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[800],
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: _buildCover(_song!),
-                  ),
-                ),
-              );
-            },
-          ),
-
-          const Spacer(),
-
-          Text(
-            _song!.title,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-          ),
-
-          const SizedBox(height: 4),
-
-          Text(
-            _song!.uploader,
-            style: const TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-
-          const SizedBox(height: 24),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
+      body: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 3,
-                    thumbShape: const RoundSliderThumbShape(
-                      enabledThumbRadius: 6,
-                    ),
-                  ),
+                const SizedBox(height: 24),
 
-                  child: Slider(
-                    value: progress,
-                    onChangeStart: (_) {
-                      // 拖动中暂停，避免出声
-                      if (_service.isPlaying) {
-                        _service.pause();
-                      }
-                    },
-                    onChanged: (v) {
-                      // 拖动中只更新 UI，不 seek 不出声
-                      setState(() => _position = dur * v);
-                    },
-                    onChangeEnd: (v) {
-                      // 拖动结束：seek 到目标位置并开始播放
-                      _service.seek(dur * v);
-                      _service.resume();
-                      setState(() => _isPlaying = true);
-                    },
+                // 封面：流光旋转边框 + 播放时呼吸，点击大图无动作
+                AnimatedBuilder(
+                  animation: _fxController,
+                  builder: (context, _) {
+                    final breathe = _isPlaying
+                        ? 1.0 + 0.015 * sin(_fxController.value * pi * 2)
+                        : 1.0;
+                    return Transform.scale(
+                      scale: breathe,
+                      child: _GlowBorder(
+                        active: _isPlaying,
+                        angle: _fxController.value * pi * 2,
+                        child: Container(
+                          width: 260,
+                          height: 260,
+                          margin: const EdgeInsets.symmetric(horizontal: 40),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[800],
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: _buildCover(_song!),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+
+                Text(
+                  _song!.title,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  _song!.uploader,
+                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+
+                const SizedBox(height: 24),
 
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  padding: const EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
                     children: [
-                      Text(
-                        _fmt(_position),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
+                      SliderTheme(
+                        data: SliderTheme.of(context).copyWith(
+                          trackHeight: 3,
+                          thumbShape: const RoundSliderThumbShape(
+                            enabledThumbRadius: 6,
+                          ),
+                        ),
+
+                        child: Slider(
+                          value: progress,
+                          onChangeStart: (_) {
+                            // 拖动中暂停，避免出声
+                            if (_service.isPlaying) {
+                              _service.pause();
+                            }
+                          },
+                          onChanged: (v) {
+                            // 拖动中只更新 UI，不 seek 不出声
+                            setState(() => _position = dur * v);
+                          },
+                          onChangeEnd: (v) {
+                            // 拖动结束：seek 到目标位置并开始播放
+                            _service.seek(dur * v);
+                            _service.resume();
+                            setState(() => _isPlaying = true);
+                          },
                         ),
                       ),
 
-                      Text(
-                        _fmt(dur),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _fmt(_position),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
+
+                            Text(
+                              _fmt(dur),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
+
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(40, 12, 40, 0),
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _service.volumeNotifier,
+                    builder: (context, volume, _) => Row(
+                      children: [
+                        Icon(
+                          volume <= 5
+                              ? Icons.volume_off_outlined
+                              : Icons.volume_up_outlined,
+                          size: 20,
+                          color: Colors.grey,
+                        ),
+                        Expanded(
+                          child: Slider(
+                            key: const ValueKey('player-volume-slider'),
+                            value: volume,
+                            min: 5,
+                            max: 200,
+                            divisions: 39,
+                            label: '${volume.round()}%',
+                            onChanged: (value) => _service.setVolume(value),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 48,
+                          child: Text(
+                            '${volume.round()}%',
+                            textAlign: TextAlign.end,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    PlayerControlButton(
+                      icon: Icons.skip_previous,
+                      size: 58,
+                      onPressed: () {
+                        _service.prev();
+                      },
+                    ),
+
+                    const SizedBox(width: 20),
+
+                    PlayerControlButton(
+                      icon: _isPlaying ? Icons.pause : Icons.play_arrow,
+                      size: 84,
+                      primary: true,
+                      onPressed: () => _service.togglePause(),
+                    ),
+
+                    const SizedBox(width: 20),
+
+                    PlayerControlButton(
+                      icon: Icons.skip_next,
+                      size: 58,
+                      onPressed: () {
+                        _service.next();
+                      },
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        final modes = PlayMode.values;
+                        final next =
+                            (modes.indexOf(_service.playMode) + 1) %
+                            modes.length;
+                        _service.setPlayMode(modes[next]);
+                        setState(() {});
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _service.playModeLabel,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.swap_horiz,
+                            color: Colors.grey,
+                            size: 16,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    IconButton(
+                      icon: Icon(
+                        _isFav ? Icons.favorite : Icons.favorite_border,
+                        size: 28,
+                        color: _isFav ? Colors.red : Colors.grey,
+                      ),
+                      onPressed: () async {
+                        if (_song == null) return;
+                        await AudioPlayerService.toggleFavorite(_song!);
+                        setState(() => _isFav = !_isFav);
+                      },
+                    ),
+
+                    IconButton(
+                      icon: const Icon(
+                        Icons.queue_music,
+                        size: 28,
+                        color: Colors.grey,
+                      ),
+                      onPressed: _showQueue,
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
               ],
             ),
           ),
-
-          const SizedBox(height: 24),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              PlayerControlButton(
-                icon: Icons.skip_previous,
-                size: 58,
-                onPressed: () {
-                  _service.prev();
-                },
-              ),
-
-              const SizedBox(width: 20),
-
-              PlayerControlButton(
-                icon: _isPlaying ? Icons.pause : Icons.play_arrow,
-                size: 84,
-                primary: true,
-                onPressed: () => _service.togglePause(),
-              ),
-
-              const SizedBox(width: 20),
-
-              PlayerControlButton(
-                icon: Icons.skip_next,
-                size: 58,
-                onPressed: () {
-                  _service.next();
-                },
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 24),
-
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              GestureDetector(
-                onTap: () {
-                  final modes = PlayMode.values;
-                  final next =
-                      (modes.indexOf(_service.playMode) + 1) % modes.length;
-                  _service.setPlayMode(modes[next]);
-                  setState(() {});
-                },
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _service.playModeLabel,
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.swap_horiz, color: Colors.grey, size: 16),
-                  ],
-                ),
-              ),
-
-              IconButton(
-                icon: Icon(
-                  _isFav ? Icons.favorite : Icons.favorite_border,
-                  size: 28,
-                  color: _isFav ? Colors.red : Colors.grey,
-                ),
-                onPressed: () async {
-                  if (_song == null) return;
-                  await AudioPlayerService.toggleFavorite(_song!);
-                  setState(() => _isFav = !_isFav);
-                },
-              ),
-
-              IconButton(
-                icon: const Icon(
-                  Icons.queue_music,
-                  size: 28,
-                  color: Colors.grey,
-                ),
-                onPressed: _showQueue,
-              ),
-            ],
-          ),
-
-          const Spacer(),
-        ],
+        ),
       ),
     );
   }

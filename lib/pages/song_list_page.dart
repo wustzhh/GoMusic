@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import '../models/music_data.dart';
 import '../services/audio_player_service.dart';
 import '../services/settings_service.dart';
+import '../services/bilibili_api.dart';
+import '../services/playlist_link_importer.dart';
 import 'player_page.dart';
 import 'video_detail_page.dart';
 import '../widgets/song_queue_list.dart';
@@ -787,6 +789,15 @@ class _SongListPageState extends State<SongListPage> {
                 )
               : null,
           actions: [
+            if (widget.playlist.id != 'local' &&
+                widget.playlist.id != 'recent' &&
+                widget.playlist.id != 'fav')
+              IconButton(
+                key: const ValueKey('playlist-import-links'),
+                icon: const Icon(Icons.link),
+                tooltip: '从链接添加本地歌曲',
+                onPressed: _showImportLinksDialog,
+              ),
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: _refresh,
@@ -1069,6 +1080,119 @@ class _SongListPageState extends State<SongListPage> {
         ),
       ),
     );
+  }
+
+  void _showImportLinksDialog() {
+    final controller = TextEditingController();
+    var importing = false;
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> importLinks() async {
+            if (importing) return;
+            setDialogState(() => importing = true);
+            try {
+              final links = BilibiliApi.extractUrls(controller.text);
+              if (links.isEmpty) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('没有找到可识别的 B 站链接')),
+                  );
+                }
+                return;
+              }
+              final settings = await SettingsService.getInstance();
+              final directory = await settings.getDownloadPath();
+              final localSongs = await scanLocalAudioFiles(directory);
+              final result = await PlaylistLinkImporter.matchLocalSongsAsync(
+                links,
+                localSongs,
+              );
+              if (result.songs.isNotEmpty) {
+                await PlaylistService.addSongsToPlaylist(
+                  widget.playlist.id,
+                  result.songs.map(_songKey).toList(),
+                );
+                await _refresh();
+              }
+              if (!context.mounted) return;
+              Navigator.pop(dialogContext);
+              final summary = result.songs.isEmpty
+                  ? '没有找到已下载的歌曲'
+                  : '已按链接顺序添加 ${result.songs.length} 首本地歌曲';
+              final missing = result.missingBvids.isEmpty
+                  ? ''
+                  : '，未找到 ${result.missingBvids.length} 首';
+              ScaffoldMessenger.of(
+                this.context,
+              ).showSnackBar(SnackBar(content: Text('$summary$missing')));
+            } catch (_) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('读取本地歌曲失败，请稍后重试')));
+              }
+            } finally {
+              if (context.mounted) setDialogState(() => importing = false);
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('从链接添加本地歌曲'),
+            content: SizedBox(
+              width: 520,
+              child: TextField(
+                controller: controller,
+                autofocus: true,
+                minLines: 5,
+                maxLines: 10,
+                decoration: const InputDecoration(
+                  hintText: '粘贴一个或多个 B 站视频链接，支持连续粘贴',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ),
+            actions: [
+              TextButton.icon(
+                onPressed: importing
+                    ? null
+                    : () async {
+                        final data = await Clipboard.getData(
+                          Clipboard.kTextPlain,
+                        );
+                        if (data?.text != null) {
+                          controller.text = data!.text!;
+                          controller.selection = TextSelection.collapsed(
+                            offset: controller.text.length,
+                          );
+                          setDialogState(() {});
+                        }
+                      },
+                icon: const Icon(Icons.content_paste),
+                label: const Text('粘贴'),
+              ),
+              TextButton(
+                onPressed: importing
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: importing ? null : importLinks,
+                child: importing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('解析并添加'),
+              ),
+            ],
+          );
+        },
+      ),
+    ).then((_) => controller.dispose());
   }
 
   /// 组优先 + 单曲在后；批量模式下行首为复选框+封面

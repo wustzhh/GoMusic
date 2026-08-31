@@ -10,6 +10,7 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
 
   bool completed = false;
   bool playing = false;
+  double? appliedVolume;
   Duration position = Duration.zero;
   Duration duration = const Duration(seconds: 100);
 
@@ -141,6 +142,11 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
       shuffle: false,
     );
     _positionCtl.add(d);
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {
+    appliedVolume = volume;
   }
 }
 

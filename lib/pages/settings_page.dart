@@ -16,7 +16,8 @@ class SettingsPage extends StatefulWidget {
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderStateMixin {
+class _SettingsPageState extends State<SettingsPage>
+    with SingleTickerProviderStateMixin {
   String _downloadPath = '';
   String _skinId = 'plain_dark'; // 当前皮肤 id
   bool _loaded = false;
@@ -71,9 +72,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
         return FadeTransition(
           opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
           child: SlideTransition(
-            position: Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero)
-                .chain(CurveTween(curve: Curves.easeOutCubic))
-                .animate(anim),
+            position: Tween<Offset>(
+              begin: const Offset(0, 0.06),
+              end: Offset.zero,
+            ).chain(CurveTween(curve: Curves.easeOutCubic)).animate(anim),
             child: child,
           ),
         );
@@ -102,8 +104,14 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确定')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('确定'),
+          ),
         ],
       ),
     );
@@ -131,23 +139,44 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('调试日志', style: TextStyle(fontSize: 15)),
-        content: SizedBox(width: 420, child: SingleChildScrollView(child: SelectableText(content, style: const TextStyle(fontSize: 11)))),
+        content: SizedBox(
+          width: 420,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              content,
+              style: const TextStyle(fontSize: 11),
+            ),
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () {
               Clipboard.setData(ClipboardData(text: content));
-              ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('日志已复制到剪贴板'), duration: Duration(seconds: 2)));
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                const SnackBar(
+                  content: Text('日志已复制到剪贴板'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
             },
             child: const Text('复制'),
           ),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
-          TextButton(onPressed: () {
-            Navigator.pop(ctx);
-            try {
-              final tmp = Directory.systemTemp;
-              File('${tmp.path}${Platform.pathSeparator}gomusic_debug.log').writeAsStringSync('');
-            } catch (_) {}
-          }, child: const Text('清空')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              try {
+                final tmp = Directory.systemTemp;
+                File(
+                  '${tmp.path}${Platform.pathSeparator}gomusic_debug.log',
+                ).writeAsStringSync('');
+              } catch (_) {}
+            },
+            child: const Text('清空'),
+          ),
         ],
       ),
     );
@@ -157,9 +186,17 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent, // 透出全局动态背景
-      appBar: AppBar(title: const Text('设置'), centerTitle: true, actions: [
-        IconButton(icon: const Icon(Icons.bug_report_outlined, size: 20), tooltip: '', onPressed: _showDebugLog),
-      ]),
+      appBar: AppBar(
+        title: const Text('设置'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.bug_report_outlined, size: 20),
+            tooltip: '',
+            onPressed: _showDebugLog,
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -179,74 +216,89 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             ),
           ),
           const SizedBox(height: 8),
-          // 音量（仅 Windows：应用内独立音量，不影响系统音量）
-          if (Platform.isWindows) ...[
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.volume_up_outlined, size: 20),
-                        const SizedBox(width: 8),
-                        const Text('音量', style: TextStyle(fontSize: 15)),
-                        const Spacer(),
-                        ValueListenableBuilder<double>(
-                          valueListenable: AudioPlayerService().volumeNotifier,
-                          builder: (_, v, __) => Text(
-                            '${v.round()}%',
-                            style: const TextStyle(fontSize: 13, color: Colors.grey),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    ValueListenableBuilder<double>(
-                      valueListenable: AudioPlayerService().volumeNotifier,
-                      builder: (_, v, __) => Slider(
-                        value: v,
-                        min: 5,
-                        max: 100,
-                        divisions: 19,
-                        label: '${v.round()}%',
-                        onChanged: (nv) => AudioPlayerService().setVolume(nv),
-                      ),
-                    ),
-                    const Text(
-                      '快捷键：Ctrl+Alt+↑/↓ 音量±5%，Ctrl+Alt+←/→ 切歌（后台也生效）',
-                      style: TextStyle(fontSize: 11, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-// 界面皮肤：默认显示 3 套预览 + "更多主题"全屏选择
+          // 音量：应用内独立增益，不影响系统音量
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [
-                    const Text('界面皮肤', style: TextStyle(fontSize: 15)),
-                    const Spacer(),
-                    // 右上角：更多主题入口
-                    InkWell(
-                      onTap: _showSkinPicker,
-                      borderRadius: BorderRadius.circular(6),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                        child: Row(mainAxisSize: MainAxisSize.min, children: [
-                          Text('更多主题', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.primary)),
-                          const Icon(Icons.chevron_right, size: 16),
-                        ]),
+                  Row(
+                    children: [
+                      const Icon(Icons.volume_up_outlined, size: 20),
+                      const SizedBox(width: 8),
+                      const Text('音量', style: TextStyle(fontSize: 15)),
+                      const Spacer(),
+                      ValueListenableBuilder<double>(
+                        valueListenable: AudioPlayerService().volumeNotifier,
+                        builder: (_, v, __) => Text(
+                          '${v.round()}%',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey,
+                          ),
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  ValueListenableBuilder<double>(
+                    valueListenable: AudioPlayerService().volumeNotifier,
+                    builder: (_, v, __) => Slider(
+                      value: v,
+                      min: 5,
+                      max: 200,
+                      divisions: 39,
+                      label: '${v.round()}%',
+                      onChanged: (nv) => AudioPlayerService().setVolume(nv),
                     ),
-                  ]),
+                  ),
+                  const Text(
+                    '快捷键：Ctrl+Alt+↑/↓ 音量±5%，Ctrl+Alt+←/→ 切歌（后台也生效）',
+                    style: TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // 界面皮肤：默认显示 3 套预览 + "更多主题"全屏选择
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Text('界面皮肤', style: TextStyle(fontSize: 15)),
+                      const Spacer(),
+                      // 右上角：更多主题入口
+                      InkWell(
+                        onTap: _showSkinPicker,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 4,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '更多主题',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right, size: 16),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 12),
                   // 前 3 套预览（点击直接切换）
                   GridView.count(
@@ -276,7 +328,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             child: ListTile(
               leading: const Icon(Icons.login_outlined),
               title: const Text('B站登录', style: TextStyle(fontSize: 15)),
-              subtitle: const Text('登录后可解析需会员的视频（自动获取Cookie）', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              subtitle: const Text(
+                '登录后可解析需会员的视频（自动获取Cookie）',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: _changeCookie,
             ),
@@ -289,7 +344,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
             child: ListTile(
               leading: Icon(Icons.info_outline),
               title: Text('关于 GoMusic', style: TextStyle(fontSize: 15)),
-              subtitle: Text('版本 1.0.0', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              subtitle: Text(
+                '版本 1.0.0',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
             ),
           ),
         ],
@@ -304,9 +362,9 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
       MaterialPageRoute(builder: (_) => const BilibiliLoginPage()),
     );
     if (result == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('B站登录信息已保存')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('B站登录信息已保存')));
     }
   }
 }
@@ -315,7 +373,10 @@ class _SettingsPageState extends State<SettingsPage> with SingleTickerProviderSt
 class _SkinPickerScreen extends StatefulWidget {
   final String initialSkinId;
   final Animation<double> animation;
-  const _SkinPickerScreen({required this.initialSkinId, required this.animation});
+  const _SkinPickerScreen({
+    required this.initialSkinId,
+    required this.animation,
+  });
   @override
   State<_SkinPickerScreen> createState() => _SkinPickerScreenState();
 }
@@ -335,76 +396,87 @@ class _SkinPickerScreenState extends State<_SkinPickerScreen> {
     return Scaffold(
       backgroundColor: scheme.surface,
       body: SafeArea(
-        child: Column(children: [
-          // 标题行 + 关闭
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 8, 8),
-            child: Row(children: [
-              const Text('选择主题', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-              const SizedBox(width: 12),
-              Text(
-                Skins.byId(_selectedId).name,
-                style: TextStyle(fontSize: 13, color: scheme.primary),
-              ),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.close, size: 22),
-                tooltip: '关闭',
-                onPressed: () => Navigator.pop(context),
-              ),
-            ]),
-          ),
-          const Divider(height: 1),
-          // 全部皮肤：竖向滚动网格（3 列）
-          Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                mainAxisSpacing: 14,
-                crossAxisSpacing: 14,
-                childAspectRatio: 0.62,
-              ),
-              itemCount: Skins.all.length,
-              itemBuilder: (_, i) {
-                final skin = Skins.all[i];
-                return _SkinCard(
-                  skin: skin,
-                  selected: skin.id == _selectedId,
-                  animation: widget.animation,
-                  onTap: () => setState(() => _selectedId = skin.id),
-                );
-              },
-            ),
-          ),
-          const Divider(height: 1),
-          // 底部：取消 / 确定
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(children: [
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          children: [
+            // 标题行 + 关闭
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 8, 8),
+              child: Row(
+                children: [
+                  const Text(
+                    '选择主题',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                   ),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('取消', style: TextStyle(fontSize: 15)),
-                ),
+                  const SizedBox(width: 12),
+                  Text(
+                    Skins.byId(_selectedId).name,
+                    style: TextStyle(fontSize: 13, color: scheme.primary),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 22),
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: GradientButton(
-                  colors: skinNotifier.value.buttonGradient,
-                  radius: 12,
-                  height: 48,
-                  onPressed: () => Navigator.pop(context, _selectedId),
-                  child: const Text('确定', style: TextStyle(fontSize: 15)),
+            ),
+            const Divider(height: 1),
+            // 全部皮肤：竖向滚动网格（3 列）
+            Expanded(
+              child: GridView.builder(
+                padding: const EdgeInsets.all(16),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisSpacing: 14,
+                  crossAxisSpacing: 14,
+                  childAspectRatio: 0.62,
                 ),
+                itemCount: Skins.all.length,
+                itemBuilder: (_, i) {
+                  final skin = Skins.all[i];
+                  return _SkinCard(
+                    skin: skin,
+                    selected: skin.id == _selectedId,
+                    animation: widget.animation,
+                    onTap: () => setState(() => _selectedId = skin.id),
+                  );
+                },
               ),
-            ]),
-          ),
-        ]),
+            ),
+            const Divider(height: 1),
+            // 底部：取消 / 确定
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('取消', style: TextStyle(fontSize: 15)),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: GradientButton(
+                      colors: skinNotifier.value.buttonGradient,
+                      radius: 12,
+                      height: 48,
+                      onPressed: () => Navigator.pop(context, _selectedId),
+                      child: const Text('确定', style: TextStyle(fontSize: 15)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -416,7 +488,12 @@ class _SkinCard extends StatelessWidget {
   final Animation<double> animation;
   final VoidCallback onTap;
 
-  const _SkinCard({required this.skin, required this.selected, required this.animation, required this.onTap});
+  const _SkinCard({
+    required this.skin,
+    required this.selected,
+    required this.animation,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -433,28 +510,36 @@ class _SkinCard extends StatelessWidget {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: selected ? accent : Colors.grey.withValues(alpha: 0.25),
+                  color: selected
+                      ? accent
+                      : Colors.grey.withValues(alpha: 0.25),
                   width: selected ? 2.5 : 1,
                 ),
               ),
               clipBehavior: Clip.antiAlias,
-              child: Stack(fit: StackFit.expand, children: [
-                SkinPreview(skin: skin, animation: animation),
-                if (selected)
-                  Positioned(
-                    right: 4,
-                    bottom: 4,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
-                      child: Icon(
-                        Icons.check,
-                        size: 12,
-                        color: Theme.of(context).colorScheme.onPrimary,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  SkinPreview(skin: skin, animation: animation),
+                  if (selected)
+                    Positioned(
+                      right: 4,
+                      bottom: 4,
+                      child: Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          color: accent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.check,
+                          size: 12,
+                          color: Theme.of(context).colorScheme.onPrimary,
+                        ),
                       ),
                     ),
-                  ),
-              ]),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 6),
