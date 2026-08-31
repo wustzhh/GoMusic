@@ -269,10 +269,10 @@ class _PlayerPageState extends State<PlayerPage>
                             // 拖动中只更新 UI，不 seek 不出声
                             setState(() => _position = dur * v);
                           },
-                          onChangeEnd: (v) {
+                          onChangeEnd: (v) async {
                             // 拖动结束：seek 到目标位置并开始播放
-                            _service.seek(dur * v);
-                            _service.resume();
+                            await _service.seek(dur * v);
+                            await _service.resume();
                             setState(() => _isPlaying = true);
                           },
                         ),

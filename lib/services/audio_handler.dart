@@ -166,7 +166,7 @@ class GoMusicAudioHandler extends BaseAudioHandler {
         await svc.playSong(svc.currentSong!, forceRestart: true);
       } else {
         _log('play: resume');
-        svc.resume();
+        await svc.resume();
       }
     }
     _syncFromPlayer();

@@ -104,4 +104,35 @@ void main() {
     expect(service.currentPosition, const Duration(seconds: 12));
     expect(service.isPlaying, isFalse);
   });
+
+  test('恢复歌曲后拖动进度再播放会先加载媒体文件', () async {
+    final audioFile = File(
+      '${tempDirectory.path}${Platform.pathSeparator}seek-after-restore.m4a',
+    )..writeAsBytesSync(const <int>[0]);
+    File('save_state.json').writeAsStringSync(
+      jsonEncode({
+        'song': audioFile.path,
+        'title': 'Seek after restore',
+        'uploader': 'test',
+        'duration': 180,
+        'bvid': 'BV-seek-after-restore',
+        'cover': '',
+        'position': 0,
+        'queue': <String>[],
+        'queue_index': 0,
+      }),
+    );
+
+    final service = AudioPlayerService();
+    final restored = await service.restoreLastSong();
+    expect(restored, isNotNull);
+
+    await service.seek(const Duration(seconds: 24));
+    await service.resume();
+
+    expect(lastFakePlayer!.openCount, 1);
+    expect(lastFakePlayer!.playCount, 1);
+    expect(service.currentPosition, const Duration(seconds: 24));
+    expect(service.isPlaying, isTrue);
+  });
 }

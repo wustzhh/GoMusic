@@ -551,12 +551,21 @@ class AudioPlayerService {
     currentSongNotifier.notifyListeners();
   }
 
-  void resume() {
+  Future<void> resume() async {
     if (_currentSong == null) return;
-    _requestAudioFocus();
+    await _requestAudioFocus();
+    if (!_sourceLoaded) {
+      await _playFile(
+        _currentSong!.filePath,
+        position: _lastPosition > Duration.zero ? _lastPosition : null,
+      );
+      _sourceLoaded = true;
+      _playing = true;
+      return;
+    }
     if (_player.state.completed) {
       // 已播完：从记录位置重新播放（如拖动进度条后）
-      _playFile(
+      await _playFile(
         _currentSong!.filePath,
         position: _lastPosition > Duration.zero ? _lastPosition : null,
       );
@@ -571,6 +580,10 @@ class AudioPlayerService {
   Future<void> seek(Duration p) async {
     _lastPosition = p;
     _positionController.add(p);
+    if (!_sourceLoaded) {
+      _saveState();
+      return;
+    }
     await _player.seek(p);
     _saveState();
   }
