@@ -57,3 +57,4 @@ song_groups.json
 android/key.properties
 android/app/app-release.keystore
 build_test/
+.superpowers/
