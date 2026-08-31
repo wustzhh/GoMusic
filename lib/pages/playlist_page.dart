@@ -5,6 +5,7 @@ import '../models/music_data.dart';
 import '../services/settings_service.dart';
 import '../services/audio_player_service.dart';
 import '../services/playlist_cover_manager.dart';
+import '../services/playlist_cover_picker.dart';
 import '../ui/theme_components.dart';
 import 'song_list_page.dart';
 
@@ -18,6 +19,9 @@ class PlaylistPageState extends State<PlaylistPage> {
   List<Playlist> _playlists = [];
   bool _loaded = false;
   final PlaylistCoverManager _coverManager = PlaylistCoverManager();
+  late final PlaylistCoverPicker _coverPicker = PlaylistCoverPicker(
+    coverManager: _coverManager,
+  );
 
   @override
   void initState() {
@@ -221,62 +225,54 @@ class PlaylistPageState extends State<PlaylistPage> {
   }
 
   Future<void> _setCustomCover(Playlist pl) async {
-    final controller = TextEditingController(text: pl.coverPath ?? '');
-    final path = await showDialog<String>(
+    final action = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('设置歌单封面'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '输入本地图片路径或 http(s) 图片地址，留空清除',
-            border: OutlineInputBorder(),
-          ),
-        ),
+        content: const Text('从手机相册或系统文件中选择一张图片。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: () => Navigator.pop(ctx, 'cancel'),
             child: const Text('取消'),
           ),
+          if (pl.coverPath != null && pl.coverPath!.isNotEmpty)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'clear'),
+              child: const Text('清除封面'),
+            ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('保存'),
+            onPressed: () => Navigator.pop(ctx, 'pick'),
+            child: const Text('选择图片'),
           ),
         ],
       ),
     );
-    controller.dispose();
-    if (path == null) return;
+    if (!mounted || action == null || action == 'cancel') return;
     try {
       String? savedPath;
-      if (path.isNotEmpty) {
-        if (path.startsWith('http://') || path.startsWith('https://')) {
-          savedPath = path;
-        } else {
-          savedPath = await _coverManager.copyLocalCover(path, ownerId: pl.id);
-          if (pl.coverPath != null &&
-              pl.coverPath != savedPath &&
-              !(pl.coverPath!.startsWith('http://') ||
-                  pl.coverPath!.startsWith('https://'))) {
-            try {
-              await _coverManager.deleteCover(pl.coverPath!);
-            } catch (_) {}
-          }
-        }
+      if (action == 'pick') {
+        savedPath = await _coverPicker.pickAndCopy(ownerId: pl.id);
+        if (savedPath == null) return;
+      } else if (action == 'clear') {
+        savedPath = null;
       }
       final oldPath = pl.coverPath;
       await PlaylistService.setPlaylistCover(pl.id, savedPath);
-      if (oldPath != null && oldPath.isNotEmpty && oldPath != savedPath &&
-          !oldPath.startsWith('http://') && !oldPath.startsWith('https://')) {
-        try { await _coverManager.deleteCover(oldPath); } catch (_) {}
+      if (oldPath != null &&
+          oldPath.isNotEmpty &&
+          oldPath != savedPath &&
+          !oldPath.startsWith('http://') &&
+          !oldPath.startsWith('https://')) {
+        try {
+          await _coverManager.deleteCover(oldPath);
+        } catch (_) {}
       }
       await refresh();
     } catch (_) {
       if (mounted)
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('封面保存失败，请检查图片路径')));
+        ).showSnackBar(const SnackBar(content: Text('封面保存失败，请重新选择图片')));
     }
   }
 

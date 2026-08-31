@@ -694,7 +694,9 @@ class AudioPlayerService {
       _lastManualPlayAt = DateTime.now();
     }
     final seq = ++_playSeq;
-    await _player.open(Media(path), play: false);
+    // Android 上让 native 播放器在打开媒体的同一条命令中进入播放态。
+    // 分离成 open(play:false) + play() 在部分设备上会出现“状态显示播放但无声、进度不动”。
+    await _player.open(Media(path), play: true);
     if (seq != _playSeq) return; // 已被更新的播放请求取代
     if (position != null && position > Duration.zero) {
       await _player.seek(position);

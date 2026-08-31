@@ -135,4 +135,26 @@ void main() {
     expect(service.currentPosition, const Duration(seconds: 24));
     expect(service.isPlaying, isTrue);
   });
+
+  test('本地音频打开时直接进入播放态，避免 Android open 后无声不动', () async {
+    final audioFile = File(
+      '${tempDirectory.path}${Platform.pathSeparator}android-play.m4a',
+    )..writeAsBytesSync(const <int>[0]);
+    final song = Song(
+      id: 'android-play-test',
+      title: 'Android play test',
+      uploader: 'test',
+      duration: const Duration(minutes: 3),
+      bvid: 'BV-android-play-test',
+      filePath: audioFile.path,
+    );
+    final service = AudioPlayerService();
+
+    await service.playSong(song);
+
+    expect(lastFakePlayer!.lastOpenPlay, isTrue);
+    expect(lastFakePlayer!.lastOpenedUri, audioFile.path.replaceAll('\\', '/'));
+    expect(lastFakePlayer!.playCount, 1);
+    expect(service.isPlaying, isTrue);
+  });
 }

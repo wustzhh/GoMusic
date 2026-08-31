@@ -14,6 +14,8 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
   Duration position = Duration.zero;
   Duration duration = const Duration(seconds: 100);
   int openCount = 0;
+  bool? lastOpenPlay;
+  String? lastOpenedUri;
   int playCount = 0;
   int pauseCount = 0;
 
@@ -101,6 +103,8 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
   @override
   Future<void> open(mk.Playable playable, {bool play = true}) async {
     openCount++;
+    lastOpenPlay = play;
+    if (playable is mk.Media) lastOpenedUri = playable.uri;
     completed = false;
     state = mk.PlayerState(
       playing: play,
