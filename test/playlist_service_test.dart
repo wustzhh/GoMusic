@@ -121,4 +121,13 @@ void main() {
       expect(await PlaylistService.getDefaultPlaylistCover('fav'), isNull);
     },
   );
+
+  test('setCover routes built-in playlists to default cover storage', () async {
+    await PlaylistService.setCover('recent', 'playlist_covers/recent.png');
+
+    expect(
+      await PlaylistService.getDefaultPlaylistCover('recent'),
+      'playlist_covers/recent.png',
+    );
+  });
 }

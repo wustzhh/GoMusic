@@ -257,7 +257,7 @@ class PlaylistPageState extends State<PlaylistPage> {
         savedPath = null;
       }
       final oldPath = pl.coverPath;
-      await PlaylistService.setPlaylistCover(pl.id, savedPath);
+      await PlaylistService.setCover(pl.id, savedPath);
       if (oldPath != null &&
           oldPath.isNotEmpty &&
           oldPath != savedPath &&
@@ -498,6 +498,15 @@ class PlaylistPageState extends State<PlaylistPage> {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    IconButton(
+                      key: ValueKey('playlist-cover-main-${pl.id}'),
+                      icon: const Icon(Icons.image_outlined, size: 18),
+                      tooltip: '设置封面',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32),
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () => _setCustomCover(pl),
+                    ),
                     Text(
                       '${pl.songs.length}首',
                       style: const TextStyle(color: Colors.grey, fontSize: 13),

@@ -243,19 +243,6 @@ class _PlayerPageState extends State<PlayerPage>
                   style: const TextStyle(fontSize: 14, color: Colors.grey),
                 ),
 
-                const SizedBox(height: 10),
-
-                ValueListenableBuilder<PlaybackDiagnostics?>(
-                  valueListenable: _service.playbackDiagnosticsNotifier,
-                  builder: (context, diagnostics, _) {
-                    if (diagnostics == null ||
-                        diagnostics.path != _song!.filePath) {
-                      return const SizedBox.shrink();
-                    }
-                    return _PlaybackDiagnosticsCard(diagnostics: diagnostics);
-                  },
-                ),
-
                 const SizedBox(height: 24),
 
                 Padding(

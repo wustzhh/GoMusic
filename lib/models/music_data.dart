@@ -461,6 +461,14 @@ class PlaylistService {
     }
   }
 
+  static Future<void> setCover(String pid, String? coverPath) async {
+    if (pid == 'fav' || pid == 'local' || pid == 'recent') {
+      await setDefaultPlaylistCover(pid, coverPath);
+    } else {
+      await setPlaylistCover(pid, coverPath);
+    }
+  }
+
   /// Covers for built-in playlists are stored separately from custom playlist records.
   static Future<String?> getDefaultPlaylistCover(String pid) async {
     final p = await SharedPreferences.getInstance();
