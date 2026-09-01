@@ -11,6 +11,68 @@ import 'settings_service.dart';
 
 enum PlayMode { sequential, loopList, loopOne, shuffle }
 
+/// 最近一次本地播放请求的可见诊断信息。
+/// 这个对象只记录播放边界状态，不包含音频内容，便于在没有 adb 的手机上定位问题。
+class PlaybackDiagnostics {
+  final String path;
+  final bool fileExists;
+  final int fileSize;
+  final bool openStarted;
+  final bool openCompleted;
+  final Duration duration;
+  final Duration position;
+  final bool playing;
+  final bool audioSessionActive;
+  final String phase;
+  final String? lastError;
+  final DateTime updatedAt;
+
+  const PlaybackDiagnostics({
+    required this.path,
+    required this.fileExists,
+    required this.fileSize,
+    required this.openStarted,
+    required this.openCompleted,
+    required this.duration,
+    required this.position,
+    required this.playing,
+    required this.audioSessionActive,
+    required this.phase,
+    required this.lastError,
+    required this.updatedAt,
+  });
+
+  PlaybackDiagnostics copyWith({
+    String? path,
+    bool? fileExists,
+    int? fileSize,
+    bool? openStarted,
+    bool? openCompleted,
+    Duration? duration,
+    Duration? position,
+    bool? playing,
+    bool? audioSessionActive,
+    String? phase,
+    String? lastError,
+    bool clearError = false,
+  }) {
+    return PlaybackDiagnostics(
+      path: path ?? this.path,
+      fileExists: fileExists ?? this.fileExists,
+      fileSize: fileSize ?? this.fileSize,
+      openStarted: openStarted ?? this.openStarted,
+      openCompleted: openCompleted ?? this.openCompleted,
+      duration: duration ?? this.duration,
+      position: position ?? this.position,
+      playing: playing ?? this.playing,
+      audioSessionActive: audioSessionActive ?? this.audioSessionActive,
+      phase: phase ?? this.phase,
+      lastError: clearError ? null : (lastError ?? this.lastError),
+      updatedAt: DateTime.now(),
+    );
+  }
+}
+
 /// Windows 独立音量持久化 key（仅 Windows 读写，Android 跟随系统音量）
 const _windowsVolumeKey = 'windows_volume';
 
@@ -24,6 +86,9 @@ class AudioPlayerService {
   /// 确保播放内核存在（生产环境首次访问时构造 libmpv Player）
   Player? _playerRef;
   bool _playerInitDone = false;
+  final ValueNotifier<PlaybackDiagnostics?> playbackDiagnosticsNotifier =
+      ValueNotifier<PlaybackDiagnostics?>(null);
+  bool _audioSessionActive = false;
 
   /// 应用内独立音量（5~200，默认 100），通过播放器增益独立于系统音量。
   double _volume = 100.0;
@@ -133,7 +198,20 @@ class AudioPlayerService {
         });
       }
       await session.setActive(true);
-    } catch (_) {}
+      _audioSessionActive = true;
+      _updatePlaybackDiagnostics(
+        audioSessionActive: true,
+        phase: 'audio session active',
+      );
+    } catch (e) {
+      _audioSessionActive = false;
+      _logPlayback('audio session failed: $e');
+      _updatePlaybackDiagnostics(
+        audioSessionActive: false,
+        phase: 'audio session failed',
+        lastError: e.toString(),
+      );
+    }
   }
 
   /// 放弃音频焦点（暂停时）
@@ -203,12 +281,17 @@ class AudioPlayerService {
       _autoNext();
     });
     _playerRef!.stream.duration.listen((d) {
+      _updatePlaybackDiagnostics(duration: d, phase: 'duration event');
       if (d.inMilliseconds > 0 && _currentSong != null) {
         SongManager.updateDuration(_currentSong!.filePath, d.inSeconds);
       }
     });
     _playerRef!.stream.error.listen((message) {
       _logPlayback('player error: $message');
+      _updatePlaybackDiagnostics(
+        phase: 'player error',
+        lastError: message.toString(),
+      );
       _sourceLoaded = false;
       _playing = false;
       currentSongNotifier.notifyListeners();
@@ -217,6 +300,7 @@ class AudioPlayerService {
     _positionSubscription = _playerRef!.stream.position.listen((p) {
       if (_currentSong == null) return;
       _lastPosition = p;
+      _updatePlaybackDiagnostics(position: p, phase: 'position event');
       if (!_positionController.isClosed) _positionController.add(p);
     });
     int _saveCounter = 0;
@@ -230,13 +314,68 @@ class AudioPlayerService {
 
   void _logPlayback(String message) {
     try {
-      File(
-        '${Directory.systemTemp.path}${Platform.pathSeparator}gomusic_debug.log',
-      ).writeAsStringSync(
+      final path = _currentSong?.filePath;
+      final logFile = path != null && path.isNotEmpty
+          ? File(
+              '${File(path).parent.path}${Platform.pathSeparator}gomusic_playback_debug.log',
+            )
+          : File(
+              '${Directory.systemTemp.path}${Platform.pathSeparator}gomusic_debug.log',
+            );
+      logFile.writeAsStringSync(
         '[${DateTime.now().toIso8601String().substring(11, 19)}] [AUDIO] $message\n',
         mode: FileMode.append,
       );
     } catch (_) {}
+  }
+
+  void _updatePlaybackDiagnostics({
+    String? path,
+    bool? fileExists,
+    int? fileSize,
+    bool? openStarted,
+    bool? openCompleted,
+    Duration? duration,
+    Duration? position,
+    bool? playing,
+    bool? audioSessionActive,
+    String? phase,
+    String? lastError,
+    bool clearError = false,
+  }) {
+    final current = playbackDiagnosticsNotifier.value;
+    if (current == null) {
+      final target = path ?? _currentSong?.filePath ?? '';
+      playbackDiagnosticsNotifier.value = PlaybackDiagnostics(
+        path: target,
+        fileExists: fileExists ?? false,
+        fileSize: fileSize ?? 0,
+        openStarted: openStarted ?? false,
+        openCompleted: openCompleted ?? false,
+        duration: duration ?? Duration.zero,
+        position: position ?? Duration.zero,
+        playing: playing ?? _playingState,
+        audioSessionActive: audioSessionActive ?? _audioSessionActive,
+        phase: phase ?? 'created',
+        lastError: lastError,
+        updatedAt: DateTime.now(),
+      );
+      return;
+    }
+    playbackDiagnosticsNotifier.value = current.copyWith(
+      path: path,
+      fileExists: fileExists,
+      fileSize: fileSize,
+      openStarted: openStarted,
+      openCompleted: openCompleted,
+      duration: duration,
+      position: position,
+      playing: playing,
+      audioSessionActive: audioSessionActive,
+      phase: phase,
+      lastError: lastError,
+      clearError: clearError,
+    );
   }
 
   Timer? _pollTimer;
@@ -292,6 +431,23 @@ class AudioPlayerService {
   // ==================== 播放 ====================
 
   Future<void> playSong(Song song, {bool forceRestart = false}) async {
+    final targetFile = File(song.filePath);
+    final targetExists = song.filePath.isNotEmpty && targetFile.existsSync();
+    _updatePlaybackDiagnostics(
+      path: song.filePath,
+      fileExists: targetExists,
+      fileSize: targetExists ? targetFile.lengthSync() : 0,
+      openStarted: false,
+      openCompleted: false,
+      duration: Duration.zero,
+      position: Duration.zero,
+      playing: false,
+      phase: targetExists ? 'play request' : 'file missing',
+      clearError: true,
+    );
+    // 即使本地文件失效，也先保留用户刚点击的歌曲，方便播放页显示真实诊断。
+    _currentSong = song;
+    currentSongNotifier.value = song;
     // 目标文件必须存在，否则不播放：避免 media_kit open 失败时旧歌继续响
     // 或队列索引被点击目标污染导致 next() 跳错（"点 A 播 B"）。
     if (song.filePath.isEmpty || !File(song.filePath).existsSync()) {
@@ -366,17 +522,21 @@ class AudioPlayerService {
     }
     _lastPosition = Duration.zero;
     _sourceLoaded = false;
-    _currentSong = song;
-    currentSongNotifier.value = song;
     _requestAudioFocus();
     try {
       await _playFile(song.filePath);
       _sourceLoaded = true;
       _playing = true;
+      _updatePlaybackDiagnostics(playing: true, phase: 'playing');
     } catch (e) {
       // 播放失败：跳过该曲（下一曲容错）
       _sourceLoaded = false;
       _playing = false;
+      _updatePlaybackDiagnostics(
+        playing: false,
+        phase: 'open failed',
+        lastError: e.toString(),
+      );
       Future.delayed(const Duration(milliseconds: 300), () => next());
       return;
     }
@@ -694,9 +854,23 @@ class AudioPlayerService {
       _lastManualPlayAt = DateTime.now();
     }
     final seq = ++_playSeq;
+    final file = File(path);
+    final exists = path.isNotEmpty && file.existsSync();
+    _updatePlaybackDiagnostics(
+      path: path,
+      fileExists: exists,
+      fileSize: exists ? file.lengthSync() : 0,
+      openStarted: true,
+      openCompleted: false,
+      phase: 'opening',
+    );
     // Android 上让 native 播放器在打开媒体的同一条命令中进入播放态。
     // 分离成 open(play:false) + play() 在部分设备上会出现“状态显示播放但无声、进度不动”。
     await _player.open(Media(path), play: true);
+    _updatePlaybackDiagnostics(
+      openCompleted: true,
+      phase: 'open completed',
+    );
     if (seq != _playSeq) return; // 已被更新的播放请求取代
     if (position != null && position > Duration.zero) {
       await _player.seek(position);

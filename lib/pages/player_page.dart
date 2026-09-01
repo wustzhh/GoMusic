@@ -243,6 +243,19 @@ class _PlayerPageState extends State<PlayerPage>
                   style: const TextStyle(fontSize: 14, color: Colors.grey),
                 ),
 
+                const SizedBox(height: 10),
+
+                ValueListenableBuilder<PlaybackDiagnostics?>(
+                  valueListenable: _service.playbackDiagnosticsNotifier,
+                  builder: (context, diagnostics, _) {
+                    if (diagnostics == null ||
+                        diagnostics.path != _song!.filePath) {
+                      return const SizedBox.shrink();
+                    }
+                    return _PlaybackDiagnosticsCard(diagnostics: diagnostics);
+                  },
+                ),
+
                 const SizedBox(height: 24),
 
                 Padding(
@@ -432,6 +445,50 @@ class _PlayerPageState extends State<PlayerPage>
 }
 
 // 队列弹窗
+
+class _PlaybackDiagnosticsCard extends StatelessWidget {
+  final PlaybackDiagnostics diagnostics;
+
+  const _PlaybackDiagnosticsCard({required this.diagnostics});
+
+  @override
+  Widget build(BuildContext context) {
+    final error = diagnostics.lastError;
+    final status = error == null || error.isEmpty
+        ? diagnostics.phase
+        : '${diagnostics.phase}: $error';
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: error == null ? Colors.white24 : Colors.redAccent,
+        ),
+      ),
+      child: Text(
+        '播放诊断\n'
+        '$status\n'
+        '文件：${diagnostics.fileExists ? "存在" : "不存在"} · '
+        '大小：${diagnostics.fileSize} B\n'
+        'open：${diagnostics.openStarted ? (diagnostics.openCompleted ? "完成" : "进行中") : "未开始"} · '
+        '时长：${diagnostics.duration.inSeconds}s · '
+        '进度：${diagnostics.position.inSeconds}s\n'
+        '音频会话：${diagnostics.audioSessionActive ? "已激活" : "未激活"}\n'
+        '路径：${diagnostics.path}',
+        maxLines: 8,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 11,
+          height: 1.35,
+          color: error == null ? Colors.white70 : Colors.redAccent,
+        ),
+      ),
+    );
+  }
+}
 
 class _QueueSheet extends StatefulWidget {
   final AudioPlayerService player;
