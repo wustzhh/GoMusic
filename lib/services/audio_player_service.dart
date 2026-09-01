@@ -93,6 +93,9 @@ class AudioPlayerService {
   /// 应用内独立音量（5~200，默认 100），通过播放器增益独立于系统音量。
   double _volume = 100.0;
   final ValueNotifier<double> volumeNotifier = ValueNotifier<double>(100.0);
+  Future<void> _volumeApplyTail = Future<void>.value();
+  int _volumeRequest = 0;
+  bool _mediaReadyForVolume = false;
   double get volume => _volume;
 
   /// 设置 App 音量（钳位 5~200），不修改系统音量并持久化。
@@ -101,11 +104,11 @@ class AudioPlayerService {
     if ((clamped - _volume).abs() < 0.01) return;
     _volume = clamped;
     volumeNotifier.value = clamped;
+    final request = ++_volumeRequest;
     try {
       // 保持 mpv 的主音量不超过 100%，避免直接把数字增益送入输出而削波。
       // 100% 以上的 App 音量通过受限的 lavfi 增益实现，峰值由 alimiter 保护。
-      await _player.setVolume(_backendVolume(clamped));
-      await _applyBoostFilter(clamped);
+      await _enqueueVolumeApply(request: request, volume: clamped);
     } catch (_) {}
     try {
       final p = await SharedPreferences.getInstance();
@@ -123,9 +126,9 @@ class AudioPlayerService {
       final saved = p.getDouble(_windowsVolumeKey) ?? 100.0;
       _volume = saved.clamp(5.0, 200.0);
       volumeNotifier.value = _volume;
+      final request = ++_volumeRequest;
       try {
-        await _player.setVolume(_backendVolume(_volume));
-        await _applyBoostFilter(_volume);
+        await _enqueueVolumeApply(request: request, volume: _volume);
       } catch (_) {}
     } catch (_) {}
   }
@@ -145,6 +148,23 @@ class AudioPlayerService {
     final filter = _boostFilter(appVolume) ?? '';
     final dynamic platform = _player.platform;
     await platform.setProperty('af', filter);
+  }
+
+  Future<void> _enqueueVolumeApply({
+    required int request,
+    required double volume,
+  }) {
+    _volumeApplyTail = _volumeApplyTail.then((_) async {
+      if (request != _volumeRequest || !_mediaReadyForVolume) return;
+      try {
+        await _player.setVolume(_backendVolume(volume));
+        if (request != _volumeRequest || !_mediaReadyForVolume) return;
+        await _applyBoostFilter(volume);
+      } catch (e) {
+        _logPlayback('volume apply failed: $e');
+      }
+    });
+    return _volumeApplyTail;
   }
 
   void _ensurePlayer() {
@@ -854,6 +874,7 @@ class AudioPlayerService {
       _lastManualPlayAt = DateTime.now();
     }
     final seq = ++_playSeq;
+    _mediaReadyForVolume = false;
     final file = File(path);
     final exists = path.isNotEmpty && file.existsSync();
     _updatePlaybackDiagnostics(
@@ -872,6 +893,12 @@ class AudioPlayerService {
       phase: 'open completed',
     );
     if (seq != _playSeq) return; // 已被更新的播放请求取代
+    _mediaReadyForVolume = true;
+    await _enqueueVolumeApply(
+      request: ++_volumeRequest,
+      volume: _volume,
+    );
+    if (seq != _playSeq) return;
     if (position != null && position > Duration.zero) {
       await _player.seek(position);
       if (seq != _playSeq) return;

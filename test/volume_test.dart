@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gomusic/services/audio_player_service.dart';
+import 'dart:io';
+import 'package:gomusic/models/music_data.dart';
 import 'fakes.dart';
 
 void main() {
@@ -68,9 +70,62 @@ void main() {
   test(
     'setVolume caps backend output at 100 percent for boosted volume',
     () async {
+      final file = File('build/volume-backend-test.m4a')
+        ..writeAsBytesSync([1]);
+      addTearDown(() {
+        if (file.existsSync()) file.deleteSync();
+      });
       final s = AudioPlayerService();
+      await s.playSong(
+        Song(
+          id: 'volume-backend-test',
+          title: 'volume-backend-test',
+          uploader: 'test',
+          duration: Duration.zero,
+          filePath: file.path,
+          bvid: 'BV-volume-backend-test',
+        ),
+      );
       await s.setVolume(200);
       expect(lastFakePlayer?.appliedVolume, 100.0);
     },
   );
+
+  test('rapid boosted-volume changes apply only the latest filter', () async {
+    final file = File('build/volume-test.m4a')..writeAsBytesSync([1]);
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+    final s = AudioPlayerService();
+    await s.playSong(
+      Song(
+        id: 'volume-test',
+        title: 'volume-test',
+        uploader: 'test',
+        duration: Duration.zero,
+        filePath: file.path,
+        bvid: 'BV-volume-test',
+      ),
+    );
+    lastFakePlayer!.setPropertyValues.clear();
+
+    await Future.wait([
+      s.setVolume(110),
+      s.setVolume(130),
+      s.setVolume(160),
+      s.setVolume(200),
+    ]);
+
+    expect(lastFakePlayer!.setPropertyValues, hasLength(1));
+    expect(lastFakePlayer!.setPropertyValues.single, contains('6.0206dB'));
+  });
+
+  test('restoreVolume does not configure filters before media is loaded', () async {
+    SharedPreferences.setMockInitialValues({'windows_volume': 137.0});
+    final s = AudioPlayerService();
+
+    await s.restoreVolume();
+
+    expect(lastFakePlayer!.setPropertyValues, isEmpty);
+  });
 }

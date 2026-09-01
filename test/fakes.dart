@@ -18,6 +18,7 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
   String? lastOpenedUri;
   int playCount = 0;
   int pauseCount = 0;
+  final List<String> setPropertyValues = [];
 
   @override
   late mk.PlayerState state = mk.PlayerState(
@@ -164,6 +165,14 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
   @override
   Future<void> setVolume(double volume) async {
     appliedVolume = volume;
+  }
+
+  Future<void> setProperty(
+    String property,
+    String value, {
+    bool waitForInitialization = true,
+  }) async {
+    setPropertyValues.add('$property=$value');
   }
 }
 
