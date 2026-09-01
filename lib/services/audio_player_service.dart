@@ -96,6 +96,7 @@ class AudioPlayerService {
   Future<void> _volumeApplyTail = Future<void>.value();
   int _volumeRequest = 0;
   bool _mediaReadyForVolume = false;
+  Timer? _volumeDebounce;
   double get volume => _volume;
 
   /// 设置 App 音量（钳位 5~200），不修改系统音量并持久化。
@@ -104,12 +105,7 @@ class AudioPlayerService {
     if ((clamped - _volume).abs() < 0.01) return;
     _volume = clamped;
     volumeNotifier.value = clamped;
-    final request = ++_volumeRequest;
-    try {
-      // 保持 mpv 的主音量不超过 100%，避免直接把数字增益送入输出而削波。
-      // 100% 以上的 App 音量通过受限的 lavfi 增益实现，峰值由 alimiter 保护。
-      await _enqueueVolumeApply(request: request, volume: clamped);
-    } catch (_) {}
+    _scheduleVolumeApply();
     try {
       final p = await SharedPreferences.getInstance();
       await p.setDouble(_windowsVolumeKey, clamped);
@@ -126,20 +122,27 @@ class AudioPlayerService {
       final saved = p.getDouble(_windowsVolumeKey) ?? 100.0;
       _volume = saved.clamp(5.0, 200.0);
       volumeNotifier.value = _volume;
-      final request = ++_volumeRequest;
-      try {
-        await _enqueueVolumeApply(request: request, volume: _volume);
-      } catch (_) {}
+      _scheduleVolumeApply();
     } catch (_) {}
   }
 
+  void _scheduleVolumeApply() {
+    _volumeDebounce?.cancel();
+    _volumeDebounce = Timer(const Duration(milliseconds: 180), () {
+      final request = ++_volumeRequest;
+      unawaited(
+        _enqueueVolumeApply(request: request, volume: _volume),
+      );
+    });
+  }
   static double _backendVolume(double appVolume) =>
       appVolume.clamp(5.0, 100.0).toDouble();
 
   static String? _boostFilter(double appVolume) {
     if (appVolume <= 100.0) return null;
     final gainDb = 20 * (log(appVolume / 100.0) / ln10);
-    return 'lavfi=[volume=${gainDb.toStringAsFixed(4)}dB,alimiter=limit=0.95]';
+    return 'lavfi=[volume=${gainDb.toStringAsFixed(4)}dB,' +
+        'alimiter=limit=0.95:attack=2:release=120]';
   }
 
   Future<void> _applyBoostFilter(double appVolume) async {
@@ -406,6 +409,8 @@ class AudioPlayerService {
   void disposeForTest() {
     _pollTimer?.cancel();
     _pollTimer = null;
+    _volumeDebounce?.cancel();
+    _volumeDebounce = null;
     _positionSubscription?.cancel();
     _positionSubscription = null;
   }

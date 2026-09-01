@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:gomusic/services/audio_player_service.dart';
 import 'dart:io';
 import 'package:gomusic/models/music_data.dart';
+
 import 'fakes.dart';
 
 void main() {
@@ -87,6 +88,7 @@ void main() {
         ),
       );
       await s.setVolume(200);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
       expect(lastFakePlayer?.appliedVolume, 100.0);
     },
   );
@@ -116,8 +118,64 @@ void main() {
       s.setVolume(200),
     ]);
 
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
     expect(lastFakePlayer!.setPropertyValues, hasLength(1));
     expect(lastFakePlayer!.setPropertyValues.single, contains('6.0206dB'));
+  });
+
+  test('boosted volume defers filter rebuild until slider settles', () async {
+    final file = File('build/volume-debounce-test.m4a')
+      ..writeAsBytesSync([1]);
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+    final s = AudioPlayerService();
+    await s.playSong(
+      Song(
+        id: 'volume-debounce-test',
+        title: 'volume-debounce-test',
+        uploader: 'test',
+        duration: Duration.zero,
+        filePath: file.path,
+        bvid: 'BV-volume-debounce-test',
+      ),
+    );
+    lastFakePlayer!.setPropertyValues.clear();
+
+    await s.setVolume(200);
+    expect(lastFakePlayer!.setPropertyValues, isEmpty);
+
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(lastFakePlayer!.setPropertyValues, hasLength(1));
+  });
+
+  test('boost filter uses gentle limiter settings', () async {
+    final file = File('build/volume-limiter-test.m4a')
+      ..writeAsBytesSync([1]);
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+    final s = AudioPlayerService();
+    await s.playSong(
+      Song(
+        id: 'volume-limiter-test',
+        title: 'volume-limiter-test',
+        uploader: 'test',
+        duration: Duration.zero,
+        filePath: file.path,
+        bvid: 'BV-volume-limiter-test',
+      ),
+    );
+    lastFakePlayer!.setPropertyValues.clear();
+
+    await s.setVolume(200);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    expect(
+      lastFakePlayer!.setPropertyValues.single,
+      contains('alimiter=limit=0.95:attack=2:release=120'),
+    );
   });
 
   test('restoreVolume does not configure filters before media is loaded', () async {
