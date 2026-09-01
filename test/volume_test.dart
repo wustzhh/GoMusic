@@ -98,6 +98,34 @@ void main() {
     );
   });
 
+  test('boost filter is configured before media starts', () async {
+    final file = File('build/volume-before-open-test.m4a')
+      ..writeAsBytesSync([1]);
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+    final s = AudioPlayerService();
+    await s.setVolume(200);
+    await s.playSong(
+      Song(
+        id: 'volume-before-open-test',
+        title: 'volume-before-open-test',
+        uploader: 'test',
+        duration: Duration.zero,
+        filePath: file.path,
+        bvid: 'BV-volume-before-open-test',
+      ),
+    );
+
+    final operations = lastFakePlayer!.operationLog;
+    final openIndex = operations.indexOf('open');
+    final filterIndex = operations.indexWhere(
+      (operation) => operation.startsWith('setProperty:af=lavfi=['),
+    );
+    expect(filterIndex, greaterThanOrEqualTo(0));
+    expect(filterIndex, lessThan(openIndex));
+  });
+
   test('rapid boosted-volume changes apply only the latest limiter', () async {
     final file = File('build/volume-test.m4a')..writeAsBytesSync([1]);
     addTearDown(() {

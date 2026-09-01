@@ -153,12 +153,19 @@ class AudioPlayerService {
   Future<void> _enqueueVolumeApply({
     required int request,
     required double volume,
+    bool allowBeforeMedia = false,
   }) {
     _volumeApplyTail = _volumeApplyTail.then((_) async {
-      if (request != _volumeRequest || !_mediaReadyForVolume) return;
+      if (request != _volumeRequest ||
+          (!allowBeforeMedia && !_mediaReadyForVolume)) {
+        return;
+      }
       try {
         await _player.setVolume(_backendVolume(volume));
-        if (request != _volumeRequest || !_mediaReadyForVolume) return;
+        if (request != _volumeRequest ||
+            (!allowBeforeMedia && !_mediaReadyForVolume)) {
+          return;
+        }
         await _applyBoostFilter(volume);
       } catch (e) {
         _logPlayback('volume apply failed: $e');
@@ -891,6 +898,16 @@ class AudioPlayerService {
     }
     final seq = ++_playSeq;
     _mediaReadyForVolume = false;
+    // Configure the gain chain before open(play:true). Opening first lets
+    // mpv start decoding/output with the old chain; changing `af` afterwards
+    // may be reported as successful without affecting already queued audio.
+    _volumeDebounce?.cancel();
+    await _enqueueVolumeApply(
+      request: ++_volumeRequest,
+      volume: _volume,
+      allowBeforeMedia: true,
+    );
+    if (seq != _playSeq) return;
     final file = File(path);
     final exists = path.isNotEmpty && file.existsSync();
     _updatePlaybackDiagnostics(

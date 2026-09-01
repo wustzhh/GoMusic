@@ -19,6 +19,7 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
   int playCount = 0;
   int pauseCount = 0;
   final List<String> setPropertyValues = [];
+  final List<String> operationLog = [];
 
   @override
   late mk.PlayerState state = mk.PlayerState(
@@ -103,6 +104,7 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
 
   @override
   Future<void> open(mk.Playable playable, {bool play = true}) async {
+    operationLog.add('open');
     openCount++;
     lastOpenPlay = play;
     if (playable is mk.Media) lastOpenedUri = playable.uri;
@@ -164,6 +166,7 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
 
   @override
   Future<void> setVolume(double volume) async {
+    operationLog.add('setVolume=$volume');
     appliedVolume = volume;
   }
 
@@ -172,6 +175,7 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
     String value, {
     bool waitForInitialization = true,
   }) async {
+    operationLog.add('setProperty:$property=$value');
     setPropertyValues.add('$property=$value');
   }
 }
