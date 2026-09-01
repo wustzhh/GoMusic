@@ -130,27 +130,8 @@ class AudioPlayerService {
     _volumeDebounce?.cancel();
     _volumeDebounce = Timer(const Duration(milliseconds: 180), () {
       final request = ++_volumeRequest;
-      unawaited(
-        _enqueueVolumeApply(request: request, volume: _volume),
-      );
+      unawaited(_enqueueVolumeApply(request: request, volume: _volume));
     });
-  }
-  static double _backendVolume(double appVolume) =>
-      appVolume.clamp(5.0, 100.0).toDouble();
-
-  static String? _boostFilter(double appVolume) {
-    if (appVolume <= 100.0) return null;
-    final gainDb = 20 * (log(appVolume / 100.0) / ln10);
-    return 'lavfi=[volume=${gainDb.toStringAsFixed(4)}dB,' +
-        'alimiter=limit=0.95:attack=2:release=120]';
-  }
-
-  Future<void> _applyBoostFilter(double appVolume) async {
-    // setProperty 是 media_kit native player 的扩展 API；在 fake/web 平台上
-    // 不存在时由上层统一吞掉，主音量的安全限制仍然生效。
-    final filter = _boostFilter(appVolume) ?? '';
-    final dynamic platform = _player.platform;
-    await platform.setProperty('af', filter);
   }
 
   Future<void> _enqueueVolumeApply({
@@ -160,9 +141,7 @@ class AudioPlayerService {
     _volumeApplyTail = _volumeApplyTail.then((_) async {
       if (request != _volumeRequest || !_mediaReadyForVolume) return;
       try {
-        await _player.setVolume(_backendVolume(volume));
-        if (request != _volumeRequest || !_mediaReadyForVolume) return;
-        await _applyBoostFilter(volume);
+        await _player.setVolume(volume);
       } catch (e) {
         _logPlayback('volume apply failed: $e');
       }
@@ -333,6 +312,19 @@ class AudioPlayerService {
         if (_saveCounter % 4 == 0) _saveState();
       }
     });
+    unawaited(_configureVolumeMax());
+  }
+
+  /// Raise mpv native volume-max to 200 so 100-200% gain works
+  /// without lavfi/alimiter filters (real libmpv fails to init them).
+  Future<void> _configureVolumeMax() async {
+    try {
+      final dynamic platform = _playerRef?.platform;
+      if (platform == null) return;
+      await platform.setProperty('volume-max', '200');
+    } catch (e) {
+      _logPlayback('volume-max config failed: $e');
+    }
   }
 
   void _logPlayback(String message) {
@@ -893,16 +885,10 @@ class AudioPlayerService {
     // Android 上让 native 播放器在打开媒体的同一条命令中进入播放态。
     // 分离成 open(play:false) + play() 在部分设备上会出现“状态显示播放但无声、进度不动”。
     await _player.open(Media(path), play: true);
-    _updatePlaybackDiagnostics(
-      openCompleted: true,
-      phase: 'open completed',
-    );
+    _updatePlaybackDiagnostics(openCompleted: true, phase: 'open completed');
     if (seq != _playSeq) return; // 已被更新的播放请求取代
     _mediaReadyForVolume = true;
-    await _enqueueVolumeApply(
-      request: ++_volumeRequest,
-      volume: _volume,
-    );
+    await _enqueueVolumeApply(request: ++_volumeRequest, volume: _volume);
     if (seq != _playSeq) return;
     if (position != null && position > Duration.zero) {
       await _player.seek(position);

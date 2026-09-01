@@ -18,13 +18,13 @@ void main() {
     AudioPlayerService().disposeForTest();
   });
 
-  test('默认音量 100', () {
+  test('default volume is 100', () {
     final s = AudioPlayerService();
     expect(s.volume, 100.0);
     expect(s.volumeNotifier.value, 100.0);
   });
 
-  test('setVolume 钳位到 5~200', () async {
+  test('setVolume clamps to 5..200', () async {
     final s = AudioPlayerService();
     await s.setVolume(240);
     expect(s.volume, 200.0);
@@ -35,7 +35,7 @@ void main() {
     expect(s.volumeNotifier.value, 66.0);
   });
 
-  test('changeVolume 步进 5', () async {
+  test('changeVolume steps by 5', () async {
     final s = AudioPlayerService();
     await s.changeVolume(5);
     expect(s.volume, 105.0);
@@ -48,7 +48,7 @@ void main() {
     expect(s.volume, 5.0);
   });
 
-  test('restoreVolume 从持久化恢复', () async {
+  test('restoreVolume restores persisted value', () async {
     SharedPreferences.setMockInitialValues({'windows_volume': 137.0});
     final s = AudioPlayerService();
     await s.restoreVolume();
@@ -56,44 +56,42 @@ void main() {
     expect(s.volumeNotifier.value, 137.0);
   });
 
-  test('restoreVolume 无持久化时默认 100', () async {
+  test('restoreVolume defaults to 100 when nothing persisted', () async {
     final s = AudioPlayerService();
     await s.restoreVolume();
     expect(s.volume, 100.0);
   });
 
-  test('setVolume 持久化保存', () async {
+  test('setVolume persists value', () async {
     final s = AudioPlayerService();
     await s.setVolume(142);
     final p = await SharedPreferences.getInstance();
     expect(p.getDouble('windows_volume'), 142.0);
   });
-  test(
-    'setVolume caps backend output at 100 percent for boosted volume',
-    () async {
-      final file = File('build/volume-backend-test.m4a')
-        ..writeAsBytesSync([1]);
-      addTearDown(() {
-        if (file.existsSync()) file.deleteSync();
-      });
-      final s = AudioPlayerService();
-      await s.playSong(
-        Song(
-          id: 'volume-backend-test',
-          title: 'volume-backend-test',
-          uploader: 'test',
-          duration: Duration.zero,
-          filePath: file.path,
-          bvid: 'BV-volume-backend-test',
-        ),
-      );
-      await s.setVolume(200);
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-      expect(lastFakePlayer?.appliedVolume, 100.0);
-    },
-  );
 
-  test('rapid boosted-volume changes apply only the latest filter', () async {
+  test('setVolume applies boosted value directly to the player', () async {
+    final file = File('build/volume-backend-test.m4a')
+      ..writeAsBytesSync([1]);
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+    final s = AudioPlayerService();
+    await s.playSong(
+      Song(
+        id: 'volume-backend-test',
+        title: 'volume-backend-test',
+        uploader: 'test',
+        duration: Duration.zero,
+        filePath: file.path,
+        bvid: 'BV-volume-backend-test',
+      ),
+    );
+    await s.setVolume(200);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(lastFakePlayer?.appliedVolume, 200.0);
+  });
+
+  test('rapid boosted-volume changes apply only the latest volume', () async {
     final file = File('build/volume-test.m4a')..writeAsBytesSync([1]);
     addTearDown(() {
       if (file.existsSync()) file.deleteSync();
@@ -109,7 +107,7 @@ void main() {
         bvid: 'BV-volume-test',
       ),
     );
-    lastFakePlayer!.setPropertyValues.clear();
+    lastFakePlayer!.appliedVolume = null;
 
     await Future.wait([
       s.setVolume(110),
@@ -120,11 +118,10 @@ void main() {
 
     await Future<void>.delayed(const Duration(milliseconds: 300));
 
-    expect(lastFakePlayer!.setPropertyValues, hasLength(1));
-    expect(lastFakePlayer!.setPropertyValues.single, contains('6.0206dB'));
+    expect(lastFakePlayer!.appliedVolume, 200.0);
   });
 
-  test('boosted volume defers filter rebuild until slider settles', () async {
+  test('boosted volume defers apply until slider settles', () async {
     final file = File('build/volume-debounce-test.m4a')
       ..writeAsBytesSync([1]);
     addTearDown(() {
@@ -141,16 +138,16 @@ void main() {
         bvid: 'BV-volume-debounce-test',
       ),
     );
-    lastFakePlayer!.setPropertyValues.clear();
+    lastFakePlayer!.appliedVolume = null;
 
     await s.setVolume(200);
-    expect(lastFakePlayer!.setPropertyValues, isEmpty);
+    expect(lastFakePlayer!.appliedVolume, isNull);
 
     await Future<void>.delayed(const Duration(milliseconds: 300));
-    expect(lastFakePlayer!.setPropertyValues, hasLength(1));
+    expect(lastFakePlayer!.appliedVolume, 200.0);
   });
 
-  test('boost filter uses gentle limiter settings', () async {
+  test('player volume-max is configured when player is attached', () async {
     final file = File('build/volume-limiter-test.m4a')
       ..writeAsBytesSync([1]);
     addTearDown(() {
@@ -167,23 +164,19 @@ void main() {
         bvid: 'BV-volume-limiter-test',
       ),
     );
-    lastFakePlayer!.setPropertyValues.clear();
-
-    await s.setVolume(200);
-    await Future<void>.delayed(const Duration(milliseconds: 300));
 
     expect(
-      lastFakePlayer!.setPropertyValues.single,
-      contains('alimiter=limit=0.95:attack=2:release=120'),
+      lastFakePlayer!.setPropertyValues,
+      contains('volume-max=200'),
     );
   });
 
-  test('restoreVolume does not configure filters before media is loaded', () async {
+  test('restoreVolume does not apply volume before media is loaded', () async {
     SharedPreferences.setMockInitialValues({'windows_volume': 137.0});
     final s = AudioPlayerService();
 
     await s.restoreVolume();
 
-    expect(lastFakePlayer!.setPropertyValues, isEmpty);
+    expect(lastFakePlayer?.appliedVolume, isNull);
   });
 }
