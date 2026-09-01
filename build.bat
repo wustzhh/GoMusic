@@ -8,6 +8,14 @@ echo ========================================
 set JAVA_HOME=D:\app-dev\jdk\jdk-17.0.16+8
 set GRADLE_USER_HOME=D:\Dependencies\gradle
 
+echo.
+echo [0/2] Preparing full native audio libraries...
+powershell -NoProfile -ExecutionPolicy Bypass -File "tool\prepare_native_audio.ps1"
+if errorlevel 1 (
+    echo Native audio library preparation FAILED!
+    goto :restore
+)
+
 REM --- patch gradle.properties for local JDK (restored after build) ---
 python -c "import re; p='android/gradle.properties'; c=open(p,encoding='utf-8').read(); c=re.sub(r'org.gradle.java.home=.*', 'org.gradle.java.home=D:/app-dev/jdk/jdk-17.0.16+8', c); open(p,'w',encoding='utf-8').write(c)"
 
@@ -16,6 +24,14 @@ echo [1/2] Building Windows...
 call D:\app-dev\flutter\bin\flutter.bat build windows
 if errorlevel 1 (
     echo Windows build FAILED!
+    goto :restore
+)
+
+REM media_kit's bundled Windows library is trimmed and lacks FFmpeg limiters.
+REM Replace it in the final runtime directory with the verified full libmpv build.
+copy /Y "build\native-audio-cache\windows-mpv-dev\libmpv-2.dll" "build\windows\x64\runner\Release\libmpv-2.dll" >nul
+if errorlevel 1 (
+    echo Full Windows libmpv replacement FAILED!
     goto :restore
 )
 

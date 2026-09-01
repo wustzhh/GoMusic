@@ -69,9 +69,8 @@ void main() {
     expect(p.getDouble('windows_volume'), 142.0);
   });
 
-  test('setVolume applies boosted value directly to the player', () async {
-    final file = File('build/volume-backend-test.m4a')
-      ..writeAsBytesSync([1]);
+  test('setVolume uses safe limiter chain for boosted volume', () async {
+    final file = File('build/volume-backend-test.m4a')..writeAsBytesSync([1]);
     addTearDown(() {
       if (file.existsSync()) file.deleteSync();
     });
@@ -88,10 +87,18 @@ void main() {
     );
     await s.setVolume(200);
     await Future<void>.delayed(const Duration(milliseconds: 300));
-    expect(lastFakePlayer?.appliedVolume, 200.0);
+    expect(lastFakePlayer?.appliedVolume, 100.0);
+    expect(
+      lastFakePlayer!.setPropertyValues,
+      contains(
+        'af=lavfi=[volume=6.0206dB,'
+        'acompressor=threshold=0.75:ratio=6:attack=20:release=250:makeup=1,'
+        'alimiter=limit=0.90:attack=5:release=250:level=false:latency=true]',
+      ),
+    );
   });
 
-  test('rapid boosted-volume changes apply only the latest volume', () async {
+  test('rapid boosted-volume changes apply only the latest limiter', () async {
     final file = File('build/volume-test.m4a')..writeAsBytesSync([1]);
     addTearDown(() {
       if (file.existsSync()) file.deleteSync();
@@ -118,12 +125,19 @@ void main() {
 
     await Future<void>.delayed(const Duration(milliseconds: 300));
 
-    expect(lastFakePlayer!.appliedVolume, 200.0);
+    expect(lastFakePlayer!.appliedVolume, 100.0);
+    expect(
+      lastFakePlayer!.setPropertyValues,
+      contains(
+        'af=lavfi=[volume=6.0206dB,'
+        'acompressor=threshold=0.75:ratio=6:attack=20:release=250:makeup=1,'
+        'alimiter=limit=0.90:attack=5:release=250:level=false:latency=true]',
+      ),
+    );
   });
 
-  test('boosted volume defers apply until slider settles', () async {
-    final file = File('build/volume-debounce-test.m4a')
-      ..writeAsBytesSync([1]);
+  test('boosted volume defers limiter rebuild until slider settles', () async {
+    final file = File('build/volume-debounce-test.m4a')..writeAsBytesSync([1]);
     addTearDown(() {
       if (file.existsSync()) file.deleteSync();
     });
@@ -138,18 +152,19 @@ void main() {
         bvid: 'BV-volume-debounce-test',
       ),
     );
+    lastFakePlayer!.setPropertyValues.clear();
     lastFakePlayer!.appliedVolume = null;
 
     await s.setVolume(200);
     expect(lastFakePlayer!.appliedVolume, isNull);
 
     await Future<void>.delayed(const Duration(milliseconds: 300));
-    expect(lastFakePlayer!.appliedVolume, 200.0);
+    expect(lastFakePlayer!.appliedVolume, 100.0);
+    expect(lastFakePlayer!.setPropertyValues, hasLength(1));
   });
 
   test('player volume-max is configured when player is attached', () async {
-    final file = File('build/volume-limiter-test.m4a')
-      ..writeAsBytesSync([1]);
+    final file = File('build/volume-limiter-test.m4a')..writeAsBytesSync([1]);
     addTearDown(() {
       if (file.existsSync()) file.deleteSync();
     });
@@ -165,10 +180,7 @@ void main() {
       ),
     );
 
-    expect(
-      lastFakePlayer!.setPropertyValues,
-      contains('volume-max=200'),
-    );
+    expect(lastFakePlayer!.setPropertyValues, contains('volume-max=200'));
   });
 
   test('restoreVolume does not apply volume before media is loaded', () async {

@@ -50,6 +50,17 @@ android {
                 signingConfigs.getByName("debug")
         }
     }
+
+    packaging {
+        jniLibs {
+            // The app bundles a full libmpv build with FFmpeg audio filters.
+            // Prefer it over the trimmed media_kit transitive library.
+            pickFirsts += setOf(
+                "**/libmpv.so",
+                "**/libc++_shared.so",
+            )
+        }
+    }
 }
 
 kotlin {

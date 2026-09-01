@@ -53,6 +53,9 @@ save_state.json
 song_groups.json
 /android/build/
 
+# Native libmpv/FFmpeg binaries are reproducibly prepared by build.bat.
+/android/app/src/main/jniLibs/
+
 # 签名文件（一次性共享，不入库）
 android/key.properties
 android/app/app-release.keystore

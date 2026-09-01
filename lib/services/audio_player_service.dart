@@ -134,6 +134,22 @@ class AudioPlayerService {
     });
   }
 
+  static double _backendVolume(double appVolume) =>
+      appVolume.clamp(5.0, 100.0).toDouble();
+
+  static String? _boostFilter(double appVolume) {
+    if (appVolume <= 100.0) return null;
+    final gainDb = 20 * (log(appVolume / 100.0) / ln10);
+    return 'lavfi=[volume=${gainDb.toStringAsFixed(4)}dB,'
+        'acompressor=threshold=0.75:ratio=6:attack=20:release=250:makeup=1,'
+        'alimiter=limit=0.90:attack=5:release=250:level=false:latency=true]';
+  }
+
+  Future<void> _applyBoostFilter(double appVolume) async {
+    final dynamic platform = _player.platform;
+    await platform.setProperty('af', _boostFilter(appVolume) ?? '');
+  }
+
   Future<void> _enqueueVolumeApply({
     required int request,
     required double volume,
@@ -141,7 +157,9 @@ class AudioPlayerService {
     _volumeApplyTail = _volumeApplyTail.then((_) async {
       if (request != _volumeRequest || !_mediaReadyForVolume) return;
       try {
-        await _player.setVolume(volume);
+        await _player.setVolume(_backendVolume(volume));
+        if (request != _volumeRequest || !_mediaReadyForVolume) return;
+        await _applyBoostFilter(volume);
       } catch (e) {
         _logPlayback('volume apply failed: $e');
       }
@@ -315,8 +333,9 @@ class AudioPlayerService {
     unawaited(_configureVolumeMax());
   }
 
-  /// Raise mpv native volume-max to 200 so 100-200% gain works
-  /// without lavfi/alimiter filters (real libmpv fails to init them).
+  /// Keep mpv's native ceiling high enough for the app setting. The actual
+  /// boosted output is kept at a safe backend volume and processed by the
+  /// explicit compressor/limiter chain above.
   Future<void> _configureVolumeMax() async {
     try {
       final dynamic platform = _playerRef?.platform;
