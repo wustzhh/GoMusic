@@ -95,6 +95,8 @@ class AudioPlayerService {
   final ValueNotifier<double> volumeNotifier = ValueNotifier<double>(100.0);
   Future<void> _volumeApplyTail = Future<void>.value();
   int _volumeRequest = 0;
+  int _volumeReloadSeq = 0;
+  String? _activeBoostFilter;
   bool _mediaReadyForVolume = false;
   Timer? _volumeDebounce;
   double get volume => _volume;
@@ -130,6 +132,7 @@ class AudioPlayerService {
     _volumeDebounce?.cancel();
     _volumeDebounce = Timer(const Duration(milliseconds: 180), () {
       final request = ++_volumeRequest;
+      unawaited(_reloadForVolumeChange(volume: _volume));
       unawaited(_enqueueVolumeApply(request: request, volume: _volume));
     });
   }
@@ -141,13 +144,45 @@ class AudioPlayerService {
     if (appVolume <= 100.0) return null;
     final gainDb = 20 * (log(appVolume / 100.0) / ln10);
     return 'lavfi=[volume=${gainDb.toStringAsFixed(4)}dB,'
-        'acompressor=threshold=0.75:ratio=6:attack=20:release=250:makeup=1,'
-        'alimiter=limit=0.90:attack=5:release=250:level=false:latency=true]';
+        'alimiter=limit=0.95:attack=5:release=250:level=false:latency=true]';
   }
 
   Future<void> _applyBoostFilter(double appVolume) async {
     final dynamic platform = _player.platform;
     await platform.setProperty('af', _boostFilter(appVolume) ?? '');
+    _activeBoostFilter = _boostFilter(appVolume);
+  }
+
+  /// mpv only applies the limiter reliably when the whole gain/limiter chain
+  /// is installed before decoding starts. When the chain for the current app
+  /// volume differs from the one in use, reopen the current media paused,
+  /// install the matching chain, then resume from the same position.
+  Future<bool> _reloadForVolumeChange({required double volume}) async {
+    if (!_mediaReadyForVolume ||
+        _currentSong == null ||
+        !_sourceLoaded ||
+        _currentSong!.filePath.isEmpty) {
+      return false;
+    }
+    final reloadSeq = ++_volumeReloadSeq;
+    final targetFilter = _boostFilter(volume);
+    if (_activeBoostFilter == targetFilter) return false;
+    final position = _lastPosition > Duration.zero ? _lastPosition : null;
+    final wasPlaying = _playing;
+    try {
+      await _playFile(
+        _currentSong!.filePath,
+        position: position,
+        volume: volume,
+      );
+      if (reloadSeq == _volumeReloadSeq && !wasPlaying && _playing) {
+        await _player.pause();
+      }
+      return reloadSeq == _volumeReloadSeq;
+    } catch (e) {
+      _logPlayback('volume reload failed: $e');
+      return false;
+    }
   }
 
   Future<void> _enqueueVolumeApply({
@@ -342,7 +377,7 @@ class AudioPlayerService {
 
   /// Keep mpv's native ceiling high enough for the app setting. The actual
   /// boosted output is kept at a safe backend volume and processed by the
-  /// explicit compressor/limiter chain above.
+  /// explicit gain/limiter chain above.
   Future<void> _configureVolumeMax() async {
     try {
       final dynamic platform = _playerRef?.platform;
@@ -889,7 +924,11 @@ class AudioPlayerService {
   /// 是否处于自动切歌中（_next 触发的 playSong）：自动切歌不刷新防抖时间戳，
   /// 保证连播时每首歌播完的 complete 都能触发下一首（短视频不会被 2 秒防抖误吞）
   bool _autoSwitching = false;
-  Future<void> _playFile(String path, {Duration? position}) async {
+  Future<void> _playFile(
+    String path, {
+    Duration? position,
+    double? volume,
+  }) async {
     // 任何实际播放都刷新防抖时间戳：open 期间旧源 complete 到达时，
     // _autoNext 会因 2 秒内刚播放过而忽略，避免误切到下一首。
     // 但自动切歌（_next）不刷新——连播时每首歌播完都要能触发下一首
@@ -898,16 +937,13 @@ class AudioPlayerService {
     }
     final seq = ++_playSeq;
     _mediaReadyForVolume = false;
-    // Configure the gain chain before open(play:true). Opening first lets
-    // mpv start decoding/output with the old chain; changing `af` afterwards
-    // may be reported as successful without affecting already queued audio.
+    // A boosted filter must be installed before mpv starts decoding. Use a
+    // paused open only for boosted playback; opening paused on every platform
+    // can report a playing state without producing audio on some Android
+    // devices.
+    final targetVolume = volume ?? _volume;
+    final prepareBoostedOutput = targetVolume > 100.0;
     _volumeDebounce?.cancel();
-    await _enqueueVolumeApply(
-      request: ++_volumeRequest,
-      volume: _volume,
-      allowBeforeMedia: true,
-    );
-    if (seq != _playSeq) return;
     final file = File(path);
     final exists = path.isNotEmpty && file.existsSync();
     _updatePlaybackDiagnostics(
@@ -920,11 +956,11 @@ class AudioPlayerService {
     );
     // Android 上让 native 播放器在打开媒体的同一条命令中进入播放态。
     // 分离成 open(play:false) + play() 在部分设备上会出现“状态显示播放但无声、进度不动”。
-    await _player.open(Media(path), play: true);
+    await _player.open(Media(path), play: !prepareBoostedOutput);
     _updatePlaybackDiagnostics(openCompleted: true, phase: 'open completed');
     if (seq != _playSeq) return; // 已被更新的播放请求取代
     _mediaReadyForVolume = true;
-    await _enqueueVolumeApply(request: ++_volumeRequest, volume: _volume);
+    await _enqueueVolumeApply(request: ++_volumeRequest, volume: targetVolume);
     if (seq != _playSeq) return;
     if (position != null && position > Duration.zero) {
       await _player.seek(position);

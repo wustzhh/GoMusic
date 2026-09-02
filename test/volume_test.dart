@@ -92,39 +92,44 @@ void main() {
       lastFakePlayer!.setPropertyValues,
       contains(
         'af=lavfi=[volume=6.0206dB,'
-        'acompressor=threshold=0.75:ratio=6:attack=20:release=250:makeup=1,'
-        'alimiter=limit=0.90:attack=5:release=250:level=false:latency=true]',
+        'alimiter=limit=0.95:attack=5:release=250:level=false:latency=true]',
       ),
     );
   });
 
-  test('boost filter is configured before media starts', () async {
-    final file = File('build/volume-before-open-test.m4a')
-      ..writeAsBytesSync([1]);
-    addTearDown(() {
-      if (file.existsSync()) file.deleteSync();
-    });
-    final s = AudioPlayerService();
-    await s.setVolume(200);
-    await s.playSong(
-      Song(
-        id: 'volume-before-open-test',
-        title: 'volume-before-open-test',
-        uploader: 'test',
-        duration: Duration.zero,
-        filePath: file.path,
-        bvid: 'BV-volume-before-open-test',
-      ),
-    );
+  test(
+    'boost filter is configured after media opens and before play',
+    () async {
+      final file = File('build/volume-before-open-test.m4a')
+        ..writeAsBytesSync([1]);
+      addTearDown(() {
+        if (file.existsSync()) file.deleteSync();
+      });
+      final s = AudioPlayerService();
+      await s.setVolume(200);
+      await s.playSong(
+        Song(
+          id: 'volume-before-open-test',
+          title: 'volume-before-open-test',
+          uploader: 'test',
+          duration: Duration.zero,
+          filePath: file.path,
+          bvid: 'BV-volume-before-open-test',
+        ),
+      );
 
-    final operations = lastFakePlayer!.operationLog;
-    final openIndex = operations.indexOf('open');
-    final filterIndex = operations.indexWhere(
-      (operation) => operation.startsWith('setProperty:af=lavfi=['),
-    );
-    expect(filterIndex, greaterThanOrEqualTo(0));
-    expect(filterIndex, lessThan(openIndex));
-  });
+      final operations = lastFakePlayer!.operationLog;
+      final openIndex = operations.indexOf('open');
+      final filterIndex = operations.indexWhere(
+        (operation) => operation.startsWith('setProperty:af=lavfi=['),
+      );
+      final playIndex = operations.lastIndexOf('play');
+      expect(lastFakePlayer!.lastOpenPlay, isFalse);
+      expect(filterIndex, greaterThanOrEqualTo(0));
+      expect(filterIndex, greaterThan(openIndex));
+      expect(filterIndex, lessThan(playIndex));
+    },
+  );
 
   test('rapid boosted-volume changes apply only the latest limiter', () async {
     final file = File('build/volume-test.m4a')..writeAsBytesSync([1]);
@@ -158,8 +163,7 @@ void main() {
       lastFakePlayer!.setPropertyValues,
       contains(
         'af=lavfi=[volume=6.0206dB,'
-        'acompressor=threshold=0.75:ratio=6:attack=20:release=250:makeup=1,'
-        'alimiter=limit=0.90:attack=5:release=250:level=false:latency=true]',
+        'alimiter=limit=0.95:attack=5:release=250:level=false:latency=true]',
       ),
     );
   });
@@ -189,6 +193,76 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     expect(lastFakePlayer!.appliedVolume, 100.0);
     expect(lastFakePlayer!.setPropertyValues, hasLength(1));
+  });
+
+  test(
+    'changing volume reloads current media before applying the filter',
+    () async {
+      final file = File('build/volume-reconfigure-test.m4a')
+        ..writeAsBytesSync([1]);
+      addTearDown(() {
+        if (file.existsSync()) file.deleteSync();
+      });
+      final s = AudioPlayerService();
+      await s.playSong(
+        Song(
+          id: 'volume-reconfigure-test',
+          title: 'volume-reconfigure-test',
+          uploader: 'test',
+          duration: Duration.zero,
+          filePath: file.path,
+          bvid: 'BV-volume-reconfigure-test',
+        ),
+      );
+      await s.seek(const Duration(seconds: 12));
+      final player = lastFakePlayer!;
+      player.operationLog.clear();
+      player.setPropertyValues.clear();
+
+      await s.setVolume(200);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+
+      expect(player.openCount, 2);
+      expect(player.lastOpenPlay, isFalse);
+      final openIndex = player.operationLog.indexOf('open');
+      final filterIndex = player.operationLog.indexWhere(
+        (operation) => operation.startsWith('setProperty:af=lavfi=['),
+      );
+      final playIndex = player.operationLog.lastIndexOf('play');
+      expect(filterIndex, greaterThan(openIndex));
+      expect(filterIndex, lessThan(playIndex));
+      expect(player.position, const Duration(seconds: 12));
+    },
+  );
+
+  test('slider settling during a boost only reloads the media once', () async {
+    final file = File('build/volume-settle-reload-test.m4a')
+      ..writeAsBytesSync([1]);
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+    final s = AudioPlayerService();
+    await s.playSong(
+      Song(
+        id: 'volume-settle-reload-test',
+        title: 'volume-settle-reload-test',
+        uploader: 'test',
+        duration: Duration.zero,
+        filePath: file.path,
+        bvid: 'BV-volume-settle-reload-test',
+      ),
+    );
+    final player = lastFakePlayer!;
+
+    await s.setVolume(200);
+    await s.setVolume(150);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    expect(player.openCount, 2);
+
+    await s.setVolume(200);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(player.openCount, 3);
   });
 
   test('player volume-max is configured when player is attached', () async {

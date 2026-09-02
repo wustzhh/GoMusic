@@ -132,6 +132,7 @@ class FakeMediaKitPlayer extends mk.PlatformPlayer {
 
   @override
   Future<void> play() async {
+    operationLog.add('play');
     playCount++;
     playing = true;
     _playingCtl.add(true);
