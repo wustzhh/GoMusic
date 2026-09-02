@@ -6,8 +6,6 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
-import '../main.dart';
-
 import '../models/music_data.dart';
 
 import '../ui/skin.dart';
@@ -75,12 +73,13 @@ class _PlayerPageState extends State<PlayerPage>
       if (mounted) setState(() => _duration = d);
     });
 
-    _service.currentSongNotifier.addListener(() {
-      if (mounted) {
-        setState(() {});
-        _refresh();
-      }
-    });
+    _service.currentSongNotifier.addListener(_onCurrentSongChanged);
+  }
+
+  void _onCurrentSongChanged() {
+    if (!mounted) return;
+    _refresh();
+    setState(() {});
   }
 
   void _refresh() {
@@ -116,6 +115,7 @@ class _PlayerPageState extends State<PlayerPage>
     _stateSub?.cancel();
     _posSub?.cancel();
     _durSub?.cancel();
+    _service.currentSongNotifier.removeListener(_onCurrentSongChanged);
     _fxController.dispose();
     super.dispose();
   }
@@ -127,6 +127,18 @@ class _PlayerPageState extends State<PlayerPage>
     } else {
       _fxController.stop();
     }
+  }
+
+  Future<void> _skipToNext() async {
+    await _service.next();
+    if (!mounted) return;
+    _onCurrentSongChanged();
+  }
+
+  Future<void> _skipToPrevious() async {
+    await _service.prev();
+    if (!mounted) return;
+    _onCurrentSongChanged();
   }
 
   void _showQueue() {
@@ -314,9 +326,7 @@ class _PlayerPageState extends State<PlayerPage>
                     PlayerControlButton(
                       icon: Icons.skip_previous,
                       size: 58,
-                      onPressed: () {
-                        _service.prev();
-                      },
+                      onPressed: _skipToPrevious,
                     ),
 
                     const SizedBox(width: 20),
@@ -333,9 +343,7 @@ class _PlayerPageState extends State<PlayerPage>
                     PlayerControlButton(
                       icon: Icons.skip_next,
                       size: 58,
-                      onPressed: () {
-                        _service.next();
-                      },
+                      onPressed: _skipToNext,
                     ),
                   ],
                 ),

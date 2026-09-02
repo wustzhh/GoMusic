@@ -69,7 +69,35 @@ void main() {
     expect(p.getDouble('windows_volume'), 142.0);
   });
 
-  test('setVolume uses safe limiter chain for boosted volume', () async {
+  test('changing volume keeps the current media and position', () async {
+    final file = File('build/volume-no-reload-test.m4a')..writeAsBytesSync([1]);
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+    final s = AudioPlayerService();
+    await s.playSong(
+      Song(
+        id: 'volume-no-reload-test',
+        title: 'volume-no-reload-test',
+        uploader: 'test',
+        duration: Duration.zero,
+        filePath: file.path,
+        bvid: 'BV-volume-no-reload-test',
+      ),
+    );
+    await s.seek(const Duration(seconds: 12));
+    final player = lastFakePlayer!;
+    final opensBefore = player.openCount;
+
+    await s.setVolume(200);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    expect(player.openCount, opensBefore);
+    expect(player.position, const Duration(seconds: 12));
+    expect(player.appliedVolume, 200.0);
+  });
+
+  test('setVolume applies the full boosted value to the player', () async {
     final file = File('build/volume-backend-test.m4a')..writeAsBytesSync([1]);
     addTearDown(() {
       if (file.existsSync()) file.deleteSync();
@@ -87,18 +115,11 @@ void main() {
     );
     await s.setVolume(200);
     await Future<void>.delayed(const Duration(milliseconds: 300));
-    expect(lastFakePlayer?.appliedVolume, 100.0);
-    expect(
-      lastFakePlayer!.setPropertyValues,
-      contains(
-        'af=lavfi=[volume=6.0206dB,'
-        'alimiter=limit=0.95:attack=5:release=250:level=false:latency=true]',
-      ),
-    );
+    expect(lastFakePlayer?.appliedVolume, 200.0);
   });
 
   test(
-    'boost filter is configured after media opens and before play',
+    'boosted playback opens normally and applies the value without a filter',
     () async {
       final file = File('build/volume-before-open-test.m4a')
         ..writeAsBytesSync([1]);
@@ -118,20 +139,12 @@ void main() {
         ),
       );
 
-      final operations = lastFakePlayer!.operationLog;
-      final openIndex = operations.indexOf('open');
-      final filterIndex = operations.indexWhere(
-        (operation) => operation.startsWith('setProperty:af=lavfi=['),
-      );
-      final playIndex = operations.lastIndexOf('play');
-      expect(lastFakePlayer!.lastOpenPlay, isFalse);
-      expect(filterIndex, greaterThanOrEqualTo(0));
-      expect(filterIndex, greaterThan(openIndex));
-      expect(filterIndex, lessThan(playIndex));
+      expect(lastFakePlayer!.lastOpenPlay, isTrue);
+      expect(lastFakePlayer!.appliedVolume, 200.0);
     },
   );
 
-  test('rapid boosted-volume changes apply only the latest limiter', () async {
+  test('rapid boosted-volume changes apply only the latest value', () async {
     final file = File('build/volume-test.m4a')..writeAsBytesSync([1]);
     addTearDown(() {
       if (file.existsSync()) file.deleteSync();
@@ -158,17 +171,10 @@ void main() {
 
     await Future<void>.delayed(const Duration(milliseconds: 300));
 
-    expect(lastFakePlayer!.appliedVolume, 100.0);
-    expect(
-      lastFakePlayer!.setPropertyValues,
-      contains(
-        'af=lavfi=[volume=6.0206dB,'
-        'alimiter=limit=0.95:attack=5:release=250:level=false:latency=true]',
-      ),
-    );
+    expect(lastFakePlayer!.appliedVolume, 200.0);
   });
 
-  test('boosted volume defers limiter rebuild until slider settles', () async {
+  test('boosted volume is debounced until the slider settles', () async {
     final file = File('build/volume-debounce-test.m4a')..writeAsBytesSync([1]);
     addTearDown(() {
       if (file.existsSync()) file.deleteSync();
@@ -191,51 +197,41 @@ void main() {
     expect(lastFakePlayer!.appliedVolume, isNull);
 
     await Future<void>.delayed(const Duration(milliseconds: 300));
-    expect(lastFakePlayer!.appliedVolume, 100.0);
+    expect(lastFakePlayer!.appliedVolume, 200.0);
     expect(lastFakePlayer!.setPropertyValues, hasLength(1));
   });
 
-  test(
-    'changing volume reloads current media before applying the filter',
-    () async {
-      final file = File('build/volume-reconfigure-test.m4a')
-        ..writeAsBytesSync([1]);
-      addTearDown(() {
-        if (file.existsSync()) file.deleteSync();
-      });
-      final s = AudioPlayerService();
-      await s.playSong(
-        Song(
-          id: 'volume-reconfigure-test',
-          title: 'volume-reconfigure-test',
-          uploader: 'test',
-          duration: Duration.zero,
-          filePath: file.path,
-          bvid: 'BV-volume-reconfigure-test',
-        ),
-      );
-      await s.seek(const Duration(seconds: 12));
-      final player = lastFakePlayer!;
-      player.operationLog.clear();
-      player.setPropertyValues.clear();
+  test('changing volume does not reload current media', () async {
+    final file = File('build/volume-reconfigure-test.m4a')
+      ..writeAsBytesSync([1]);
+    addTearDown(() {
+      if (file.existsSync()) file.deleteSync();
+    });
+    final s = AudioPlayerService();
+    await s.playSong(
+      Song(
+        id: 'volume-reconfigure-test',
+        title: 'volume-reconfigure-test',
+        uploader: 'test',
+        duration: Duration.zero,
+        filePath: file.path,
+        bvid: 'BV-volume-reconfigure-test',
+      ),
+    );
+    await s.seek(const Duration(seconds: 12));
+    final player = lastFakePlayer!;
+    player.operationLog.clear();
+    player.setPropertyValues.clear();
 
-      await s.setVolume(200);
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+    await s.setVolume(200);
+    await Future<void>.delayed(const Duration(milliseconds: 300));
 
-      expect(player.openCount, 2);
-      expect(player.lastOpenPlay, isFalse);
-      final openIndex = player.operationLog.indexOf('open');
-      final filterIndex = player.operationLog.indexWhere(
-        (operation) => operation.startsWith('setProperty:af=lavfi=['),
-      );
-      final playIndex = player.operationLog.lastIndexOf('play');
-      expect(filterIndex, greaterThan(openIndex));
-      expect(filterIndex, lessThan(playIndex));
-      expect(player.position, const Duration(seconds: 12));
-    },
-  );
+    expect(player.openCount, 1);
+    expect(player.position, const Duration(seconds: 12));
+    expect(player.appliedVolume, 200.0);
+  });
 
-  test('slider settling during a boost only reloads the media once', () async {
+  test('slider settling during a boost never reloads the media', () async {
     final file = File('build/volume-settle-reload-test.m4a')
       ..writeAsBytesSync([1]);
     addTearDown(() {
@@ -258,11 +254,11 @@ void main() {
     await s.setVolume(150);
     await Future<void>.delayed(const Duration(milliseconds: 300));
 
-    expect(player.openCount, 2);
+    expect(player.openCount, 1);
 
     await s.setVolume(200);
     await Future<void>.delayed(const Duration(milliseconds: 300));
-    expect(player.openCount, 3);
+    expect(player.openCount, 1);
   });
 
   test('player volume-max is configured when player is attached', () async {

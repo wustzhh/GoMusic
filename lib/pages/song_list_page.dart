@@ -54,21 +54,17 @@ class _SongListPageState extends State<SongListPage> {
     // local 读本地拖动顺序，自定义歌单读存储顺序；无保存顺序则用传入列表
     _applyPersistedOrder();
     // 同步播放队列为歌单顺序（非随机模式），不改动显示顺序
-    if (_service.playMode != PlayMode.shuffle) {
-      final curIdx = _songs.indexWhere(
-        (s) =>
-            _songKey(s) ==
-            (_service.currentSong != null
-                ? _songKey(_service.currentSong!)
-                : ""),
-      );
-      _service.setQueue(
-        _songs,
-        startIndex: _songs.isEmpty ? 0 : curIdx.clamp(0, _songs.length - 1),
-        playlistId: widget.playlist.id,
-        keepOrder: true,
-      );
-    }
+    final curIdx = _songs.indexWhere(
+      (s) =>
+          _songKey(s) ==
+          (_service.currentSong != null ? _songKey(_service.currentSong!) : ""),
+    );
+    _service.setQueue(
+      _songs,
+      startIndex: _songs.isEmpty ? 0 : curIdx.clamp(0, _songs.length - 1),
+      playlistId: widget.playlist.id,
+      keepOrder: true,
+    );
     _loadFavs();
     _position = _service.currentPosition;
     _duration = _service.currentSong?.duration ?? Duration.zero;
@@ -125,21 +121,19 @@ class _SongListPageState extends State<SongListPage> {
             .toList();
       }
       if (mounted) {
-        if (_service.playMode != PlayMode.shuffle) {
-          final curIdx = _songs.indexWhere(
-            (s) =>
-                _songKey(s) ==
-                (_service.currentSong != null
-                    ? _songKey(_service.currentSong!)
-                    : ""),
-          );
-          _service.setQueue(
-            _songs,
-            startIndex: _songs.isEmpty ? 0 : curIdx.clamp(0, _songs.length - 1),
-            playlistId: widget.playlist.id,
-            keepOrder: true,
-          );
-        }
+        final curIdx = _songs.indexWhere(
+          (s) =>
+              _songKey(s) ==
+              (_service.currentSong != null
+                  ? _songKey(_service.currentSong!)
+                  : ""),
+        );
+        _service.setQueue(
+          _songs,
+          startIndex: _songs.isEmpty ? 0 : curIdx.clamp(0, _songs.length - 1),
+          playlistId: widget.playlist.id,
+          keepOrder: true,
+        );
         setState(() {});
       }
     } catch (_) {}
