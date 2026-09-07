@@ -14,13 +14,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   Song _song(String bvid, String title) => Song(
-        id: bvid,
-        title: title,
-        uploader: 'u',
-        duration: const Duration(seconds: 60),
-        bvid: bvid,
-        filePath: 'C:/x/$bvid.mp3',
-      );
+    id: bvid,
+    title: title,
+    uploader: 'u',
+    duration: const Duration(seconds: 60),
+    bvid: bvid,
+    filePath: 'C:/x/$bvid.mp3',
+  );
 
   late Directory _origDir;
   late Directory _tmpDir;
@@ -38,18 +38,28 @@ void main() {
   tearDown(() {
     AudioPlayerService().disposeForTest();
     Directory.current = _origDir;
-    try { _tmpDir.deleteSync(recursive: true); } catch (_) {}
+    try {
+      _tmpDir.deleteSync(recursive: true);
+    } catch (_) {}
   });
 
   testWidgets('批量模式拖动三横杠后顺序变化并持久化', (tester) async {
     // 自定义歌单 5 首
     await PlaylistService.addPlaylist('拖动测试');
     var pls = await PlaylistService.getPlaylists();
-    await PlaylistService.addSongsToPlaylist(pls.first.id, ['BV1', 'BV2', 'BV3', 'BV4', 'BV5']);
+    await PlaylistService.addSongsToPlaylist(pls.first.id, [
+      'BV1',
+      'BV2',
+      'BV3',
+      'BV4',
+      'BV5',
+    ]);
     pls = await PlaylistService.getPlaylists();
     final playlist = pls.first;
 
-    await tester.pumpWidget(MaterialApp(home: SongListPage(playlist: playlist)));
+    await tester.pumpWidget(
+      MaterialApp(home: SongListPage(playlist: playlist)),
+    );
     await tester.pump();
 
     // 进入批量模式
@@ -70,19 +80,32 @@ void main() {
 
     // 验证顺序已改变（BV1 不再是第一个）
     final order = await PlaylistService.getPlaylists();
-    expect(order.first.songs.map((s) => s.bvid).toList(), isNot(['BV1', 'BV2', 'BV3', 'BV4', 'BV5']));
-    expect(order.first.songs.map((s) => s.bvid).toSet(), {'BV1', 'BV2', 'BV3', 'BV4', 'BV5'});
+    expect(
+      order.first.songs.map((s) => s.bvid).toList(),
+      isNot(['BV1', 'BV2', 'BV3', 'BV4', 'BV5']),
+    );
+    expect(order.first.songs.map((s) => s.bvid).toSet(), {
+      'BV1',
+      'BV2',
+      'BV3',
+      'BV4',
+      'BV5',
+    });
 
     // 模拟返回主界面再进入歌单：从存储重新加载并渲染新页面
     await tester.pumpWidget(const SizedBox()); // 卸载
     final reloaded = await PlaylistService.getPlaylists();
-    await tester.pumpWidget(MaterialApp(home: SongListPage(playlist: reloaded.first)));
+    await tester.pumpWidget(
+      MaterialApp(home: SongListPage(playlist: reloaded.first)),
+    );
     await tester.pump();
 
     // 重进后应保持拖动后的顺序
     final reorderAgain = await PlaylistService.getPlaylists();
-    expect(reorderAgain.first.songs.map((s) => s.bvid).toList(),
-        order.first.songs.map((s) => s.bvid).toList());
+    expect(
+      reorderAgain.first.songs.map((s) => s.bvid).toList(),
+      order.first.songs.map((s) => s.bvid).toList(),
+    );
 
     // 卸载页面并释放服务定时器，避免 pending timer
     await tester.pumpWidget(const SizedBox());
@@ -91,18 +114,51 @@ void main() {
 
   testWidgets('我喜欢歌单拖动后重进保持顺序（回归）', (tester) async {
     // 构造收藏：BV1..BV5
-    await AudioPlayerService.saveFavoritesOrder(['BV1', 'BV2', 'BV3', 'BV4', 'BV5']);
-    expect(await AudioPlayerService.getFavorites(), ['BV1', 'BV2', 'BV3', 'BV4', 'BV5']);
+    await AudioPlayerService.saveFavoritesOrder([
+      'BV1',
+      'BV2',
+      'BV3',
+      'BV4',
+      'BV5',
+    ]);
+    expect(await AudioPlayerService.getFavorites(), [
+      'BV1',
+      'BV2',
+      'BV3',
+      'BV4',
+      'BV5',
+    ]);
 
     // 模拟拖动：把第3首(BV3)拖到第1位 → 保存
-    await AudioPlayerService.saveFavoritesOrder(['BV3', 'BV1', 'BV2', 'BV4', 'BV5']);
-    expect(await AudioPlayerService.getFavorites(), ['BV3', 'BV1', 'BV2', 'BV4', 'BV5']);
+    await AudioPlayerService.saveFavoritesOrder([
+      'BV3',
+      'BV1',
+      'BV2',
+      'BV4',
+      'BV5',
+    ]);
+    expect(await AudioPlayerService.getFavorites(), [
+      'BV3',
+      'BV1',
+      'BV2',
+      'BV4',
+      'BV5',
+    ]);
 
     // 用 SongListPage 渲染"我喜欢"并验证重进应用顺序
     final songs = [for (var i = 1; i <= 5; i++) _song('BV$i', '歌$i')];
-    final favPlaylist = Playlist(id: 'fav', name: '我喜欢', icon: '❤️', songs: songs);
-    await tester.pumpWidget(MaterialApp(home: SongListPage(playlist: favPlaylist)));
-    await tester.pump(const Duration(milliseconds: 200)); // 等待 _applyPersistedOrder
+    final favPlaylist = Playlist(
+      id: 'fav',
+      name: '我喜欢',
+      icon: '❤️',
+      songs: songs,
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: SongListPage(playlist: favPlaylist)),
+    );
+    await tester.pump(
+      const Duration(milliseconds: 200),
+    ); // 等待 _applyPersistedOrder
 
     // 第一首应为 BV3（拖动后的顺序）
     // 歌3 应排在列表第一行（第一个 ListTile 的标题）
@@ -114,5 +170,49 @@ void main() {
 
     await tester.pumpWidget(const SizedBox());
     AudioPlayerService().disposeForTest();
+  });
+
+  testWidgets('我喜欢歌单显示链接导入入口，其他固定歌单不显示', (tester) async {
+    final songs = [_song('BV1', '歌曲1')];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SongListPage(
+          playlist: Playlist(id: 'fav', name: '我喜欢', icon: '❤️', songs: songs),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('playlist-import-links')), findsOneWidget);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SongListPage(
+          playlist: Playlist(
+            id: 'local',
+            name: '本地歌单',
+            icon: '📁',
+            songs: songs,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('playlist-import-links')), findsNothing);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SongListPage(
+          playlist: Playlist(
+            id: 'recent',
+            name: '最近播放',
+            icon: '🕘',
+            songs: songs,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('playlist-import-links')), findsNothing);
   });
 }

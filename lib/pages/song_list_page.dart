@@ -877,8 +877,7 @@ class _SongListPageState extends State<SongListPage> {
               onPressed: _showPlaylistCoverDialog,
             ),
             if (widget.playlist.id != 'local' &&
-                widget.playlist.id != 'recent' &&
-                widget.playlist.id != 'fav')
+                widget.playlist.id != 'recent')
               IconButton(
                 key: const ValueKey('playlist-import-links'),
                 icon: const Icon(Icons.link),
