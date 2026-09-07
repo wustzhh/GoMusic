@@ -876,13 +876,12 @@ class _SongListPageState extends State<SongListPage> {
               tooltip: '设置封面',
               onPressed: _showPlaylistCoverDialog,
             ),
-            if (widget.playlist.id != 'local' &&
-                widget.playlist.id != 'recent')
-              IconButton(
+            if (widget.playlist.id != 'local' && widget.playlist.id != 'recent')
+              TextButton.icon(
                 key: const ValueKey('playlist-import-links'),
-                icon: const Icon(Icons.link),
-                tooltip: '从链接添加本地歌曲',
                 onPressed: _showImportLinksDialog,
+                icon: const Icon(Icons.content_paste, size: 17),
+                label: const Text('粘贴链接'),
               ),
             IconButton(
               icon: const Icon(Icons.refresh),
@@ -1176,6 +1175,15 @@ class _SongListPageState extends State<SongListPage> {
   void _showImportLinksDialog() {
     final controller = TextEditingController();
     var importing = false;
+    Clipboard.getData(Clipboard.kTextPlain).then((data) {
+      final text = data?.text;
+      if (text != null && text.trim().isNotEmpty && controller.text.isEmpty) {
+        controller.value = TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+        );
+      }
+    });
     showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -2024,17 +2032,22 @@ class _SongListPageState extends State<SongListPage> {
       return;
     }
     final links = sel
-        .map((s) {
-          final bv = s.bvid.isNotEmpty ? s.bvid : _songKey(s);
-          return bv.startsWith('BV')
-              ? 'https://www.bilibili.com/video/$bv'
-              : bv;
-        })
+        .map((s) => s.bvid.isNotEmpty ? s.bvid : _songKey(s))
+        .where((bvid) => RegExp(r'^BV[a-zA-Z0-9]{10}$').hasMatch(bvid))
+        .map((bvid) => 'https://www.bilibili.com/video/$bvid')
         .join('\n');
-    Clipboard.setData(ClipboardData(text: links));
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('已复制 ${sel.length} 个链接')));
+    if (links.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('选中的歌曲没有可复制的 B 站链接')));
+      return;
+    }
+    Clipboard.setData(ClipboardData(text: links)).then((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已复制 ${links.split('\n').length} 个链接')),
+      );
+    });
   }
 
   // 批量：添加到歌单
